@@ -32,7 +32,13 @@ See `docs/SOURCES.md` for the full source-of-truth table. Summary of current rol
 | `zoho_data` (BQ) | ~84.5k | Support tickets, SLA compliance, uptime-downtime proxy. Date strings via `SAFE.PARSE_DATETIME('%d-%b-%Y %I:%M:%S %p', …)` |
 | `device_metrics` (BQ) | dup rows | Reliability watchlist — deduped with `GROUP BY deviceid` |
 | CS tracker Google Sheet | — | Support/CS field cases (TAT/machine/owner) |
-| `device_center_mapping`, `jira_data` (BQ) | — | **Retired as user-facing sources** (legacy serial-linking / asset spec only) |
+| `device_center_mapping`, `jira_data` (BQ) | — | **Retired as user-facing sources** (legacy serial-linking / asset spec only); still surfaced read-only on the Raw Data page |
+
+**2026-07-07 (in progress):** the Jira devices Google Sheet's fleet count is now permanently
+restricted to Issue Type = Connector or ECG Machine (`CONFIG.JIRA_DEVICE_TYPES`, applied in
+`jiraDeviceStats_()`) — see `docs/SOURCES.md` → "Jira devices export". A new **Raw Data**
+view (`src/server/RawData.js`) exposes all 8 sources above unfiltered, paginated, with
+full-table CSV export — see `docs/SOURCES.md` → "Raw Data page".
 
 ## Key design decisions
 

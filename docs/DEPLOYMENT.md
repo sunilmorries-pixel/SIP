@@ -53,6 +53,7 @@ contents 1:1 (clasp Path A does this automatically — prefer it). Current file 
 | `SlaCatalog` (script) | `src/server/SlaCatalog.js` |
 | `Numbers` (script) | `src/server/Numbers.js` |
 | `SheetSource` (script) | `src/server/SheetSource.js` |
+| `RawData` (script) | `src/server/RawData.js` — **Raw Data page server layer (2026-07-07, in progress)** |
 | `JiraDump` (script) | `src/server/JiraDump.js` |
 | `Api` (script) | `src/server/Api.js` |
 | `TopCustomers` (script) | `src/server/TopCustomers.js` |

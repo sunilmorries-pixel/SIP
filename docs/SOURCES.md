@@ -26,6 +26,13 @@ upstream DWH queries that *produced* the sandbox tables — read them for column
   A device's center is resolved by its **serial** parsed from `Summary`
   (regex `[A-Za-z0-9]{2}-[A-Za-z0-9]{6,}`) → bridged via `cloud_devices.DeviceID`→CenterID
   (9,888 of 43,794 map to a center). The Jira **`Customer ID` column is ignored** (per user).
+- **Permanent restriction (2026-07-07, in progress):** `jiraDeviceStats_()` only counts rows
+  whose `Issue Type` is `Connector` or `ECG Machine` (`CONFIG.JIRA_DEVICE_TYPES`, matched
+  case-insensitively via `isTrackedJiraDeviceType_()`) — every other Issue Type is excluded
+  from the fleet/devices count and from the Numbers-page devices section. This does **not**
+  affect the separate legacy `getAssetIndex_()` path (Map asset markers, the center drawer's
+  Jira-devices list, the Asset-lifecycle chart, or the batch-cohort analysis) — those still
+  read the `jira_data` BQ table unfiltered.
 - **Read via** `SheetSource.readJiraSheet()` (Sheets REST API, tolerant header mapping).
 - **Offline fallback:** while the Sheets API is disabled, `JiraDump.js` supplies a static
   pre-aggregated snapshot; the live read auto-resumes once the API is enabled.
@@ -46,6 +53,19 @@ upstream DWH queries that *produced* the sandbox tables — read them for column
 - **Join key to BigQuery:** `Zoho ID` ↔ `zoho_data.ticketNumber` (strip the `#`),
   `Center ID` ↔ `CenterID`.
 
+## Raw Data page (2026-07-07, in progress)
+
+A dedicated "Raw Data" tab exposes all **8** sources this app has ever touched — the 6
+BigQuery tables above plus both Google Sheets — each as its own paginated, full-column
+table with a full-table CSV export. Unlike every other page, **no site filter applies
+here** (no F2P exclusion, no Active-centers toggle, no hub/segment/search, and — unlike
+the rest of the app — the Jira Issue-Type restriction above does *not* apply to this
+page's raw Jira-sheet table either). It exists purely for source reconciliation and data
+export, straight from each source. Server layer: `src/server/RawData.js`
+(`rawSources_()`, `apiGetRawPage()`, `apiGetRawExport()`); the two Sheets are read via a
+new generic `readRawSheetRows_()` in `SheetSource.js` (unlike `readJiraSheet()`/
+`readCsTracker()`, it returns every column under the sheet's own header names).
+
 ## Machine Uptime % (TRD M-A1 — North-Star)
 
 The canonical North-Star KPI. Canonical source is **ServiceWRK** (not yet in the sandbox),
@@ -62,6 +82,13 @@ so it's built here as a **ticket-based proxy** at **center grain** (`centerUptim
 - Fleet KPI = AVG(center uptime) + % of centers ≥ 99%. SLA bands: Critical 99.5 / Standard 95 / Dev 90.
 - When ServiceWRK lands, swap the `tix` CTE source; the merged-interval engine stays.
 - Powers: the "Fleet uptime" KPI (Overview + Asset) and the Reliability watchlist.
+- **Live engine note:** the failure-ticket filter shown above (`FAILURE_CATEGORY_REGEX`) is
+  the legacy `centerUptimeSql_`/`Queries.js` description; the live path
+  (`centerUptimeSqlCD_` in `EditionCD.js`) uses `techBoolSql_()` (`SlaCatalog.js` — catalog
+  `tech` flag first, `CONFIG.TECH_FALLBACK_REGEX` fallback). **2026-07-07 (in progress):**
+  `TECH_FALLBACK_REGEX` gained the keyword `swap`, so any swap-worded ticket category not
+  already an exact `SLA_CATALOG` match now counts as technical/downtime — same mechanism
+  also feeds M-A2 MTBF, M-A6 health, the batch-cohort analysis, and the SLA Tech/Non-Tech split.
 
 ## Grain rules (from the SIP master build plan — apply everywhere)
 

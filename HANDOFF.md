@@ -2,6 +2,19 @@
 
 **Last updated:** 2026-07-07 · **Version:** 5.0 · **Status:** live, deployed via clasp.
 
+**In progress (2026-07-07):** implementing 4 changes — a new "Raw Data" tab (all 8
+sources — 6 BigQuery tables + 2 Google Sheets — paginated, no site filters, full-table
+CSV export), a **permanent** Jira Issue-Type restriction (Connector/ECG Machine only) on
+every Jira-derived device count, the Overview's duplicate heartbeat donut replaced with a
+Jira lifecycle-status donut ("Fleet status (Jira)"), and a downtime-classification fix so
+worded "swap" tickets always count as technical (M-A1/A2/A6 + SLA Tech split). Design doc:
+`docs/superpowers/specs/2026-07-07-raw-data-jira-filter-fleet-status-swap-downtime-design.md`.
+Plan: `docs/superpowers/plans/2026-07-07-raw-data-jira-filter-fleet-status-swap-downtime.md`
+— executing task-by-task (subagent-driven-development) on git worktree branch
+`worktree-raw-data-jira-filter`. **Not yet deployed** — the plan's Task 10 (`clasp push`
++ new version + live verification) is gated on explicit go-ahead, since it affects the
+live shared dashboard.
+
 Read this first when resuming. It captures what the project is, where it's deployed,
 how to change/deploy it, the non-obvious data facts, the current feature set, and the
 open items. Deeper detail lives in `docs/` and `design-system/`. The full version-by-version

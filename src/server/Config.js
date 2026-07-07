@@ -69,7 +69,7 @@ var CONFIG = {
    * category as Tech/device. Used by SlaCatalog.slaFor + techBoolSql_ so JS
    * and SQL agree. Listed categories use their catalog `tech` flag directly.
    */
-  TECH_FALLBACK_REGEX: 'machine|device|hardware|cable|network|sim|accessor|acquisition|battery|printer|connector|adapter|display|keypad|antenna|board|tablet|charg|serial|ups|trilink',
+  TECH_FALLBACK_REGEX: 'machine|device|hardware|cable|network|sim|accessor|acquisition|battery|printer|connector|adapter|display|keypad|antenna|board|tablet|charg|serial|ups|trilink|swap',
 
   /** App metadata shown in the UI. */
   APP_NAME: 'SIP Insights',

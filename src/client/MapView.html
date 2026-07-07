@@ -1,0 +1,88 @@
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   MapView.html — factory for a Leaflet map of centers with clustered
+   bubble markers. Call MapView('containerId') to get an instance; each
+   page (Map, Top Customers) owns its own.
+   Center arrays are compact (indices match Api.js apiGetMapData):
+     [0]id [1]name [2]lat [3]lng [4]devices [5]online [6]open_tickets [7]assets
+   Bubble color = open-ticket severity, size = device count.
+   ═══════════════════════════════════════════════════════════════════ */
+function MapView(containerId) {
+  'use strict';
+
+  var TILES = {
+    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+  };
+
+  var map = null, cluster = null, tileLayer = null;
+  var centers = [], pendingRender = null, theme = 'dark';
+
+  function ticketColor(openTickets) {
+    if (openTickets >= 4) return '#F87171';
+    if (openTickets > 0) return '#FBBF24';
+    return '#34D399';
+  }
+
+  function ensureMap() {
+    if (map) { setTimeout(function () { map.invalidateSize(); }, 80); return true; }
+    if (typeof L === 'undefined') return false;
+    map = L.map(containerId, { preferCanvas: true, worldCopyJump: true }).setView([21.5, 79], 5);
+    tileLayer = L.tileLayer(TILES[theme], {
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      subdomains: 'abcd', maxZoom: 18
+    }).addTo(map);
+    cluster = L.markerClusterGroup({
+      chunkedLoading: true, maxClusterRadius: 46,
+      showCoverageOnHover: false, spiderfyOnMaxZoom: true
+    });
+    map.addLayer(cluster);
+    if (pendingRender) { var run = pendingRender; pendingRender = null; run(); }
+    return true;
+  }
+
+  function setData(rows, onClick) {
+    centers = rows || [];
+    if (!map) { pendingRender = function () { setData(centers, onClick); }; return; }
+    cluster.clearLayers();
+    var markers = centers.map(function (c) {
+      var radius = Math.min(18, 5 + Math.sqrt(c[4] || 1) * 1.9);
+      var color = ticketColor(c[6]);
+      var marker = L.circleMarker([c[2], c[3]], {
+        radius: radius, color: color, weight: 1.5, fillColor: color, fillOpacity: 0.4
+      });
+      marker.bindTooltip(
+        c[1] + ' · ' + c[4] + ' device' + (c[4] === 1 ? '' : 's') +
+        ' · ' + c[6] + ' open ticket' + (c[6] === 1 ? '' : 's') +
+        (c[7] ? ' · ' + c[7] + ' assets' : ''),
+        { direction: 'top' });
+      marker.on('click', function () { onClick(c); });
+      return marker;
+    });
+    cluster.addLayers(markers);
+    if (centers.length) {
+      try { map.fitBounds(L.latLngBounds(centers.map(function (c) { return [c[2], c[3]]; })).pad(0.1)); } catch (e) {}
+    }
+  }
+
+  function focusByName(query, onClick) {
+    var q = String(query || '').toLowerCase().trim();
+    if (!q || !map) return false;
+    for (var i = 0; i < centers.length; i++) {
+      if (String(centers[i][1]).toLowerCase().indexOf(q) !== -1) {
+        map.setView([centers[i][2], centers[i][3]], 13);
+        onClick(centers[i]);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function setTheme(next) {
+    theme = (next === 'light') ? 'light' : 'dark';
+    if (tileLayer) tileLayer.setUrl(TILES[theme]);
+  }
+
+  return { ensureMap: ensureMap, setData: setData, focusByName: focusByName, setTheme: setTheme };
+}
+</script>

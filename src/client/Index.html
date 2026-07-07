@@ -1,0 +1,815 @@
+<!-- Index.html — page shell. Three views: Asset · Centers/Customers · Support/CS.
+     Panels are populated by App.html / Charts.html -->
+<?!= include('Styles') ?>
+
+<div class="bg-decor" aria-hidden="true"></div>
+
+<header class="topbar" role="banner">
+  <div class="brand">
+    <span class="brand-mark">
+      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="tricogHeart" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#FF5470"/>
+            <stop offset="1" stop-color="#C21F3A"/>
+          </linearGradient>
+        </defs>
+        <path d="M20 35.5S6.5 27.6 6.5 17.4A6.6 6.6 0 0 1 20 12.8 6.6 6.6 0 0 1 33.5 17.4C33.5 27.6 20 35.5 20 35.5Z"
+              fill="url(#tricogHeart)"/>
+        <path d="M8 21.5h4.3l2.2-5.4 3.1 9.6 2.3-6.4 1.6 3.2H31.5"
+              fill="none" stroke="#FFFFFF" stroke-width="2.1"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    <div class="brand-text">
+      <span class="brand-name">SIP <span class="brand-accent">Insights</span></span>
+      <span class="brand-sub"><b>Tricog</b> · Service Insight Platform</span>
+    </div>
+  </div>
+
+  <div class="topbar-controls">
+    <div class="global-search">
+      <svg class="gs-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
+        <path d="m21 21-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <input id="globalSearch" class="input topbar-search" type="search"
+             placeholder="Search centers, devices, hubs, serials…" autocomplete="off"
+             aria-label="Search across the dashboard" />
+    </div>
+    <input id="hubFilter" list="hubOptions" class="input topbar-hub" type="text"
+           placeholder="All hubs" autocomplete="off" aria-label="Filter by hub" />
+    <datalist id="hubOptions"></datalist>
+    <select id="globalSegment" class="select topbar-seg" aria-label="Filter by segment">
+      <option value="">All segments</option>
+    </select>
+
+    <button id="activeOnlyBtn" class="btn btn-ghost" type="button" aria-pressed="false"
+            title="Show only centers with Status = ACTIVE (center_details)">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Active centers</span>
+    </button>
+
+    <button id="refreshBtn" class="btn btn-primary" type="button">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Refresh</span>
+    </button>
+
+    <div class="theme-toggle" role="group" aria-label="Colour theme">
+      <button id="themeDark" type="button" aria-pressed="true" aria-label="Dark theme" title="Dark theme">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button id="themeLight" type="button" aria-pressed="false" aria-label="Light theme" title="Light theme">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/>
+          <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <span id="refreshCountdown" class="sr-only"></span>
+  </div>
+</header>
+
+<div id="statusStrip" class="status-strip" role="status" aria-live="polite">
+  <span class="pulse-dot" aria-hidden="true"></span>
+  <span id="lastUpdated">Connecting to BigQuery…</span>
+</div>
+
+<div id="errorBanner" class="error-banner" role="alert" hidden>
+  <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M12 9v4m0 4h.01M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.7 3.86a2 2 0 0 0-3.4 0Z"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <span id="errorMessage">Something went wrong.</span>
+  <button id="retryBtn" class="btn btn-ghost" type="button">Retry</button>
+</div>
+
+<nav class="tabs" role="tablist" aria-label="Dashboard views">
+  <button class="tab is-active" id="tab-overview" role="tab" aria-selected="true" aria-controls="panel-overview">Overview</button>
+  <button class="tab" id="tab-asset"   role="tab" aria-selected="false" aria-controls="panel-asset" tabindex="-1">Asset</button>
+  <button class="tab" id="tab-centers" role="tab" aria-selected="false" aria-controls="panel-centers" tabindex="-1">Centers / Customers</button>
+  <button class="tab" id="tab-support" role="tab" aria-selected="false" aria-controls="panel-support" tabindex="-1">Support / CS</button>
+  <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" tabindex="-1">Map</button>
+  <button class="tab" id="tab-topcust" role="tab" aria-selected="false" aria-controls="panel-topcust" tabindex="-1">Top Customers</button>
+  <button class="tab" id="tab-numbers" role="tab" aria-selected="false" aria-controls="panel-numbers" tabindex="-1">Numbers</button>
+</nav>
+
+<main class="page" role="main">
+
+  <!-- ══════════════ VIEW 0 · EXECUTIVE OVERVIEW (landing) ══════════════ -->
+  <section id="panel-overview" class="panel is-active" role="tabpanel" aria-labelledby="tab-overview">
+    <div class="exec-hero card">
+      <div class="exec-hero-main">
+        <span class="exec-eyebrow">Executive summary</span>
+        <p id="execNarrative" class="exec-narrative">Loading the story from live data…</p>
+        <div id="execFlags" class="exec-flags"></div>
+      </div>
+      <div class="exec-hero-ring">
+        <div class="ring" id="execRing" style="--pct:0">
+          <div class="ring-inner">
+            <span id="execRingPct" class="ring-pct">–</span>
+            <span id="execRingLabel" class="ring-label">avg device age</span>
+            <span id="execRingCap" class="ring-cap">of 5-yr life</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="execKpiGrid" class="kpi-grid"></div>
+
+    <div class="card-grid">
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Fleet health</h2>
+          <p class="card-sub">Devices by last heartbeat</p>
+        </header>
+        <div id="execFleet" class="chart chart-tall" role="img" aria-label="Donut of fleet health"></div>
+      </article>
+
+      <article class="card span-8">
+        <header class="card-head">
+          <h2 class="card-title">Support ticket flow</h2>
+          <p class="card-sub">Zoho tickets created vs closed, last 12 months</p>
+        </header>
+        <div id="execTrend" class="chart chart-tall" role="img" aria-label="Ticket created vs closed trend"></div>
+      </article>
+
+      <article class="card span-7">
+        <header class="card-head">
+          <h2 class="card-title">Centers needing attention</h2>
+          <p class="card-sub">Most open support tickets · click through on the Map</p>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table" id="execCentersTable">
+            <caption class="sr-only">Centers with the most open tickets</caption>
+            <thead><tr>
+              <th scope="col">Center</th><th scope="col">State</th>
+              <th scope="col" class="num">Devices</th><th scope="col" class="num">Online</th>
+              <th scope="col" class="num">Open tickets</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card span-5">
+        <header class="card-head">
+          <h2 class="card-title">Reliability watchlist</h2>
+          <p class="card-sub">Lowest machine uptime (M-A1)</p>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table" id="execRelTable">
+            <caption class="sr-only">Centers with lowest machine uptime</caption>
+            <thead><tr>
+              <th scope="col">Center</th><th scope="col" class="num">Uptime %</th>
+              <th scope="col" class="num">Downtime %</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card span-8">
+        <header class="card-head">
+          <h2 class="card-title">Top LE customers</h2>
+          <p class="card-sub">Devices by account · full view on the Top Customers tab</p>
+        </header>
+        <div id="execTopCust" class="chart chart-tall" role="img" aria-label="Devices per top customer"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Where the fleet lives</h2>
+          <p class="card-sub">Top states by devices</p>
+        </header>
+        <div id="execGeo" class="chart chart-tall" role="img" aria-label="Devices per state"></div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ══════════════ VIEW 1 · ASSET ══════════════ -->
+  <section id="panel-asset" class="panel" role="tabpanel" aria-labelledby="tab-asset" hidden>
+    <div id="kpiGrid" class="kpi-grid kpi-grid-5"><!-- KPI tiles rendered by App.html --></div>
+
+    <div class="card-grid">
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Fleet status</h2>
+          <p class="card-sub">By last heartbeat · click a slice to inspect devices</p>
+        </header>
+        <div id="chartFleetStatus" class="chart chart-tall" role="img"
+             aria-label="Donut chart of devices grouped by heartbeat recency"></div>
+      </article>
+
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Firmware spread</h2>
+          <p class="card-sub">Active devices by firmware build</p>
+        </header>
+        <div id="chartFirmware" class="chart" role="img"
+             aria-label="Horizontal bar chart of devices per firmware version"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Asset lifecycle</h2>
+          <p class="card-sub">12,839 Jira-tracked assets by status</p>
+        </header>
+        <div id="chartAssetStatus" class="chart" role="img"
+             aria-label="Bar chart of assets by lifecycle status"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Asset types</h2>
+          <p class="card-sub">Hardware categories under management</p>
+        </header>
+        <div id="chartAssetTypes" class="chart" role="img"
+             aria-label="Horizontal bar chart of assets by hardware type"></div>
+      </article>
+
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Reliability watchlist</h2>
+          <p class="card-sub">Machine Uptime % (M-A1) · lowest-uptime centers first · click a row</p>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table" id="reliabilityTable">
+            <caption class="sr-only">Centers with the lowest machine uptime</caption>
+            <thead>
+              <tr>
+                <th scope="col">Center</th>
+                <th scope="col" class="num">Devices</th>
+                <th scope="col" class="num">Uptime %</th>
+                <th scope="col" class="num">Downtime %</th>
+                <th scope="col" class="num">Failures</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Asset health score</h2>
+          <p class="card-sub">Composite 0–100 (M-A6): 50% uptime + MTBF tier + failure tier · lowest first · click a row</p>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table" id="assetHealthTable">
+            <caption class="sr-only">Centers with the lowest composite health score</caption>
+            <thead>
+              <tr>
+                <th scope="col">Center</th>
+                <th scope="col" class="num">Health</th>
+                <th scope="col" class="num">Uptime %</th>
+                <th scope="col" class="num">MTBF (days)</th>
+                <th scope="col" class="num">Failures</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card span-7">
+        <header class="card-head">
+          <h2 class="card-title">First-time-failure by production batch</h2>
+          <p class="card-sub">FTF rate (M-A3) &amp; failures/device (M-A5) per birth-year cohort</p>
+        </header>
+        <div id="chartCohort" class="chart chart-tall" role="img"
+             aria-label="Combined bar and line chart of first-time-failure rate and failures per device by production batch year"></div>
+      </article>
+
+      <article class="card span-5">
+        <header class="card-head">
+          <h2 class="card-title">Batch signal</h2>
+          <p class="card-sub">Cohort needing the closest watch</p>
+        </header>
+        <div id="cohortSignal" class="batch-signal"><!-- rendered by App.html --></div>
+      </article>
+
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Batch cohort detail</h2>
+          <p class="card-sub">First-time-failure (M-A3) + batch failure detection (M-A5) · one row per device production year</p>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table" id="cohortTable">
+            <caption class="sr-only">Device reliability grouped by production batch year</caption>
+            <thead>
+              <tr>
+                <th scope="col">Batch year</th>
+                <th scope="col" class="num">Devices</th>
+                <th scope="col" class="num">FTF rate</th>
+                <th scope="col" class="num">Median TTFF</th>
+                <th scope="col" class="num">Early fails</th>
+                <th scope="col" class="num">Failures/device</th>
+                <th scope="col">Top failure issue</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card span-12" id="deviceExplorerCard">
+        <header class="card-head">
+          <h2 class="card-title">Device explorer</h2>
+          <p class="card-sub">Search, filter and sort the full fleet</p>
+        </header>
+        <div class="explorer-toolbar">
+          <div class="chip-row" id="statusChips" role="group" aria-label="Filter by fleet status"></div>
+          <button id="exportCsvBtn" class="btn btn-ghost" type="button">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Export CSV</span>
+          </button>
+        </div>
+
+        <div class="table-scroll">
+          <table class="data-table" id="deviceTable" aria-describedby="deviceTableInfo">
+            <caption class="sr-only">Device explorer — filterable, sortable list of fleet devices</caption>
+            <thead><tr id="deviceTableHead"></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="table-footer">
+          <span id="deviceTableInfo" class="table-info" aria-live="polite">Loading…</span>
+          <div class="pager">
+            <button id="prevPageBtn" class="btn btn-ghost btn-icon" type="button" aria-label="Previous page" disabled>
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <span id="pageIndicator" class="page-indicator">–</span>
+            <button id="nextPageBtn" class="btn btn-ghost btn-icon" type="button" aria-label="Next page" disabled>
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ══════════════ VIEW 2 · CENTERS / CUSTOMERS ══════════════ -->
+  <section id="panel-centers" class="panel" role="tabpanel" aria-labelledby="tab-centers" hidden>
+    <div id="centersKpiGrid" class="kpi-grid kpi-grid-5"></div>
+
+    <div class="card-grid">
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Devices by state</h2>
+          <p class="card-sub">Latest known deployment location</p>
+        </header>
+        <div id="chartGeo" class="chart chart-tall" role="img"
+             aria-label="Bar chart of devices per state"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Deployment age</h2>
+          <p class="card-sub">Active deployments by time in field</p>
+        </header>
+        <div id="chartDeploymentAge" class="chart chart-tall" role="img"
+             aria-label="Bar chart of active deployments by age band"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Deployment status</h2>
+          <p class="card-sub">Devices with active vs ended placements</p>
+        </header>
+        <div id="chartActiveEnded" class="chart chart-tall" role="img"
+             aria-label="Donut chart of active versus ended deployments"></div>
+      </article>
+
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Top hubs</h2>
+          <p class="card-sub">Largest hubs, split by online status (last 24h)</p>
+        </header>
+        <div id="chartHubs" class="chart chart-tall" role="img"
+             aria-label="Stacked horizontal bar chart of online and offline devices per hub"></div>
+      </article>
+
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Center 360</h2>
+          <p class="card-sub">One row per center — fleet ⋈ location ⋈ open tickets · click a row for details</p>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table" id="centerTable" aria-describedby="centerTableInfo">
+            <caption class="sr-only">Center explorer — devices, online count and open tickets per center</caption>
+            <thead><tr id="centerTableHead"></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span id="centerTableInfo" class="table-info" aria-live="polite">Loading…</span>
+          <div class="pager">
+            <button id="ctrPrevBtn" class="btn btn-ghost btn-icon" type="button" aria-label="Previous page" disabled>
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <span id="ctrPageIndicator" class="page-indicator">–</span>
+            <button id="ctrNextBtn" class="btn btn-ghost btn-icon" type="button" aria-label="Next page" disabled>
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ══════════════ VIEW 3 · SUPPORT / CS ══════════════ -->
+  <section id="panel-support" class="panel" role="tabpanel" aria-labelledby="tab-support" hidden>
+    <div id="supportKpiGrid" class="kpi-grid"></div>
+
+    <div class="card-grid">
+      <article class="card span-5">
+        <header class="card-head">
+          <h2 class="card-title">SLA compliance</h2>
+          <p class="card-sub">Resolved within target · SLA catalog (Tech / Non-Tech)</p>
+        </header>
+        <div id="slaCompliance" class="sla-compliance"><!-- rendered by App.html --></div>
+      </article>
+
+      <article class="card span-7">
+        <header class="card-head">
+          <h2 class="card-title">SLA breach by issue type</h2>
+          <p class="card-sub">Highest breach rate first · ≥20 resolved tickets</p>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table" id="slaTypeTable">
+            <caption class="sr-only">Issue types ranked by SLA breach rate</caption>
+            <thead>
+              <tr>
+                <th scope="col">Issue type</th>
+                <th scope="col">Class</th>
+                <th scope="col" class="num">SLA</th>
+                <th scope="col" class="num">Tickets</th>
+                <th scope="col" class="num">Breach %</th>
+                <th scope="col" class="num">Avg days</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card span-8">
+        <header class="card-head">
+          <h2 class="card-title">Ticket flow</h2>
+          <p class="card-sub">Zoho tickets created vs closed, last 12 months</p>
+        </header>
+        <div id="chartZohoTrend" class="chart chart-tall" role="img"
+             aria-label="Line chart of tickets created versus closed per month"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Priority mix</h2>
+          <p class="card-sub">Tickets created in the last 90 days</p>
+        </header>
+        <div id="chartZohoPriority" class="chart chart-tall" role="img"
+             aria-label="Donut chart of ticket priorities"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Active backlog</h2>
+          <p class="card-sub">Open tickets by current status</p>
+        </header>
+        <div id="chartZohoStatus" class="chart" role="img"
+             aria-label="Bar chart of open tickets by status"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Top issue categories</h2>
+          <p class="card-sub">Last 90 days</p>
+        </header>
+        <div id="chartZohoCategories" class="chart" role="img"
+             aria-label="Horizontal bar chart of most frequent issue categories"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Intake channels</h2>
+          <p class="card-sub">Where tickets come from · last 90 days</p>
+        </header>
+        <div id="chartZohoChannel" class="chart" role="img"
+             aria-label="Donut chart of tickets by intake channel"></div>
+      </article>
+
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Tickets by customer segment</h2>
+          <p class="card-sub">Hub master segment · last 90 days</p>
+        </header>
+        <div id="chartZohoSegment" class="chart" role="img"
+             aria-label="Horizontal bar chart of tickets by customer segment"></div>
+      </article>
+
+      <article class="card span-8">
+        <header class="card-head">
+          <h2 class="card-title">Field service TAT</h2>
+          <p class="card-sub">CS tracker sheet · cases resolved and average turnaround per month</p>
+        </header>
+        <div id="chartTatTrend" class="chart chart-tall" role="img"
+             aria-label="Combined chart of field cases per month and average turnaround days"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Machines in the field</h2>
+          <p class="card-sub">CS tracker sheet · cases by machine type</p>
+        </header>
+        <div id="chartCsMachine" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of field cases by machine type"></div>
+      </article>
+
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">Field issue types</h2>
+          <p class="card-sub">CS tracker sheet</p>
+        </header>
+        <div id="chartCsIssueType" class="chart" role="img"
+             aria-label="Horizontal bar chart of field cases by issue type"></div>
+      </article>
+
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">Case owners</h2>
+          <p class="card-sub">CS tracker sheet · workload and turnaround per owner</p>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table" id="csOwnerTable">
+            <caption class="sr-only">Field case owners with case counts and average turnaround days</caption>
+            <thead>
+              <tr>
+                <th scope="col">Owner</th>
+                <th scope="col" class="num">Cases</th>
+                <th scope="col" class="num">Avg TAT (days)</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ══════════════ VIEW 4 · MAP (Assets & Centers) ══════════════ -->
+  <section id="panel-map" class="panel" role="tabpanel" aria-labelledby="tab-map" hidden>
+    <div id="mapKpiGrid" class="kpi-grid kpi-grid-4"></div>
+
+    <div id="geoProgress" class="geo-progress" role="status" aria-live="polite" style="margin-bottom:var(--gap)">Open this tab to load the map…</div>
+
+    <div class="map-wrap card">
+      <div id="assetMap" role="application"
+           aria-label="Map of centers. Click a marker to see center and asset details."></div>
+
+      <div class="map-legend" role="group" aria-label="Filter map by open tickets">
+        <button class="legend-filter" type="button" data-bucket="none" aria-pressed="false"><span class="legend-dot" style="background:#34D399"></span>No open tickets</button>
+        <button class="legend-filter" type="button" data-bucket="low" aria-pressed="false"><span class="legend-dot" style="background:#FBBF24"></span>1–3 open</button>
+        <button class="legend-filter" type="button" data-bucket="high" aria-pressed="false"><span class="legend-dot" style="background:#F87171"></span>4+ open</button>
+        <span class="legend-note">size = devices · click to filter</span>
+      </div>
+    </div>
+
+    <div class="card-grid" style="margin-top:var(--gap)">
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">Assets by machine type</h2>
+          <p class="card-sub">Parsed from Jira · matches current filters</p>
+        </header>
+        <div id="chartAssetByType" class="chart chart-tall" role="img"
+             aria-label="Bar chart of assets by machine type"></div>
+      </article>
+
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">Asset lifecycle age</h2>
+          <p class="card-sub">Days since first Jira record (birthday)</p>
+        </header>
+        <div id="chartAssetAge" class="chart chart-tall" role="img"
+             aria-label="Bar chart of assets by age band"></div>
+      </article>
+
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">Assets by category</h2>
+          <p class="card-sub">Jira issue type</p>
+        </header>
+        <div id="chartAssetByCat" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of assets by category"></div>
+      </article>
+
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">Centers by state</h2>
+          <p class="card-sub">Located centers matching current filters</p>
+        </header>
+        <div id="chartCentersByState" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of centers per state"></div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ══════════════ VIEW 5 · TOP CUSTOMERS ══════════════ -->
+  <section id="panel-topcust" class="panel" role="tabpanel" aria-labelledby="tab-topcust" hidden>
+    <div id="tcKpiGrid" class="kpi-grid"></div>
+
+    <div class="map-wrap card">
+      <div id="tcMap" role="application"
+           aria-label="Map of top-customer centers. Click a marker for details."></div>
+      <div class="map-legend" aria-hidden="true">
+        <span><span class="legend-dot" style="background:#34D399"></span>No open tickets</span>
+        <span><span class="legend-dot" style="background:#FBBF24"></span>1–3 open</span>
+        <span><span class="legend-dot" style="background:#F87171"></span>4+ open</span>
+        <span class="legend-note">Bubble size = devices</span>
+      </div>
+    </div>
+
+    <div class="card-grid" style="margin-top:var(--gap)">
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">Devices per customer</h2>
+          <p class="card-sub">Live devices across each Top LE hub</p>
+        </header>
+        <div id="chartTcDevices" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of devices per top customer"></div>
+      </article>
+
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">Centers per customer</h2>
+          <p class="card-sub">Deployment footprint by hub</p>
+        </header>
+        <div id="chartTcCenters" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of centers per top customer"></div>
+      </article>
+
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">Open tickets per customer</h2>
+          <p class="card-sub">Active support load by hub</p>
+        </header>
+        <div id="chartTcTickets" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of open tickets per top customer"></div>
+      </article>
+
+
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Customer leaderboard</h2>
+          <p class="card-sub">All Top LE accounts · click a column header to sort</p>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table" id="tcTable">
+            <caption class="sr-only">Top customers with centers, devices, tickets and assets</caption>
+            <thead><tr id="tcTableHead"></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ══════════════ VIEW 6 · NUMBERS (source reconciliation) ══════════════ -->
+  <section id="panel-numbers" class="panel" role="tabpanel" aria-labelledby="tab-numbers" hidden>
+    <p class="num-lead">Counts only, from <code>center_details</code> — <strong>F2P_CENTER excluded</strong>.
+      <strong>Devices</strong> (Jira) and <strong>Tickets</strong> (Zoho) are source-independent.</p>
+
+    <div class="num-grid">
+      <article class="card num-card">
+        <header class="card-head"><h2 class="card-title">Centers</h2>
+          <p class="card-sub">Total centers · by status &amp; segment</p></header>
+        <div id="numCentersKpi" class="num-compare"></div>
+        <div class="num-tables"><div id="numCentersStatus"></div><div id="numCentersSegment"></div></div>
+      </article>
+
+      <article class="card num-card">
+        <header class="card-head"><h2 class="card-title">Hubs</h2>
+          <p class="card-sub">Total hubs · by status &amp; segment</p></header>
+        <div id="numHubsKpi" class="num-compare"></div>
+        <div class="num-tables"><div id="numHubsStatus"></div><div id="numHubsSegment"></div></div>
+      </article>
+
+      <article class="card num-card">
+        <header class="card-head"><h2 class="card-title">Devices</h2>
+          <p class="card-sub">Jira issues · center resolved by device serial (Summary) → CenterID (Jira Customer ID ignored)</p></header>
+        <div id="numDevicesKpi" class="num-compare"></div>
+        <div class="num-tables"><div id="numDevicesStatus"></div></div>
+      </article>
+
+      <article class="card num-card">
+        <header class="card-head"><h2 class="card-title">Tickets</h2>
+          <p class="card-sub">Zoho tickets · total, by status and Tech / Non-Tech</p></header>
+        <div id="numTicketsKpi" class="num-compare"></div>
+        <div class="num-tables"><div id="numTicketsStatus"></div></div>
+      </article>
+    </div>
+
+    <article class="card span-12" style="margin-top:20px">
+      <header class="card-head">
+        <h2 class="card-title">center_details · raw data</h2>
+        <p class="card-sub">Raw center rows (F2P_CENTER excluded)</p>
+      </header>
+      <div class="table-scroll">
+        <table class="data-table" id="cdRawTable">
+          <caption class="sr-only">Raw center_details rows</caption>
+          <thead><tr>
+            <th scope="col" class="num">Center ID</th>
+            <th scope="col">Center name</th>
+            <th scope="col">Status</th>
+            <th scope="col">Type</th>
+            <th scope="col">Segment</th>
+            <th scope="col" class="num">Hub ID</th>
+            <th scope="col">Hub name</th>
+            <th scope="col">City</th>
+            <th scope="col">State</th>
+            <th scope="col">Pin</th>
+            <th scope="col">Deployed</th>
+            <th scope="col">Deactivated</th>
+            <th scope="col" class="num">Devices</th>
+            <th scope="col">Mapped</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="table-footer">
+        <span id="cdRawInfo" class="table-info" aria-live="polite">Loading…</span>
+        <div class="pager">
+          <button id="cdRawPrev" class="btn btn-ghost btn-icon" type="button" aria-label="Previous page" disabled>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <span id="cdRawPage" class="page-indicator">–</span>
+          <button id="cdRawNext" class="btn btn-ghost btn-icon" type="button" aria-label="Next page" disabled>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <footer class="page-footer">
+    <span><?= appName ?> v<?= appVersion ?> · a Tricog Service Insight Platform · BigQuery · Apps Script</span>
+    <span>Data refreshes every 5 min · read-only service account</span>
+  </footer>
+</main>
+
+<!-- Shared center-detail drawer: opened by map markers and Center 360 rows -->
+<div id="centerScrim" class="drawer-scrim" hidden></div>
+<aside id="centerDrawer" class="center-drawer" hidden aria-label="Center details" role="dialog" aria-modal="true">
+  <header class="center-panel-head">
+    <div>
+      <h2 id="centerDrawerTitle" class="card-title">Center</h2>
+      <p id="centerDrawerSub" class="card-sub"></p>
+    </div>
+    <button id="centerDrawerClose" class="btn btn-ghost btn-icon" type="button" aria-label="Close details">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </header>
+  <div id="centerDrawerBody" class="center-panel-body">
+    <div class="chart-empty">Select a center to load details</div>
+  </div>
+</aside>
+
+<div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<?!= include('MapView') ?>
+<?!= include('Charts') ?>
+<?!= include('App') ?>

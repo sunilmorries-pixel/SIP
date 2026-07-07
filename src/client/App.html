@@ -1,0 +1,2092 @@
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   App.html — state, data loading, KPI/table rendering, interactions.
+   Three views: Asset · Centers/Customers · Support/CS.
+   Server contract: google.script.run → Api.js envelopes { ok, data|error }.
+   Opened directly in a browser (no Apps Script host), it falls back to
+   mock data so the UI can be previewed locally.
+   ═══════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var FMT = new Intl.NumberFormat('en-IN');
+  var REFRESH_SECONDS = 300;
+
+  var state = {
+    // Global filters live in the top bar and apply across every page.
+    search: '', hub: '', segment: '',
+    activeOnly: false, // topbar toggle: only center_details Status='ACTIVE'
+    ticketBucket: '', // '' | none | low | high — clickable map legend
+    activeTab: 'tab-overview',
+    devices: { status: '', sortBy: 'last_seen', sortDir: 'desc', page: 0, pageSize: 15 },
+    deviceRows: [], deviceTotal: 0,
+    centers: { sortBy: 'devices', sortDir: 'desc', page: 0, pageSize: 15 },
+    centerRows: [], centerTotal: 0,
+    autoRefresh: true,
+    countdown: REFRESH_SECONDS,
+    loading: false,
+    mapLoaded: false,
+    mapBundle: null,
+    topLoaded: false,
+    topBundle: null,
+    execLoaded: false,
+    execData: null,
+    numbersLoaded: false,
+    cdRaw: { page: 0, pageSize: 25, total: 0 },
+    theme: 'dark',
+    lastDashboard: null
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  // Base URL for Jira ticket links (device Key → browse link). Adjust the
+  // domain if the project's Jira instance differs.
+  var JIRA_BROWSE = 'https://tricog.atlassian.net/browse/';
+
+  /* ── data source ───────────────────────────────────────────────
+   * center_details is the ONLY source (device_center_mapping removed); every
+   * page reads from the *CD endpoints. Jira-asset→center serial linking on the
+   * Map still uses device_center_mapping internally (center_details has no
+   * serial) — the only remaining internal use of that table. */
+  function ep(name) { return name + 'CD'; }
+
+  /* ── server bridge (with local-preview mock) ─────────────────── */
+  function gsCall(fn, args) {
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      return new Promise(function (resolve, reject) {
+        google.script.run
+          .withSuccessHandler(function (envelope) {
+            if (envelope && envelope.ok) resolve(envelope.data);
+            else reject(new Error((envelope && envelope.error && envelope.error.message) || 'Unknown server error'));
+          })
+          .withFailureHandler(function (err) { reject(err); })
+          [fn](args);
+      });
+    }
+    return mockCall(fn, args); // local preview outside Apps Script
+  }
+
+  function mockCall(fn, args) {
+    fn = fn.replace(/CD$/, ''); // center_details edition reuses base mocks in preview
+    function rnd(min, max) { return Math.floor(min + Math.random() * (max - min)); }
+    if (fn === 'apiGetDevices') {
+      var rows = [];
+      for (var i = 0; i < 15; i++) {
+        rows.push({
+          device: 'H4-' + (100000 + rnd(0, 899999)).toString(16).toUpperCase(),
+          center: 'Demo Center ' + rnd(1, 400), hub: 'Demo Hub ' + rnd(1, 30),
+          last_seen: new Date(Date.now() - rnd(0, 96) * 36e5).toISOString().replace('T', ' ').slice(0, 19),
+          battery: String(rnd(5, 100)), csq: rnd(3, 31), unsynced: rnd(0, 4),
+          firmware: 'ef9d54f', provider: ['Airtel', 'Vodafone', 'Jio'][rnd(0, 3)],
+          status: Charts.FLEET_ORDER[rnd(0, 4)]
+        });
+      }
+      return Promise.resolve({ rows: rows, totalRows: 11331, page: (args && args.page) || 0, pageSize: 15 });
+    }
+    if (fn === 'apiGetCenters') {
+      var crows = [];
+      for (var c = 0; c < 15; c++) {
+        var n = rnd(1, 14);
+        crows.push({
+          center_id: rnd(1000, 60000), center: 'Demo Center ' + rnd(1, 4000),
+          hub: 'Demo Hub ' + rnd(1, 30),
+          city: ['Bengaluru', 'Mumbai', 'Chennai', 'Hisar', 'Delhi'][rnd(0, 5)],
+          state: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Haryana', 'Delhi'][rnd(0, 5)],
+          devices: n, online: rnd(0, n + 1),
+          last_seen: new Date(Date.now() - rnd(0, 96) * 36e5).toISOString().replace('T', ' ').slice(0, 19),
+          open_tickets: rnd(0, 6)
+        });
+      }
+      return Promise.resolve({ rows: crows, totalRows: 4719, page: (args && args.page) || 0, pageSize: 15 });
+    }
+    if (fn === 'apiGetCenterDetailsRaw') {
+      var pg = (args && args.page) || 0, ps = (args && args.pageSize) || 25, tot = (args && args.activeOnly) ? 19034 : 28299;
+      var segs = ['', 'Hospital <100 beds', 'Diagnostic centre', 'GP clinic'];
+      var sts = ['ACTIVE', 'DEACTIVATED', ''];
+      var typs = ['Center', 'Spoke', 'Hub'];
+      var raws = [];
+      for (var ri = 0; ri < ps && (pg * ps + ri) < tot; ri++) {
+        var idn = 10000 + pg * ps + ri;
+        raws.push({ center_id: idn, center: 'Demo Center ' + idn, status: sts[ri % 3], type: typs[ri % 3],
+          segment: segs[ri % 4], hub_id: 40000 + (ri % 50), hub: 'Demo Hub ' + (ri % 50),
+          city: ['Bengaluru', 'Mumbai', 'Chennai', 'Delhi'][ri % 4], state: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Delhi'][ri % 4],
+          pin: String(560000 + (ri % 900)), deployed: '2023-0' + (1 + ri % 8) + '-15', deactivated: ri % 5 === 0 ? '2025-01-10' : '',
+          devices: ri % 3 === 0 ? 0 : rnd(1, 12) });
+      }
+      return Promise.resolve({ rows: raws, totalRows: tot, page: pg, pageSize: ps });
+    }
+    if (fn === 'apiGetNumbers') {
+      var kv = function (arr) { return arr.map(function (x) { return { k: x[0], n: x[1] }; }); };
+      return Promise.resolve({
+        centers: { total: (args && args.activeOnly) ? 19034 : 28299,
+          by_status: kv([['ACTIVE', 22140], ['DEACTIVATED', 6118], ['(blank)', 41]]),
+          by_segment: kv([['(blank)', 19660], ['Hospital <100 beds', 2721], ['Diagnostic centre', 2133], ['GP clinic', 1771]]) },
+        hubs: { total: 14577,
+          by_status: kv([['ACTIVE', 12100], ['DEACTIVATED', 2430], ['(blank)', 47]]),
+          by_segment: kv([['(blank)', 14428], ['Diagnostic centre', 149]]) },
+        devices: { total: 43794, with_center: 9888, jira_centers: 4621, in_cd: 9888, source: 'dump-snapshot', center_source: 'cloud_devices',
+          by_status: kv([['Deployed', 23165], ['Delivered', 6085], ['Hardware', 3997], ['Decommissioned', 3361], ['Store', 2873], ['Field', 2089], ['Exported', 1734]]) },
+        tickets: { total: 84545, tech: 28100, nontech: 56445,
+          by_status: kv([['Closed', 77678], ['Duplicate', 6308], ['Open', 211], ['Pending on Logistics Team', 82], ['Pending on Customer Success Team', 70]]) }
+      });
+    }
+    if (fn === 'apiGetMapData') {
+      var hubs = ['Demo Hub 1', 'Demo Hub 2', 'Demo Hub 3', 'Demo Hub 4', 'Demo Hub 5'];
+      var segs = ['Enterprise', 'SMB', 'Government', 'Distributor', 'Direct'];
+      var states = ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Haryana', 'Delhi', 'Kerala'];
+      var types = ['VCARDIA', 'HE', 'H4', 'T4', 'SIM'];
+      var cats = ['ECG Machine', 'Connector', 'SIM Card', 'UPS', 'Printer'];
+      var pts = [], asset = [];
+      for (var p = 0; p < 240; p++) {
+        var inEthiopia = p % 40 === 0;
+        var nAssets = rnd(0, 9);
+        pts.push([
+          10000 + p, 'Demo Center ' + (p + 1),
+          inEthiopia ? 8.9 + Math.random() * 2 : 8.5 + Math.random() * 23,
+          inEthiopia ? 38.6 + Math.random() * 2 : 70.5 + Math.random() * 18.5,
+          rnd(1, 15), rnd(0, 10), rnd(0, 7), nAssets,
+          hubs[p % hubs.length], 40 + (p % hubs.length),
+          segs[p % segs.length], states[p % states.length]
+        ]);
+        for (var a = 0; a < nAssets; a++) {
+          asset.push([10000 + p, rnd(0, types.length), rnd(0, cats.length), rnd(30, 2000),
+            types[rnd(0, types.length)] + '-DEMO' + rnd(1000, 9999)]);
+        }
+      }
+      return Promise.resolve({
+        centers: pts, assets: asset, assetTypes: types, assetCats: cats,
+        unlocatedCenters: 2412, matchedAssets: 1430,
+        geo: { located: 5210, failed: 64, pending: 2790, total: 8064 }
+      });
+    }
+    if (fn === 'apiGetExecOverview') {
+      var months2 = [];
+      for (var em = 11; em >= 0; em--) { var ed = new Date(); ed.setMonth(ed.getMonth() - em); months2.push(ed.toISOString().slice(0, 7)); }
+      return Promise.resolve({
+        kpis: { total_devices: 11331, online_24h: 6120, live_1h: 2210, offline_7d: 3480, low_battery: 512, charging_now: 990, poor_signal: 731 },
+        zohoKpis: { open_tickets: 211, created_7d: 340, closed_7d: 361, total_tickets: 84545 },
+        slaKpis: { within_pct: 65.5, breached_open: 484, resolved_n: 77678 },
+        fleetStatus: Charts.FLEET_ORDER.map(function (s) { return { status: s, cnt: rnd(300, 4000) }; }),
+        zohoTrend: months2.map(function (mo) { return { month: mo, created: rnd(800, 2400), closed: rnd(800, 2400) }; }),
+        geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi', 'Gujarat', 'Haryana'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
+        reliability: Array.from({ length: 8 }, function (_, i) { var up = rnd(20, 94); return { centerid: rnd(1000, 50000), center: 'Demo Center ' + rnd(1, 400), devices: rnd(1, 12), uptime_pct: up, downtime_pct: Math.round((100 - up) * 10) / 10, failures: rnd(1, 9) }; }),
+        avgAgeDays: 840,
+        rollup: { centers: (args && args.activeOnly) ? 19034 : 28299, devices: 11331, online: 6120, open_tickets: 1180, attention_centers: 34 },
+        worstCenters: Array.from({ length: 8 }, function (_, i) { return { center_id: 1000 + i, center: 'Demo Center ' + rnd(1, 400), state: ['Karnataka', 'Delhi', 'Maharashtra'][i % 3], devices: rnd(2, 14), online: rnd(0, 8), open_tickets: rnd(4, 9) }; }),
+        topCustomers: ['VIJAYA DIAGNOSTIC', 'Aarthi Scans', 'Apollo Hospital', 'Metropolis', 'Fortis Hospital', 'Suburban Diagnostics'].map(function (n) { return { hub: n, devices: rnd(15, 160) }; }),
+        topTotals: { customers: 27, devices: 665, centers: 720 },
+        uptimeFleet: { scored: 11344, avg_uptime: 98.9, pct99: 80.6, avg_mtbf_days: 572.9, avg_health: 95.0, pct_healthy: 98.6 },
+        fleet: { total: 43794, with_center: 9888, jira_centers: 4621, in_cd: 9888 },
+        cs: { total_cases: 1284, avg_tat_days: 3.4 }
+      });
+    }
+    if (fn === 'apiGetTopCustomers') {
+      var names = ['VIJAYA DIAGNOSTIC CENTRE LTD, HYDERABAD', 'Aarthi Scans and Labs, Tamil Nadu',
+        'Sri Chandra Sekara Hospital, Hosur', 'Chandan Healthcare LTD, Lucknow', 'Apollo Hospital, Secunderabad',
+        'Fortis Hospital, BG Road, Bengaluru', 'Metropolis Healthcare Limited, Tamil Nadu',
+        'SRI KAUVERY MEDICAL CARE (INDIA) LIMITED', 'Suburban Diagnostics Pvt Ltd', 'NEUBERG DIAGNOSTICS PVT LTD'];
+      var mapc = [], custs = [];
+      var totals = { customers: names.length, centers: 0, devices: 0, online: 0, open_tickets: 0, assets: 0, withData: names.length, ticket_count: 9240, sla_breach: 118, sla_within_pct: 63.2 };
+      names.forEach(function (nm, i) {
+        var centers = rnd(10, 160), devices = rnd(1, 155), online = rnd(0, devices),
+            open_t = rnd(0, 6), assets = rnd(0, 120);
+        custs.push({ hub_id: 1000 + i, hub: nm, tier: 'Top LE', centers: centers, devices: devices,
+          online: online, open_tickets: open_t, assets: assets, located: rnd(1, centers) });
+        totals.centers += centers; totals.devices += devices; totals.online += online;
+        totals.open_tickets += open_t; totals.assets += assets;
+        for (var k = 0; k < Math.min(centers, 8); k++) {
+          mapc.push([2000 + i * 10 + k, nm.split(',')[0] + ' #' + k,
+            8.5 + Math.random() * 23, 70.5 + Math.random() * 18.5,
+            rnd(1, 12), rnd(0, 8), rnd(0, 5), rnd(0, 6), nm, 1000 + i, ['Enterprise', 'SMB'][i % 2], 'Karnataka']);
+        }
+      });
+      return Promise.resolve({ customers: custs, mapCenters: mapc, totals: totals });
+    }
+    if (fn === 'apiGetCenterDetail') {
+      return Promise.resolve({
+        info: { center: 'Demo Center', hub_id: 42, hub: 'Demo Hub 3', city: 'Bengaluru',
+                state: 'Karnataka', pin: '560001', country: 'India',
+                first_deployment: '2023-04-12', age_months: 38, devices_ever: 6 },
+        tickets: { total_tickets: 24, open_tickets: 3, segment: 'Enterprise' },
+        openTickets: [
+          { ticket: '149127', status: 'In Progress', priority: 'High', subject: 'ECG showing error on MAC600', category: 'Device Issue', link: 'https://desk.zoho.com/support/demo#Cases/dv/1' },
+          { ticket: '149081', status: 'Pending on Customer', priority: 'Medium', subject: 'Lead cable replacement request', category: 'Hardware', link: 'https://desk.zoho.com/support/demo#Cases/dv/2' },
+          { ticket: '148990', status: 'On Hold', priority: 'Low', subject: 'Network connectivity intermittent', category: 'Network', link: 'https://desk.zoho.com/support/demo#Cases/dv/3' }
+        ],
+        devices: Array.from({ length: 3 }, function (_, i) {
+          return { device: 'H4-DEMO' + i, imsi: '', battery: String(rnd(20, 95)), csq: rnd(8, 30),
+                   status: Charts.FLEET_ORDER[rnd(0, 4)], last_seen: new Date().toISOString() };
+        }),
+        assets: Array.from({ length: 5 }, function (_, i) {
+          var age = rnd(90, 1400);
+          var birth = new Date(Date.now() - age * 864e5);
+          return { key: 'TA-' + (45000 + i), serial: 'B2-DEMO' + (1000 + i), type: ['VCARDIA', 'HE', 'H4'][rnd(0, 3)],
+                   category: ['ECG Machine', 'Connector', 'SIM Card'][rnd(0, 3)],
+                   birthday: birth.toISOString().slice(0, 10), age_days: age };
+        }).sort(function (a, b) { return b.age_days - a.age_days; })
+      });
+    }
+    var months = [];
+    for (var m = 11; m >= 0; m--) {
+      var dt = new Date(); dt.setMonth(dt.getMonth() - m);
+      months.push(dt.toISOString().slice(0, 7));
+    }
+    return Promise.resolve({
+      kpis: [{ total_devices: 11331, online_24h: 6120, live_1h: 2210, offline_7d: 3480, low_battery: 512,
+               charging_now: 990, poor_signal: 731, avg_csq: 18.4, unsynced_total: 1520,
+               latest_heartbeat: new Date().toISOString().replace('T', ' ').slice(0, 19) }],
+      fleetStatus: Charts.FLEET_ORDER.map(function (s) { return { status: s, cnt: rnd(300, 4000) }; }),
+      battery: ['Critical <20%', 'Low 20-39%', 'Good 40-79%', 'Full 80%+', 'Charging'].map(function (b) { return { bucket: b, cnt: rnd(200, 2600) }; }),
+      providers: ['Airtel', 'Vodafone', 'Jio', 'BSNL', 'ethio tel'].map(function (p) { return { provider: p, devices: rnd(300, 4200), avg_csq: rnd(9, 28) }; }),
+      firmware: ['ef9d54f', '7be0b9e', '3ac1d02', 'legacy-2.1'].map(function (f) { return { firmware: f, devices: rnd(300, 6200) }; }),
+      assets: ['Deployed', 'Exported', 'Delivered', 'Hardware', 'Store', 'Field'].map(function (s) { return { dim: 'status', label: s, cnt: rnd(200, 5400) }; })
+        .concat(['ECG Machine', 'Connector', 'SIM Card', 'UPS', 'Printer'].map(function (t) { return { dim: 'type', label: t, cnt: rnd(150, 5700) }; })),
+      reliability: Array.from({ length: 12 }, function (_, i) {
+        var up = rnd(20, 94);
+        return { centerid: rnd(1000, 50000), center: 'Demo Center ' + rnd(1, 400), devices: rnd(1, 12), uptime_pct: up, downtime_pct: Math.round((100 - up) * 10) / 10, failures: rnd(1, 9) };
+      }),
+      uptimeFleet: [{ scored: 11344, avg_uptime: 98.9, pct99: 80.6, avg_mtbf_days: 572.9, avg_health: 95.0, pct_healthy: 98.6 }],
+      fleet: { total: 43794, with_center: 9888, jira_centers: 4621, in_cd: 9888 },
+      assetHealth: Array.from({ length: 12 }, function (_, i) {
+        var h = rnd(28, 78), up = rnd(20, 90);
+        return { centerid: rnd(1000, 50000), center: 'Demo Center ' + rnd(1, 400), uptime_pct: up, mtbf_hrs: rnd(120, 4000), failures: rnd(1, 9), health_score: h };
+      }),
+      cohortReliability: [
+        { batch_year: 2019, devices: 663, ftf_rate_pct: 8.0, median_ttff_days: 1288, early_fails: 0, avg_failures: 0.24, top_issue: 'Acquisition Delay -Network Issue' },
+        { batch_year: 2020, devices: 465, ftf_rate_pct: 15.5, median_ttff_days: 1191, early_fails: 1, avg_failures: 0.40, top_issue: 'Tricog Device Network Issue' },
+        { batch_year: 2021, devices: 795, ftf_rate_pct: 15.8, median_ttff_days: 961, early_fails: 0, avg_failures: 0.43, top_issue: 'Tricog Device Network Issue' },
+        { batch_year: 2022, devices: 588, ftf_rate_pct: 19.9, median_ttff_days: 740, early_fails: 0, avg_failures: 0.54, top_issue: 'V-Cardia lead cable issue' },
+        { batch_year: 2023, devices: 705, ftf_rate_pct: 26.5, median_ttff_days: 368, early_fails: 0, avg_failures: 0.81, top_issue: 'V-Cardia lead cable issue' },
+        { batch_year: 2024, devices: 1921, ftf_rate_pct: 24.9, median_ttff_days: 353, early_fails: 0, avg_failures: 0.59, top_issue: 'Network -Sim Card Issue' },
+        { batch_year: 2025, devices: 2428, ftf_rate_pct: 22.7, median_ttff_days: 153, early_fails: 4, avg_failures: 0.72, top_issue: 'Network -Sim Card Issue' },
+        { batch_year: 2026, devices: 2241, ftf_rate_pct: 12.0, median_ttff_days: 66, early_fails: 5, avg_failures: 0.46, top_issue: 'Network -Sim Card Issue' }
+      ],
+      centerKpis: [{ centers: (args && args.activeOnly) ? 19034 : 28299, devices: (args && args.activeOnly) ? 19034 : 28299, states: 466, cities: 4028, active_deployments: 19034 }],
+      geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
+      hubs: Array.from({ length: 10 }, function (_, i) { var n = rnd(150, 900); return { hub: 'Demo Hub ' + (i + 1), devices: n, online: rnd(40, n) }; }),
+      deploymentAge: ['<3 mo', '3-6 mo', '6-12 mo', '1-2 yr', '2+ yr'].map(function (b) { return { band: b, devices: rnd(400, 3200) }; }),
+      activeVsEnded: [{ status: 'Active', devices: 9120 }, { status: 'Ended', devices: 4210 }],
+      zohoKpis: [{ open_tickets: 211, created_7d: 340, closed_7d: 361, avg_open_age_days: 6.2, total_tickets: 84545 }],
+      slaKpis: [{ resolved_n: 77678, within_pct: 65.5, within_tech: 51.0, within_nontech: 74.6, breached_open: 484, atrisk_open: 25, avg_res_days: 16.7 }],
+      slaByType: [
+        { category: 'Mac 600 To V-Cardia(Swapping)', sla_days: 5, is_tech: true, tickets: 85, resolved_n: 76, breach_pct: 88.2, avg_res_days: 44.1 },
+        { category: 'Plan Change Request', sla_days: 3, is_tech: false, tickets: 97, resolved_n: 93, breach_pct: 87.1, avg_res_days: 89.0 },
+        { category: 'Mother Board', sla_days: 5, is_tech: true, tickets: 54, resolved_n: 52, breach_pct: 78.8, avg_res_days: 28.5 },
+        { category: 'V-Cardia keypad', sla_days: 6, is_tech: true, tickets: 272, resolved_n: 245, breach_pct: 77.6, avg_res_days: 34.8 },
+        { category: 'Bulbs/ Clamps', sla_days: 3, is_tech: true, tickets: 229, resolved_n: 221, breach_pct: 76.9, avg_res_days: 11.2 },
+        { category: 'Power Adapter Damage', sla_days: 6, is_tech: true, tickets: 204, resolved_n: 198, breach_pct: 76.8, avg_res_days: 18.3 },
+        { category: 'Keypad', sla_days: 5, is_tech: true, tickets: 235, resolved_n: 225, breach_pct: 74.2, avg_res_days: 24.8 },
+        { category: 'Scheduled Servicing Request', sla_days: 5, is_tech: false, tickets: 713, resolved_n: 693, breach_pct: 71.9, avg_res_days: 72.3 }
+      ],
+      zohoTrend: months.map(function (mo) { return { month: mo, created: rnd(800, 2400), closed: rnd(800, 2400) }; }),
+      zohoOpenByStatus: ['Open', 'Pending on Logistics Team', 'Pending on Customer Success Team', 'In Progress', 'On Hold'].map(function (s) { return { status: s, cnt: rnd(10, 210) }; }),
+      zohoCategories: ['Prepaid Recharge Request', 'Billing Query', 'Report Related Query', 'Network Issue', 'Lead Cable Issue'].map(function (c) { return { category: c, cnt: rnd(60, 800) }; }),
+      zohoPriority: [{ priority: 'High', cnt: 320 }, { priority: 'Medium', cnt: 610 }, { priority: 'Low', cnt: 120 }, { priority: 'Unset', cnt: 410 }],
+      zohoChannel: ['Email', 'Phone', 'Web', 'Chat', 'Forums'].map(function (ch) { return { channel: ch, cnt: rnd(80, 2400) }; }),
+      zohoSegment: ['Enterprise', 'SMB', 'Government', 'Distributor', 'Direct'].map(function (sg) { return { segment: sg, cnt: rnd(120, 1900) }; }),
+      csTracker: {
+        kpis: { total_cases: 1284, avg_tat_days: 3.4, owners: 9 },
+        tatByMonth: months.map(function (mo) { return { month: mo, cases: rnd(40, 160), avg_tat: rnd(2, 7) }; }),
+        byMachine: ['MAC600', 'V-Cardia', 'MAC400', 'Tab', 'Printer'].map(function (mc) { return { label: mc, cnt: rnd(40, 620) }; }),
+        byIssueType: ['Machine', 'lead cable', 'SIM', 'Battery', 'Network'].map(function (it) { return { label: it, cnt: rnd(30, 520) }; }),
+        byOwner: ['Saidha', 'Prashanth', 'Inayath', 'Ashu', 'Ravi'].map(function (o) { return { owner: o, cases: rnd(60, 320), avg_tat: rnd(2, 6) }; })
+      },
+      hubOptions: Array.from({ length: 30 }, function (_, i) { return { hub: 'Demo Hub ' + (i + 1), devices: rnd(50, 900) }; })
+    });
+  }
+
+  /* ── toasts ──────────────────────────────────────────────────── */
+  function toast(message, kind) {
+    var region = $('toastRegion');
+    var el = document.createElement('div');
+    el.className = 'toast' + (kind ? ' toast-' + kind : '');
+    el.textContent = message;
+    region.appendChild(el);
+    setTimeout(function () {
+      el.classList.add('is-leaving');
+      setTimeout(function () { el.remove(); }, 220);
+    }, 4200);
+  }
+
+  /* ── helpers ─────────────────────────────────────────────────── */
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function countUp(el, target) {
+    if (REDUCED_MOTION || !isFinite(target) || target === 0) {
+      el.textContent = FMT.format(target || 0);
+      return;
+    }
+    var start = performance.now(), duration = 600;
+    function frame(now) {
+      var t = Math.min(1, (now - start) / duration);
+      var eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = FMT.format(Math.round(target * eased));
+      if (t < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  /**
+   * BigQuery returns LastTimeStamp as "…+00" but the value is IST wall-time
+   * (see docs/SOURCES.md) — strip the zone suffix and parse as local time.
+   */
+  function relTime(tsText) {
+    if (!tsText) return '—';
+    var localish = String(tsText).replace(/(\+|-)\d\d(:?\d\d)?$/, '').replace(' ', 'T');
+    var then = new Date(localish);
+    if (isNaN(then)) return tsText;
+    var mins = Math.round((Date.now() - then.getTime()) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    if (mins < 1440) return Math.round(mins / 60) + 'h ago';
+    return Math.round(mins / 1440) + 'd ago';
+  }
+
+  /* ── KPI tiles ───────────────────────────────────────────────── */
+  var ICONS = {
+    fleet: '<path d="M5 12.55a11 11 0 0 1 14.08 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01M1.42 9a16 16 0 0 1 21.16 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    online: '<path d="M22 12h-4l-3 9L9 3l-3 9H2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    offline: '<path d="M18.36 6.64A9 9 0 1 1 5.64 6.64M12 2v10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    battery: '<rect x="2" y="7" width="16" height="10" rx="2" stroke="currentColor" stroke-width="2"/><path d="M22 11v2M5 10v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    signal: '<path d="M2 20h.01M7 20v-4m5 4v-8m5 8V8m5 12V4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    sync: '<path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    building: '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Zm0 0H2m4 0h12m0 0h4M10 6h1m2 0h1m-4 4h1m2 0h1m-4 4h1m2 0h1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    map: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="3" stroke="currentColor" stroke-width="2"/>',
+    layers: '<path d="m12 2 10 5-10 5L2 7Zm10 10-10 5-10-5m20 5-10 5-10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    ticket: '<path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 6v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13 5v2m0 10v2m0-8v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    clock: '<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    health: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="m9 11.5 2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+  };
+
+  function kpiTile(id, icon, tint, label, sub) {
+    var dot = KPI_METRIC[id] ? infoDotHtml(KPI_METRIC[id]) : '';
+    return '<div class="kpi is-loading" id="' + id + '" style="--kpi-tint:' + tint + '">' +
+      '<div class="kpi-head">' +
+      '<svg class="kpi-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">' + ICONS[icon] + '</svg>' +
+      '<span class="kpi-label">' + label + dot + '</span></div>' +
+      '<div class="kpi-value">0</div>' +
+      '<div class="kpi-sub">' + sub + '</div></div>';
+  }
+
+  function buildKpiSkeletons() {
+    $('execKpiGrid').innerHTML =
+      kpiTile('exUptime', 'online', 'var(--ok)', 'Fleet uptime', 'North-Star ≥ 99%') +
+      kpiTile('exActive', 'fleet', 'var(--secondary)', 'Fleet devices', 'in the fleet') +
+      kpiTile('exCenters', 'building', 'var(--info)', 'Centers', 'with devices') +
+      kpiTile('exTickets', 'inbox', 'var(--accent)', 'Open tickets', 'active backlog') +
+      kpiTile('exTopLe', 'layers', 'var(--primary)', 'Top LE devices', 'key accounts') +
+      kpiTile('exTat', 'clock', 'var(--violet)', 'Field TAT', 'avg days / case') +
+      kpiTile('exTicketCount', 'ticket', 'var(--info)', 'Ticket count', 'all tickets') +
+      kpiTile('exSlaBreach', 'clock', 'var(--danger)', 'SLA breach', 'open past target');
+    $('kpiGrid').innerHTML =
+      kpiTile('kpiUptime', 'online', 'var(--ok)', 'Fleet uptime', 'avg center uptime') +
+      kpiTile('kpiHealth', 'health', 'var(--primary)', 'Fleet health', 'avg score / 100') +
+      kpiTile('kpiTotal', 'fleet', 'var(--secondary)', 'Total fleet', 'registered devices') +
+      kpiTile('kpiSignal', 'signal', 'var(--info)', 'Poor signal', 'CSQ < 10') +
+      kpiTile('kpiUnsynced', 'sync', 'var(--violet)', 'Unsynced ECGs', 'waiting to upload');
+    $('centersKpiGrid').innerHTML =
+      kpiTile('kpiCenters', 'building', 'var(--secondary)', 'Centers', 'with mapped devices') +
+      kpiTile('kpiMapped', 'fleet', 'var(--info)', 'Devices mapped', 'latest placements') +
+      kpiTile('kpiActiveDep', 'layers', 'var(--ok)', 'Active placements', 'deployment open') +
+      kpiTile('kpiStates', 'map', 'var(--accent)', 'States', 'geographic reach') +
+      kpiTile('kpiCities', 'map', 'var(--violet)', 'Cities', 'geographic reach');
+    $('supportKpiGrid').innerHTML =
+      kpiTile('kpiZOpen', 'inbox', 'var(--accent)', 'Open tickets', 'active backlog') +
+      kpiTile('kpiZIn', 'ticket', 'var(--info)', 'Created · 7d', 'new this week') +
+      kpiTile('kpiZOut', 'online', 'var(--ok)', 'Closed · 7d', 'resolved this week') +
+      kpiTile('kpiZAge', 'clock', 'var(--violet)', 'Avg open age', 'days per open ticket') +
+      kpiTile('kpiCsCases', 'wrench', 'var(--primary)', 'Field cases', 'CS tracker sheet') +
+      kpiTile('kpiCsTat', 'clock', 'var(--warn)', 'Avg TAT', 'days per field case');
+    $('mapKpiGrid').innerHTML =
+      kpiTile('mapCenters', 'building', 'var(--secondary)', 'Centers', 'on the map') +
+      kpiTile('mapDevices', 'fleet', 'var(--info)', 'Devices', 'at shown centers') +
+      kpiTile('mapTickets', 'inbox', 'var(--danger)', 'Open tickets', 'shown centers') +
+      kpiTile('mapAssets', 'layers', 'var(--violet)', 'Assets', 'Jira assets shown');
+    $('tcKpiGrid').innerHTML =
+      kpiTile('tcCustomers', 'building', 'var(--accent)', 'Top customers', 'Top LE accounts') +
+      kpiTile('tcCenters', 'map', 'var(--secondary)', 'Centers', 'across top accounts') +
+      kpiTile('tcDevices', 'fleet', 'var(--info)', 'Devices', 'live devices') +
+      kpiTile('tcAssets', 'layers', 'var(--violet)', 'Assets', 'Jira assets linked') +
+      kpiTile('tcTicketCount', 'ticket', 'var(--info)', 'Ticket count', 'top accounts') +
+      kpiTile('tcSlaBreach', 'clock', 'var(--danger)', 'SLA breach', 'top accounts');
+  }
+
+  function setKpi(id, value, subText) {
+    var tile = $(id);
+    if (!tile) return;
+    tile.classList.remove('is-loading');
+    countUp(tile.querySelector('.kpi-value'), value == null ? 0 : value);
+    if (subText) tile.querySelector('.kpi-sub').textContent = subText;
+  }
+
+  /** Sets a KPI to a string, count-up animating a leading number + suffix (e.g. "98.9%"). */
+  function setKpiText(id, text, subText) {
+    var tile = $(id);
+    if (!tile) return;
+    tile.classList.remove('is-loading');
+    countUpText(tile.querySelector('.kpi-value'), text == null ? '—' : String(text));
+    if (subText) tile.querySelector('.kpi-sub').textContent = subText;
+  }
+
+  /** Animates a "<number><suffix>" string (e.g. "98.9%", "3.2y"); preserves decimals + suffix. */
+  function countUpText(el, text) {
+    var m = /^(-?\d[\d,]*\.?\d*)(.*)$/.exec(text);
+    if (REDUCED_MOTION || !m) { el.textContent = text; return; }
+    var target = parseFloat(m[1].replace(/,/g, '')), suffix = m[2];
+    var decimals = (m[1].split('.')[1] || '').length;
+    if (!isFinite(target) || target === 0) { el.textContent = text; return; }
+    var start = performance.now(), duration = 600;
+    function frame(now) {
+      var t = Math.min(1, (now - start) / duration), eased = 1 - Math.pow(1 - t, 3), v = target * eased;
+      el.textContent = (decimals ? v.toFixed(decimals) : FMT.format(Math.round(v))) + suffix;
+      if (t < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function uptimeKpi(id, up) {
+    setKpiText(id,
+      up && up.avg_uptime != null ? up.avg_uptime.toFixed(1) + '%' : '—',
+      up && up.pct99 != null ? up.pct99 + '% of centers ≥ 99%' : 'ticket-based proxy');
+  }
+
+  /* ── dashboard load ──────────────────────────────────────────── */
+  var CHART_IDS = ['chartFleetStatus', 'chartFirmware',
+    'chartAssetStatus', 'chartAssetTypes', 'chartGeo', 'chartDeploymentAge', 'chartActiveEnded',
+    'chartHubs', 'chartZohoTrend', 'chartZohoPriority', 'chartZohoStatus', 'chartZohoCategories',
+    'chartZohoChannel', 'chartZohoSegment', 'chartTatTrend', 'chartCsMachine', 'chartCsIssueType',
+    'chartCohort'];
+
+  function loadDashboard(bypassCache) {
+    if (state.loading) return;
+    state.loading = true;
+    $('refreshBtn').classList.add('is-busy');
+    $('refreshBtn').disabled = true;
+    $('errorBanner').hidden = true;
+    Charts.setLoading(CHART_IDS);
+
+    gsCall(ep('apiGetDashboard'), { hub: state.hub, bypassCache: !!bypassCache, activeOnly: state.activeOnly })
+      .then(renderDashboard)
+      .catch(function (err) {
+        $('errorBanner').hidden = false;
+        $('errorMessage').textContent = 'Could not load dashboard: ' + err.message;
+        $('statusStrip').classList.add('is-stale');
+        toast('Dashboard refresh failed', 'error');
+      })
+      .finally(function () {
+        state.loading = false;
+        $('refreshBtn').classList.remove('is-busy');
+        $('refreshBtn').disabled = false;
+        state.countdown = REFRESH_SECONDS;
+      });
+  }
+
+  function pct(part, whole) {
+    if (!whole) return '0%';
+    return Math.round((part / whole) * 100) + '%';
+  }
+
+  function renderDashboard(data) {
+    state.lastDashboard = data; // kept so theme changes can re-render charts offline
+    /* Asset KPIs */
+    var kpi = (data.kpis && data.kpis[0]) || {};
+    var up = (data.uptimeFleet && data.uptimeFleet[0]) || null;
+    uptimeKpi('kpiUptime', up);
+    setKpi('kpiHealth', up ? up.avg_health : null,
+      up && up.avg_mtbf_days != null ? 'avg MTBF ' + up.avg_mtbf_days + 'd · ' + (up.pct_healthy || 0) + '% healthy' : 'composite 0–100');
+    var fleet = data.fleet || {};
+    setKpi('kpiTotal', fleet.total != null ? fleet.total : kpi.total_devices,
+      FMT.format(fleet.with_center || 0) + ' mapped to a center');
+    setKpi('kpiSignal', kpi.poor_signal, 'avg CSQ ' + (kpi.avg_csq == null ? '—' : kpi.avg_csq));
+    setKpi('kpiUnsynced', kpi.unsynced_total, 'records waiting to upload');
+
+    /* Centers KPIs */
+    var ck = (data.centerKpis && data.centerKpis[0]) || {};
+    setKpi('kpiCenters', ck.centers, 'with mapped devices');
+    setKpi('kpiMapped', ck.devices, 'latest placements');
+    setKpi('kpiActiveDep', ck.active_deployments, pct(ck.active_deployments, ck.devices) + ' of mapped fleet');
+    setKpi('kpiStates', ck.states, 'geographic reach');
+    setKpi('kpiCities', ck.cities, 'geographic reach');
+
+    /* Support KPIs */
+    var zoho = (data.zohoKpis && data.zohoKpis[0]) || {};
+    setKpi('kpiZOpen', zoho.open_tickets, 'active backlog');
+    setKpi('kpiZIn', zoho.created_7d, 'new this week');
+    setKpi('kpiZOut', zoho.closed_7d, 'resolved this week');
+    setKpi('kpiZAge', zoho.avg_open_age_days, 'days per open ticket');
+    var cs = data.csTracker;
+    setKpi('kpiCsCases', cs && cs.kpis ? cs.kpis.total_cases : null,
+      cs && cs.kpis ? cs.kpis.owners + ' case owners' : 'sheet unavailable');
+    setKpi('kpiCsTat', cs && cs.kpis ? cs.kpis.avg_tat_days : null, 'days per field case');
+
+    /* Asset charts */
+    Charts.fleetStatus(data.fleetStatus, function (statusName) {
+      setStatusFilter(statusName);
+      activateTab('tab-asset');
+      $('deviceExplorerCard').scrollIntoView({ behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
+    });
+    Charts.firmware(data.firmware);
+    var assets = data.assets || [];
+    Charts.assetStatus(assets.filter(function (r) { return r.dim === 'status'; }).slice(0, 8));
+    Charts.assetTypes(assets.filter(function (r) { return r.dim === 'type'; }).slice(0, 8));
+    renderReliability(data.reliability || []);
+    renderAssetHealth(data.assetHealth || []);
+    renderCohort(data.cohortReliability || []);
+
+    /* Centers charts */
+    Charts.geo(data.geo);
+    Charts.deploymentAge(data.deploymentAge);
+    Charts.activeVsEnded(data.activeVsEnded);
+    Charts.hubs(data.hubs);
+
+    /* Support charts */
+    Charts.zohoTrend(data.zohoTrend);
+    Charts.zohoStatus(data.zohoOpenByStatus);
+    Charts.zohoCategories(data.zohoCategories);
+    Charts.zohoPriority(data.zohoPriority);
+    Charts.zohoChannel(data.zohoChannel);
+    Charts.zohoSegment(data.zohoSegment);
+    renderSla(data.slaKpis, data.slaByType || []);
+    if (cs) {
+      Charts.tatTrend(cs.tatByMonth);
+      Charts.csMachine(cs.byMachine);
+      Charts.csIssueType(cs.byIssueType);
+      renderCsOwners(cs.byOwner || []);
+    } else {
+      Charts.showEmpty('chartTatTrend', 'CS tracker sheet not available');
+      Charts.showEmpty('chartCsMachine', 'CS tracker sheet not available');
+      Charts.showEmpty('chartCsIssueType', 'CS tracker sheet not available');
+      renderCsOwners([]);
+    }
+
+    renderHubOptions(data.hubOptions || []);
+    fillSelect('globalSegment', (data.zohoSegment || [])
+      .map(function (s) { return s.segment; })
+      .filter(function (x) { return x && x !== 'Unknown'; }), 'All segments');
+
+    $('statusStrip').classList.remove('is-stale');
+    $('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString() +
+      (state.hub ? ' · hub: ' + state.hub : '');
+  }
+
+  function renderReliability(rows) {
+    var body = $('reliabilityTable').querySelector('tbody');
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="5" class="chart-empty">No reliability metrics yet</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(function (r) {
+      var sev = r.uptime_pct >= 95 ? 'ok' : (r.uptime_pct >= 90 ? 'warn' : 'danger');
+      return '<tr class="is-clickable" data-cid="' + escapeHtml(r.centerid) + '" tabindex="0" role="button" aria-label="Open ' + escapeHtml(r.center || ('center ' + r.centerid)) + '">' +
+        '<td><strong>' + escapeHtml(r.center || ('Center #' + r.centerid)) + '</strong></td>' +
+        '<td class="num">' + FMT.format(r.devices || 0) + '</td>' +
+        '<td class="num"><span class="badge badge-' + sev + '">' + escapeHtml(r.uptime_pct) + '%</span></td>' +
+        '<td class="num">' + escapeHtml(r.downtime_pct) + '%</td>' +
+        '<td class="num">' + FMT.format(r.failures || 0) + '</td>' +
+        '</tr>';
+    }).join('');
+    wireCenterRowClicks($('reliabilityTable'));
+  }
+
+  function renderAssetHealth(rows) {
+    var body = $('assetHealthTable').querySelector('tbody');
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="5" class="chart-empty">No health data yet</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(function (r) {
+      var band = r.health_score >= 80 ? 'ok' : (r.health_score >= 60 ? 'warn' : 'danger');
+      var mtbf = r.mtbf_hrs == null ? '—' : FMT.format(Math.round(r.mtbf_hrs / 24)) + 'd';
+      return '<tr class="is-clickable" data-cid="' + escapeHtml(r.centerid) + '" tabindex="0" role="button" aria-label="Open ' + escapeHtml(r.center || ('center ' + r.centerid)) + '">' +
+        '<td><strong>' + escapeHtml(r.center || ('Center #' + r.centerid)) + '</strong></td>' +
+        '<td class="num"><span class="badge badge-' + band + '">' + escapeHtml(r.health_score) + '</span></td>' +
+        '<td class="num">' + escapeHtml(r.uptime_pct) + '%</td>' +
+        '<td class="num">' + mtbf + '</td>' +
+        '<td class="num">' + FMT.format(r.failures || 0) + '</td>' +
+        '</tr>';
+    }).join('');
+    wireCenterRowClicks($('assetHealthTable'));
+  }
+
+  /**
+   * Batch-cohort failure analysis (M-A3 First-Time-Failure + M-A5 Batch
+   * Failure Detection). Draws the combo chart, the detail table and the
+   * "batch signal" callout for the cohort that most warrants attention.
+   */
+  function renderCohort(rows) {
+    Charts.cohort(rows);
+
+    var body = $('cohortTable').querySelector('tbody');
+    var signal = $('cohortSignal');
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="7" class="chart-empty">No cohort data yet</td></tr>';
+      signal.innerHTML = '<p class="batch-signal-empty">No batch data yet</p>';
+      return;
+    }
+
+    // Fleet-mean FTF rate → flag cohorts materially above it (batch anomaly).
+    var mean = rows.reduce(function (a, r) { return a + (r.ftf_rate_pct || 0); }, 0) / rows.length;
+    var flagAt = mean + 5;
+
+    body.innerHTML = rows.map(function (r) {
+      var ftf = r.ftf_rate_pct || 0;
+      var sev = ftf >= flagAt ? 'danger' : (ftf >= mean ? 'warn' : 'ok');
+      var ttff = r.median_ttff_days == null ? '—' : humanDays(r.median_ttff_days);
+      var flagged = ftf >= flagAt;
+      return '<tr' + (flagged ? ' class="row-flagged"' : '') + '>' +
+        '<td><strong>' + escapeHtml(r.batch_year) + '</strong>' +
+          (flagged ? ' <span class="badge badge-danger">watch</span>' : '') + '</td>' +
+        '<td class="num">' + FMT.format(r.devices || 0) + '</td>' +
+        '<td class="num"><span class="badge badge-' + sev + '">' + escapeHtml(ftf) + '%</span></td>' +
+        '<td class="num">' + ttff + '</td>' +
+        '<td class="num">' + FMT.format(r.early_fails || 0) + '</td>' +
+        '<td class="num">' + escapeHtml(r.avg_failures == null ? '—' : r.avg_failures) + '</td>' +
+        '<td>' + escapeHtml(r.top_issue || '—') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    // Batch signal = highest-FTF cohort (min 30 devices so it is meaningful).
+    var candidates = rows.filter(function (r) { return (r.devices || 0) >= 30; });
+    var worst = (candidates.length ? candidates : rows).reduce(function (a, b) {
+      return (b.ftf_rate_pct || 0) > (a.ftf_rate_pct || 0) ? b : a;
+    });
+    // Semantic colour: only red when genuinely above the fleet's flag threshold.
+    var wsev = (worst.ftf_rate_pct || 0) >= flagAt ? 'danger'
+      : ((worst.ftf_rate_pct || 0) >= mean ? 'warn' : 'ok');
+    signal.innerHTML =
+      '<div class="batch-signal-year">' + escapeHtml(worst.batch_year) + ' batch</div>' +
+      '<div class="batch-signal-rate sev-' + wsev + '">' + escapeHtml(worst.ftf_rate_pct || 0) + '%' +
+        '<span class="batch-signal-label">first-time-failure rate</span></div>' +
+      '<dl class="batch-signal-meta">' +
+        '<div><dt>Devices</dt><dd>' + FMT.format(worst.devices || 0) + '</dd></div>' +
+        '<div><dt>Median TTFF</dt><dd>' + (worst.median_ttff_days == null ? '—' : humanDays(worst.median_ttff_days)) + '</dd></div>' +
+        '<div><dt>Failures/device</dt><dd>' + escapeHtml(worst.avg_failures == null ? '—' : worst.avg_failures) + '</dd></div>' +
+      '</dl>' +
+      '<div class="batch-signal-issue">Leading cause · <strong>' + escapeHtml(worst.top_issue || '—') + '</strong></div>';
+  }
+
+  /**
+   * SLA compliance (CS-team catalog): the within-SLA callout + Tech/Non-Tech
+   * split bars, plus the worst-issue-types breach table.
+   */
+  function renderSla(kpisArr, byType) {
+    var k = (kpisArr && kpisArr[0]) || null;
+    var el = $('slaCompliance');
+    if (el) {
+      if (!k || k.resolved_n == null) {
+        el.innerHTML = '<p class="batch-signal-empty">No SLA data yet</p>';
+      } else {
+        var sev = slaSev(k.within_pct);
+        el.innerHTML =
+          '<div class="sla-pct sev-' + sev + '">' + slaPctText(k.within_pct) +
+            '<span class="sla-pct-label">resolved within SLA</span></div>' +
+          '<div class="sla-split">' + slaBar('Tech', k.within_tech) + slaBar('Non-Tech', k.within_nontech) + '</div>' +
+          '<dl class="batch-signal-meta sla-meta">' +
+            '<div><dt>Resolved</dt><dd>' + FMT.format(k.resolved_n || 0) + '</dd></div>' +
+            '<div><dt>Open breached</dt><dd class="txt-danger">' + FMT.format(k.breached_open || 0) + '</dd></div>' +
+            '<div><dt>At-risk</dt><dd class="txt-warn">' + FMT.format(k.atrisk_open || 0) + '</dd></div>' +
+          '</dl>' +
+          '<div class="sla-foot">Avg resolution · <strong>' +
+            (k.avg_res_days == null ? '—' : k.avg_res_days + ' days') + '</strong></div>';
+      }
+    }
+
+    var body = $('slaTypeTable').querySelector('tbody');
+    if (!byType || !byType.length) {
+      body.innerHTML = '<tr><td colspan="6" class="chart-empty">No SLA breakdown yet</td></tr>';
+      return;
+    }
+    body.innerHTML = byType.map(function (r) {
+      var bp = r.breach_pct || 0;
+      var sev = bp >= 60 ? 'danger' : (bp >= 30 ? 'warn' : 'ok');
+      return '<tr>' +
+        '<td><strong>' + escapeHtml(r.category) + '</strong></td>' +
+        '<td><span class="badge ' + (r.is_tech ? 'badge-info' : 'badge-muted') + '">' +
+          (r.is_tech ? 'Tech' : 'Non-Tech') + '</span></td>' +
+        '<td class="num">' + escapeHtml(r.sla_days) + 'd</td>' +
+        '<td class="num">' + FMT.format(r.tickets || 0) + '</td>' +
+        '<td class="num"><span class="badge badge-' + sev + '">' + slaPctText(bp) + '</span></td>' +
+        '<td class="num">' + (r.avg_res_days == null ? '—' : r.avg_res_days) + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  /** Within-SLA severity band: ok ≥85, warn ≥70, else danger. */
+  function slaSev(p) { return p >= 85 ? 'ok' : (p >= 70 ? 'warn' : 'danger'); }
+  function slaPctText(p) { return (p == null ? '—' : p + '%'); }
+  function slaBar(label, pct) {
+    var v = pct == null ? 0 : Math.max(0, Math.min(100, pct));
+    return '<div class="sla-bar-row">' +
+      '<span class="sla-bar-label">' + label + '</span>' +
+      '<span class="sla-bar-track"><span class="sla-bar-fill sev-' + slaSev(pct || 0) +
+        '" style="width:' + v + '%"></span></span>' +
+      '<span class="sla-bar-val">' + slaPctText(pct) + '</span></div>';
+  }
+
+  /** Compact day count → "18mo" / "2.1y" / "42d". */
+  function humanDays(d) {
+    d = Number(d);
+    if (!isFinite(d)) return '—';
+    if (d >= 365) return (d / 365).toFixed(1) + 'y';
+    if (d >= 60) return Math.round(d / 30) + 'mo';
+    return Math.round(d) + 'd';
+  }
+
+  /** Wires rows carrying data-cid to open the center drawer by center id. */
+  function wireCenterRowClicks(tableEl) {
+    Array.prototype.forEach.call(tableEl.querySelectorAll('tr.is-clickable[data-cid]'), function (tr) {
+      var cid = parseInt(tr.getAttribute('data-cid'), 10);
+      function go() { CenterDetail.open([cid, 'Center #' + cid, 0, 0, 0, 0, 0, 0]); }
+      tr.addEventListener('click', go);
+      tr.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    });
+  }
+
+  function renderCsOwners(rows) {
+    var body = $('csOwnerTable').querySelector('tbody');
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="3"><div class="chart-empty" style="padding:24px 0">CS tracker sheet not available</div></td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(function (r) {
+      return '<tr>' +
+        '<td>' + escapeHtml(r.owner) + '</td>' +
+        '<td class="num">' + FMT.format(r.cases) + '</td>' +
+        '<td class="num">' + (r.avg_tat == null ? '—' : escapeHtml(r.avg_tat)) + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function renderHubOptions(rows) {
+    $('hubOptions').innerHTML = rows
+      .slice()
+      .sort(function (a, b) { return a.hub.localeCompare(b.hub); })
+      .map(function (r) { return '<option value="' + escapeHtml(r.hub) + '"></option>'; })
+      .join('');
+  }
+
+  /* ── device explorer (Asset view) ────────────────────────────── */
+  var DEVICE_COLUMNS = [
+    { key: 'device', label: 'Device', sortable: true },
+    { key: 'status', label: 'Status', sortable: false },
+    { key: 'center', label: 'Center', sortable: true },
+    { key: 'hub', label: 'Hub', sortable: true },
+    { key: 'last_seen', label: 'Last seen', sortable: true, num: true },
+    { key: 'battery', label: 'Battery', sortable: true, num: true },
+    { key: 'csq', label: 'CSQ', sortable: true, num: true },
+    { key: 'unsynced', label: 'Unsynced', sortable: true, num: true },
+    { key: 'firmware', label: 'Firmware', sortable: false }
+  ];
+
+  var STATUS_BADGES = {
+    'Live (<1h)': 'ok', 'Online (<24h)': 'info', 'Idle (1-7d)': 'warn',
+    'Offline (7-30d)': 'warn', 'Dark (>30d)': 'danger', 'Never seen': 'muted'
+  };
+
+  function sortableHeader(col, sort) {
+    var cls = col.num ? ' class="num"' : '';
+    if (!col.sortable) return '<th scope="col"' + cls + '>' + col.label + '</th>';
+    var sorted = sort.sortBy === col.key;
+    var aria = sorted ? (sort.sortDir === 'asc' ? 'ascending' : 'descending') : 'none';
+    return '<th scope="col"' + cls + ' aria-sort="' + aria + '">' +
+      '<button type="button" class="th-sort" data-sort="' + col.key + '" aria-sort="' + aria + '">' +
+      col.label +
+      '<svg class="sort-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+      '<path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      '</button></th>';
+  }
+
+  function buildDeviceHeader() {
+    $('deviceTableHead').innerHTML = DEVICE_COLUMNS.map(function (col) {
+      return sortableHeader(col, state.devices);
+    }).join('');
+    Array.prototype.forEach.call($('deviceTableHead').querySelectorAll('.th-sort'), function (btn) {
+      btn.addEventListener('click', function () {
+        var key = btn.getAttribute('data-sort');
+        if (state.devices.sortBy === key) {
+          state.devices.sortDir = state.devices.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.devices.sortBy = key;
+          state.devices.sortDir = 'desc';
+        }
+        state.devices.page = 0;
+        buildDeviceHeader();
+        loadDevices();
+      });
+    });
+  }
+
+  function buildStatusChips() {
+    var chips = ['All'].concat(Charts.FLEET_ORDER);
+    $('statusChips').innerHTML = chips.map(function (name) {
+      var value = name === 'All' ? '' : name;
+      var pressed = state.devices.status === value ? 'true' : 'false';
+      return '<button type="button" class="chip" data-status="' + escapeHtml(value) + '" aria-pressed="' + pressed + '">' + name + '</button>';
+    }).join('');
+    Array.prototype.forEach.call($('statusChips').querySelectorAll('.chip'), function (chip) {
+      chip.addEventListener('click', function () {
+        setStatusFilter(chip.getAttribute('data-status'));
+      });
+    });
+  }
+
+  function setStatusFilter(value) {
+    state.devices.status = value || '';
+    state.devices.page = 0;
+    buildStatusChips();
+    loadDevices();
+  }
+
+  var devicesRequestId = 0;
+  function loadDevices() {
+    var requestId = ++devicesRequestId;
+    $('deviceTableInfo').textContent = 'Loading…';
+    var query = Object.assign({}, state.devices, { hub: state.hub, search: state.search });
+    gsCall('apiGetDevices', query)
+      .then(function (result) {
+        if (requestId !== devicesRequestId) return;
+        state.deviceRows = result.rows;
+        state.deviceTotal = result.totalRows;
+        renderDeviceTable();
+      })
+      .catch(function (err) {
+        if (requestId !== devicesRequestId) return;
+        $('deviceTableInfo').textContent = 'Failed to load devices';
+        toast('Device list failed: ' + err.message, 'error');
+      });
+  }
+
+  function renderDeviceTable() {
+    var body = $('deviceTable').querySelector('tbody');
+    if (!state.deviceRows.length) {
+      body.innerHTML = '<tr><td colspan="' + DEVICE_COLUMNS.length + '">' +
+        '<div class="chart-empty" style="padding:32px 0">' +
+        '<strong>No devices match</strong><span>Try clearing the search or status filter</span>' +
+        '</div></td></tr>';
+    } else {
+      body.innerHTML = state.deviceRows.map(function (r) {
+        var badge = STATUS_BADGES[r.status] || 'muted';
+        var batteryText = r.battery === '' ? '—' :
+          (isNaN(parseInt(r.battery, 10)) ? r.battery : parseInt(r.battery, 10) + '%');
+        return '<tr>' +
+          '<td><strong>' + escapeHtml(r.device) + '</strong></td>' +
+          '<td><span class="badge badge-' + badge + '">' + escapeHtml(r.status) + '</span></td>' +
+          '<td>' + escapeHtml(r.center || '—') + '</td>' +
+          '<td>' + escapeHtml(r.hub || '—') + '</td>' +
+          '<td class="num" title="' + escapeHtml(r.last_seen || '') + '">' + relTime(r.last_seen) + '</td>' +
+          '<td class="num">' + escapeHtml(batteryText) + '</td>' +
+          '<td class="num">' + (r.csq == null ? '—' : escapeHtml(r.csq)) + '</td>' +
+          '<td class="num">' + (r.unsynced == null ? '—' : escapeHtml(r.unsynced)) + '</td>' +
+          '<td>' + escapeHtml(r.firmware || '—') + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    renderPager(state.deviceTotal, state.devices, 'deviceTableInfo', 'pageIndicator', 'prevPageBtn', 'nextPageBtn', 'devices');
+  }
+
+  /* ── Center-360 explorer (Centers view) ──────────────────────── */
+  var CENTER_COLUMNS = [
+    { key: 'center', label: 'Center', sortable: true },
+    { key: 'center_id', label: 'ID', sortable: false, num: true },
+    { key: 'hub', label: 'Hub', sortable: false },
+    { key: 'city', label: 'City', sortable: false },
+    { key: 'state', label: 'State', sortable: true },
+    { key: 'devices', label: 'Devices', sortable: true, num: true },
+    { key: 'online', label: 'Online', sortable: true, num: true },
+    { key: 'open_tickets', label: 'Open tickets', sortable: true, num: true },
+    { key: 'last_seen', label: 'Last heartbeat', sortable: true, num: true }
+  ];
+
+  function buildCenterHeader() {
+    $('centerTableHead').innerHTML = CENTER_COLUMNS.map(function (col) {
+      return sortableHeader(col, state.centers);
+    }).join('');
+    Array.prototype.forEach.call($('centerTableHead').querySelectorAll('.th-sort'), function (btn) {
+      btn.addEventListener('click', function () {
+        var key = btn.getAttribute('data-sort');
+        if (state.centers.sortBy === key) {
+          state.centers.sortDir = state.centers.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.centers.sortBy = key;
+          state.centers.sortDir = 'desc';
+        }
+        state.centers.page = 0;
+        buildCenterHeader();
+        loadCenters();
+      });
+    });
+  }
+
+  var centersRequestId = 0;
+  function loadCenters() {
+    var requestId = ++centersRequestId;
+    $('centerTableInfo').textContent = 'Loading…';
+    var query = Object.assign({}, state.centers, { hub: state.hub, search: state.search, segment: state.segment, activeOnly: state.activeOnly });
+    gsCall(ep('apiGetCenters'), query)
+      .then(function (result) {
+        if (requestId !== centersRequestId) return;
+        state.centerRows = result.rows;
+        state.centerTotal = result.totalRows;
+        renderCenterTable();
+      })
+      .catch(function (err) {
+        if (requestId !== centersRequestId) return;
+        $('centerTableInfo').textContent = 'Failed to load centers';
+        toast('Center list failed: ' + err.message, 'error');
+      });
+  }
+
+  function renderCenterTable() {
+    var body = $('centerTable').querySelector('tbody');
+    if (!state.centerRows.length) {
+      body.innerHTML = '<tr><td colspan="' + CENTER_COLUMNS.length + '">' +
+        '<div class="chart-empty" style="padding:32px 0">' +
+        '<strong>No centers match</strong><span>Try clearing the search</span>' +
+        '</div></td></tr>';
+    } else {
+      body.innerHTML = state.centerRows.map(function (r, i) {
+        var ticketBadge = r.open_tickets > 3 ? 'danger' : (r.open_tickets > 0 ? 'warn' : 'ok');
+        return '<tr class="is-clickable" data-row="' + i + '" tabindex="0" role="button" aria-label="Open details for ' + escapeHtml(r.center || ('center ' + r.center_id)) + '">' +
+          '<td><strong>' + escapeHtml(r.center || '—') + '</strong></td>' +
+          '<td class="num">' + escapeHtml(r.center_id) + '</td>' +
+          '<td>' + escapeHtml(r.hub || '—') + '</td>' +
+          '<td>' + escapeHtml(r.city || '—') + '</td>' +
+          '<td>' + escapeHtml(r.state || '—') + '</td>' +
+          '<td class="num">' + FMT.format(r.devices || 0) + '</td>' +
+          '<td class="num">' + FMT.format(r.online || 0) + '</td>' +
+          '<td class="num"><span class="badge badge-' + ticketBadge + '">' + FMT.format(r.open_tickets || 0) + '</span></td>' +
+          '<td class="num" title="' + escapeHtml(r.last_seen || '') + '">' + relTime(r.last_seen) + '</td>' +
+          '</tr>';
+      }).join('');
+      Array.prototype.forEach.call($('centerTable').querySelectorAll('tr.is-clickable'), function (tr) {
+        function go() { openCenterRow(state.centerRows[parseInt(tr.getAttribute('data-row'), 10)]); }
+        tr.addEventListener('click', go);
+        tr.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+      });
+    }
+    renderPager(state.centerTotal, state.centers, 'centerTableInfo', 'ctrPageIndicator', 'ctrPrevBtn', 'ctrNextBtn', 'centers');
+  }
+
+  function renderPager(total, pageState, infoId, indicatorId, prevId, nextId, noun) {
+    var from = total === 0 ? 0 : pageState.page * pageState.pageSize + 1;
+    var to = Math.min(total, (pageState.page + 1) * pageState.pageSize);
+    $(infoId).textContent = 'Showing ' + FMT.format(from) + '–' + FMT.format(to) +
+      ' of ' + FMT.format(total) + ' ' + noun;
+    var totalPages = Math.max(1, Math.ceil(total / pageState.pageSize));
+    $(indicatorId).textContent = (pageState.page + 1) + ' / ' + totalPages;
+    $(prevId).disabled = pageState.page === 0;
+    $(nextId).disabled = pageState.page + 1 >= totalPages;
+  }
+
+  function exportCsv() {
+    if (!state.deviceRows.length) { toast('Nothing to export yet', 'error'); return; }
+    var cols = DEVICE_COLUMNS.map(function (c) { return c.key; });
+    var lines = [cols.join(',')].concat(state.deviceRows.map(function (row) {
+      return cols.map(function (key) {
+        var cell = String(row[key] == null ? '' : row[key]);
+        return /[",\n]/.test(cell) ? '"' + cell.replace(/"/g, '""') + '"' : cell;
+      }).join(',');
+    }));
+    var blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'sip-devices-page' + (state.devices.page + 1) + '.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast('CSV exported (current page)', 'ok');
+  }
+
+  /* ── map view ────────────────────────────────────────────────── */
+  function humanAge(days) {
+    if (days == null || !isFinite(days)) return '—';
+    if (days < 90) return days + 'd';
+    if (days < 730) return Math.round(days / 30.4) + ' mo';
+    return (days / 365).toFixed(1) + ' yr';
+  }
+
+  /**
+   * Center Age display rule: ≥ 12 months → years to 1 decimal (13mo → 1.1 years);
+   * below 12 months → whole months. Used everywhere Center Age is shown.
+   */
+  function centerAge(months) {
+    if (months == null || !isFinite(months)) return '—';
+    return months >= 12 ? (months / 12).toFixed(1) + ' years' : Math.round(months) + ' months';
+  }
+
+  // Compact center array indices (must match Api.js apiGetMapData).
+  var CI = { id: 0, name: 1, lat: 2, lng: 3, devices: 4, online: 5, tickets: 6, assets: 7, hub: 8, hubId: 9, segment: 10, state: 11 };
+  // Compact asset array indices.
+  var AI = { center: 0, type: 1, cat: 2, age: 3, serial: 4 };
+
+  function loadMapData() {
+    $('geoProgress').textContent = 'Loading map data…';
+    gsCall(ep('apiGetMapData'), { activeOnly: state.activeOnly })
+      .then(function (payload) {
+        state.mapLoaded = true;
+        state.mapBundle = payload;
+        applyMapFilters();
+        var geo = payload.geo || {};
+        $('geoProgress').textContent =
+          FMT.format(payload.centers.length) + ' centers on map · located ' +
+          FMT.format(geo.located || 0) + ' of ' + FMT.format(geo.total || 0) + ' locations' +
+          (geo.pending ? ' · ' + FMT.format(geo.pending) + ' pending — run runGeocodeBatch() in the editor' : ' · geocoding complete');
+      })
+      .catch(function (err) {
+        $('geoProgress').textContent = 'Map data failed: ' + err.message;
+        toast('Map data failed: ' + err.message, 'error');
+      });
+  }
+
+  /** Populates a <select>, preserving the current selection if still present. */
+  function fillSelect(id, values, allLabel) {
+    var el = $(id);
+    if (!el) return;
+    var cur = el.value;
+    el.innerHTML = '<option value="">' + allLabel + '</option>' +
+      values.map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
+    el.value = cur;
+  }
+
+  /** Applies the global filters to the map centers + assets, then redraws. */
+  function applyMapFilters() {
+    if (!state.mapBundle) return;
+    var q = state.search.toLowerCase().trim();
+
+    // Serial/device search: which center IDs contain a matching asset?
+    var serialCenterIds = null;
+    if (q) {
+      serialCenterIds = {};
+      state.mapBundle.assets.forEach(function (a) {
+        if (String(a[AI.serial]).toLowerCase().indexOf(q) !== -1) serialCenterIds[a[AI.center]] = true;
+      });
+    }
+
+    var centers = state.mapBundle.centers.filter(function (c) {
+      if (state.hub && c[CI.hub] !== state.hub) return false;
+      if (state.segment && c[CI.segment] !== state.segment) return false;
+      var ot = c[CI.tickets] || 0;
+      if (state.ticketBucket === 'none' && ot !== 0) return false;
+      if (state.ticketBucket === 'low' && !(ot >= 1 && ot <= 3)) return false;
+      if (state.ticketBucket === 'high' && ot < 4) return false;
+      if (q) {
+        var textHit = String(c[CI.name]).toLowerCase().indexOf(q) !== -1 ||
+          String(c[CI.id]).indexOf(q) !== -1 ||
+          String(c[CI.hub]).toLowerCase().indexOf(q) !== -1 ||
+          String(c[CI.hubId]).indexOf(q) !== -1 ||
+          (serialCenterIds && serialCenterIds[c[CI.id]]);
+        if (!textHit) return false;
+      }
+      return true;
+    });
+
+    var keepIds = {};
+    centers.forEach(function (c) { keepIds[c[CI.id]] = true; });
+    var assets = state.mapBundle.assets.filter(function (a) { return keepIds[a[AI.center]]; });
+
+    mainMap.setData(centers, CenterDetail.open);
+    renderMapKpis(centers, assets);
+    renderMapCharts(centers, assets);
+  }
+
+  function renderMapKpis(centers, assets) {
+    var devices = 0, online = 0, tickets = 0;
+    centers.forEach(function (c) { devices += c[CI.devices]; online += c[CI.online]; tickets += c[CI.tickets]; });
+    setKpi('mapCenters', centers.length, 'on the map');
+    setKpi('mapDevices', devices, FMT.format(online) + ' online (24h)');
+    setKpi('mapTickets', tickets, 'open across shown centers');
+    setKpi('mapAssets', assets.length, 'Jira assets on shown centers');
+  }
+
+  function renderMapCharts(centers, assets) {
+    var types = state.mapBundle.assetTypes, cats = state.mapBundle.assetCats;
+    Charts.assetByType(topCounts(assets, function (a) { return types[a[AI.type]]; }, 10));
+    Charts.assetByCategory(topCounts(assets, function (a) { return cats[a[AI.cat]]; }, 10));
+    Charts.assetAge(bandCounts(assets, function (a) { return ageBand(a[AI.age]); }, Charts));
+    Charts.centersByState(topCounts(centers, function (c) { return c[CI.state] || 'Unknown'; }, 12));
+  }
+
+  function ageBand(days) {
+    if (days == null) return 'Unknown';
+    if (days < 182) return '<6 mo';
+    if (days < 365) return '6-12 mo';
+    if (days < 730) return '1-2 yr';
+    if (days < 1095) return '2-3 yr';
+    if (days < 1825) return '3-5 yr';
+    return '5+ yr';
+  }
+
+  /** Aggregate rows by a key function → sorted [{label,cnt}] top-N. */
+  function topCounts(rows, keyFn, limit) {
+    var map = {};
+    rows.forEach(function (r) { var k = keyFn(r) || 'Other'; map[k] = (map[k] || 0) + 1; });
+    return Object.keys(map)
+      .map(function (k) { return { label: k, cnt: map[k] }; })
+      .sort(function (a, b) { return b.cnt - a.cnt; })
+      .slice(0, limit);
+  }
+
+  /** Like topCounts but keeps every band (no top-N, no sort by count). */
+  function bandCounts(rows, keyFn) {
+    var map = {};
+    rows.forEach(function (r) { var k = keyFn(r); map[k] = (map[k] || 0) + 1; });
+    return Object.keys(map).map(function (k) { return { label: k, cnt: map[k] }; });
+  }
+
+  function statBox_(value, label) {
+    return '<div class="stat-box"><div class="v">' +
+      FMT.format(value || 0) + '</div><div class="l">' + label + '</div></div>';
+  }
+  function dt_(label, value) {
+    return '<dt>' + label + '</dt><dd>' + value + '</dd>';
+  }
+
+  /**
+   * The single app-level center-detail drawer, opened from map markers and
+   * Center 360 rows. `c` is a compact array [id, name, ?, ?, devices, online,
+   * open_tickets, assets].
+   */
+  function makeCenterDetail(ids) {
+    function open(c) {
+      $(ids.panel).hidden = false;
+      if (ids.scrim) $(ids.scrim).hidden = false;
+      $(ids.title).textContent = c[1];
+      $(ids.sub).textContent = 'Center #' + c[0];
+      $(ids.body).innerHTML = '<div class="chart-empty" style="padding:32px 0">Loading details…</div>';
+      $(ids.body).scrollTop = 0;
+      gsCall(ep('apiGetCenterDetail'), { centerId: c[0] })
+        .then(function (detail) { renderInto(c, detail); })
+        .catch(function (err) {
+          $(ids.body).innerHTML = '<div class="chart-empty" style="padding:32px 0">Failed: ' + escapeHtml(err.message) + '</div>';
+        });
+    }
+
+    function renderInto(c, d) {
+      var info = d.info || {};
+      var tix = d.tickets || {};
+      $(ids.title).textContent = info.center || c[1];
+      $(ids.sub).textContent = 'Center #' + c[0] +
+        (info.city ? ' · ' + info.city : '') + (info.state ? ', ' + info.state : '');
+
+      // "Devices" = Jira devices mapped to this center by Summary serial
+      // (d.assets, from getAssetIndex_) — NOT cloud_devices telemetry.
+      var jiraDevCount = d.assets ? d.assets.length : (c[7] || 0);
+      var oldest = d.assets && d.assets.length ? d.assets[0] : null;
+      var html =
+        '<div class="detail-grid">' +
+        statBox_(jiraDevCount, 'Devices') +
+        statBox_(tix.open_tickets != null ? tix.open_tickets : c[6], 'Open tickets') +
+        statBox_(tix.total_tickets != null ? tix.total_tickets : '—', 'Tickets lifetime') +
+        '</div>';
+
+      if (oldest) {
+        html += '<div class="first-asset"><strong>First asset:</strong> ' +
+          escapeHtml(oldest.serial || oldest.summary) + ' (' + escapeHtml(oldest.type) + ') · ' +
+          'born ' + escapeHtml(oldest.birthday || '—') + ' · age ' + humanAge(oldest.age_days) + '</div>';
+      }
+
+      html += '<dl class="detail-list">' +
+        dt_('Hub', (info.hub || '—') + (info.hub_id != null ? ' · #' + info.hub_id : '')) +
+        dt_('Segment', tix.segment || '—') +
+        dt_('Center age', info.age_months != null
+          ? centerAge(info.age_months) + ' (first deployment ' + (info.first_deployment || '—') + ')' : '—') +
+        dt_('Location', [info.city, info.state, info.pin, info.country]
+          .filter(Boolean).map(escapeHtml).join(', ') || '—') +
+        '</dl>';
+
+      if (d.openTickets && d.openTickets.length) {
+        html += '<div class="panel-section-title">Open tickets (' + d.openTickets.length + ')</div>' +
+          '<div class="ticket-list">' +
+          d.openTickets.map(function (t) {
+            var pc = /high/i.test(t.priority) ? 'danger' : (/medium/i.test(t.priority) ? 'warn' : (/low/i.test(t.priority) ? 'ok' : 'muted'));
+            var safe = /^https:\/\//i.test(t.link) ? t.link : '';
+            var inner =
+              '<div class="ticket-row-top"><span class="ticket-id">#' + escapeHtml(t.ticket) +
+              ' · ' + escapeHtml(t.status) + '</span>' +
+              '<span class="badge badge-' + pc + '">' + escapeHtml(t.priority) + '</span></div>' +
+              '<div class="ticket-subj">' + escapeHtml(t.subject) + '</div>';
+            return safe
+              ? '<a class="ticket-row" href="' + escapeHtml(safe) + '" target="_blank" rel="noopener noreferrer" title="Open ticket #' + escapeHtml(t.ticket) + ' in Zoho Desk">' +
+                inner +
+                '<svg class="ticket-ext" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>'
+              : '<div class="ticket-row">' + inner + '</div>';
+          }).join('') +
+          '</div>';
+      }
+
+      if (d.assets && d.assets.length) {
+        html += '<div class="panel-section-title">Jira devices (' + d.assets.length + ', oldest first)</div>' +
+          '<div class="table-scroll"><table class="assets-table">' +
+          '<thead><tr><th>Key</th><th>Serial</th><th>Type</th><th>Category</th><th class="num">Age</th><th>Since</th></tr></thead><tbody>' +
+          d.assets.map(function (asset) {
+            var keyCell = asset.key
+              ? '<a href="' + escapeHtml(JIRA_BROWSE + encodeURIComponent(asset.key)) +
+                '" target="_blank" rel="noopener noreferrer" title="Open ' + escapeHtml(asset.key) + ' in Jira">' +
+                escapeHtml(asset.key) + '</a>'
+              : '—';
+            return '<tr><td>' + keyCell + '</td>' +
+              '<td>' + escapeHtml(asset.serial || asset.summary) + '</td>' +
+              '<td>' + escapeHtml(asset.type) + '</td>' +
+              '<td>' + escapeHtml(asset.category) + '</td>' +
+              '<td class="num">' + humanAge(asset.age_days) + '</td>' +
+              '<td>' + escapeHtml(asset.birthday || '—') + '</td></tr>';
+          }).join('') +
+          '</tbody></table></div>';
+      } else {
+        html += '<div class="panel-section-title">Jira devices</div>' +
+          '<p class="card-sub">No Jira devices are linked to this center yet.</p>';
+      }
+
+      $(ids.body).innerHTML = html;
+    }
+
+    /** Opens the same drawer for a customer (hub): rollup + its centers. */
+    function openCustomer(cust, centersOfHub) {
+      $(ids.panel).hidden = false;
+      if (ids.scrim) $(ids.scrim).hidden = false;
+      $(ids.title).textContent = cust.hub;
+      $(ids.sub).textContent = 'Hub #' + cust.hub_id + ' · ' + (cust.tier || 'customer');
+      $(ids.body).scrollTop = 0;
+      var onlinePct = cust.devices ? Math.round((cust.online / cust.devices) * 100) : 0;
+      var html =
+        '<div class="detail-grid">' +
+        statBox_(cust.centers, 'Centers') +
+        statBox_(cust.devices, 'Devices') +
+        statBox_(cust.online, 'Online 24h') +
+        statBox_(cust.open_tickets, 'Open tickets') +
+        '</div>' +
+        '<dl class="detail-list">' +
+        dt_('Jira assets', FMT.format(cust.assets || 0)) +
+        dt_('Online rate', onlinePct + '%') +
+        '</dl>';
+      // Only centers WITH open tickets (per request), most open first.
+      var withOpen = (centersOfHub || []).filter(function (c) { return (c[6] || 0) > 0; })
+        .sort(function (a, b) { return (b[6] || 0) - (a[6] || 0); });
+      if (withOpen.length) {
+        html += '<div class="panel-section-title">Centers with open tickets (' + withOpen.length + ')</div>' +
+          '<div class="ticket-list">' +
+          withOpen.map(function (c, i) {
+            var pc = c[6] > 3 ? 'danger' : 'warn';
+            return '<button class="ticket-row" type="button" data-ci="' + i + '">' +
+              '<div class="ticket-row-top"><span class="ticket-id">' + escapeHtml(c[1]) + '</span>' +
+              '<span class="badge badge-' + pc + '">' + c[6] + ' open</span></div>' +
+              '<div class="ticket-subj">' + c[4] + ' devices · ' + c[5] + ' online</div></button>';
+          }).join('') + '</div>';
+      } else {
+        html += '<p class="card-sub">No centers with open tickets for this customer.</p>';
+      }
+      $(ids.body).innerHTML = html;
+      Array.prototype.forEach.call($(ids.body).querySelectorAll('button[data-ci]'), function (b) {
+        b.addEventListener('click', function () { open(withOpen[parseInt(b.getAttribute('data-ci'), 10)]); });
+      });
+    }
+
+    function close() {
+      $(ids.panel).hidden = true;
+      if (ids.scrim) $(ids.scrim).hidden = true;
+    }
+    return { open: open, openCustomer: openCustomer, close: close };
+  }
+
+  var mainMap = MapView('assetMap');
+  var tcMap = MapView('tcMap');
+  var CenterDetail = makeCenterDetail({
+    panel: 'centerDrawer', scrim: 'centerScrim',
+    title: 'centerDrawerTitle', sub: 'centerDrawerSub', body: 'centerDrawerBody'
+  });
+  /** Open the drawer from a Center-360 row object. */
+  function openCenterRow(row) {
+    CenterDetail.open([row.center_id, row.center, 0, 0, row.devices || 0, row.online || 0, row.open_tickets || 0, 0]);
+  }
+
+  /* ── theme ───────────────────────────────────────────────────── */
+  function applyTheme(theme, persist) {
+    state.theme = (theme === 'light') ? 'light' : 'dark';
+    document.body.setAttribute('data-theme', state.theme);
+    $('themeDark').setAttribute('aria-pressed', String(state.theme === 'dark'));
+    $('themeLight').setAttribute('aria-pressed', String(state.theme === 'light'));
+    Charts.applyTheme(state.theme);
+    if (persist) localStorage.setItem('sip.theme', state.theme);
+    // ECharts colors are baked at build time → rebuild from cached data.
+    if (state.lastDashboard) renderDashboard(state.lastDashboard);
+    if (state.execLoaded) renderExec(state.execData);
+    mainMap.setTheme(state.theme);
+    tcMap.setTheme(state.theme);
+    if (state.mapLoaded) applyMapFilters();
+    if (state.topLoaded) renderTopCustomers(state.topBundle);
+  }
+
+  /* ── Executive Overview (landing) ────────────────────────────── */
+  function loadExec() {
+    Charts.setLoading(['execFleet', 'execTrend', 'execTopCust', 'execGeo']);
+    gsCall(ep('apiGetExecOverview'), { activeOnly: state.activeOnly })
+      .then(function (data) { state.execLoaded = true; state.execData = data; renderExec(data); })
+      .catch(function (err) {
+        $('execNarrative').textContent = 'Could not load the overview: ' + err.message;
+        toast('Overview failed: ' + err.message, 'error');
+      });
+  }
+
+  function renderExec(d) {
+    var k = d.kpis || {}, z = d.zohoKpis || {}, roll = d.rollup || {}, tt = d.topTotals || {};
+    var onlinePct = k.total_devices ? Math.round((k.online_24h / k.total_devices) * 100) : 0;
+
+    /* KPI strip */
+    uptimeKpi('exUptime', d.uptimeFleet || null);
+    var fleet = d.fleet || {};
+    setKpi('exActive', fleet.total != null ? fleet.total : k.total_devices,
+      FMT.format(fleet.with_center || 0) + ' mapped to a center');
+    setKpi('exCenters', roll.centers, FMT.format(roll.attention_centers || 0) + ' need attention');
+    setKpi('exTickets', z.open_tickets, FMT.format(z.created_7d || 0) + ' new this week');
+    setKpi('exTopLe', tt.devices, tt.customers + ' Top LE accounts');
+    setKpi('exTat', d.cs ? d.cs.avg_tat_days : null, d.cs ? d.cs.total_cases + ' field cases' : 'sheet unavailable');
+    var sla = d.slaKpis || {};
+    setKpi('exTicketCount', z.total_tickets, FMT.format(z.open_tickets || 0) + ' currently open');
+    setKpi('exSlaBreach', sla.breached_open, (sla.within_pct != null ? sla.within_pct + '% within SLA' : 'open tickets past target'));
+
+    /* Fleet-age ring: fills toward a 5-year expected device lifecycle. */
+    var LIFECYCLE_YEARS = 5;
+    var ageYears = d.avgAgeDays != null ? d.avgAgeDays / 365 : null;
+    var agePct = ageYears != null ? Math.min(100, Math.round((ageYears / LIFECYCLE_YEARS) * 100)) : 0;
+    var ageColor = ageYears == null ? 'var(--muted)'
+      : (ageYears >= 4 ? 'var(--danger)' : (ageYears >= 2.5 ? 'var(--warn)' : 'var(--ok)'));
+    var ring = $('execRing');
+    if (ring) {
+      ring.style.setProperty('--ring-color', ageColor);
+      $('execRingPct').textContent = ageYears != null ? ageYears.toFixed(1) + 'y' : '–';
+      $('execRingLabel').textContent = 'avg device age';
+      $('execRingCap').textContent = 'of ' + LIFECYCLE_YEARS + '-yr life';
+      ring.style.setProperty('--pct', REDUCED_MOTION ? agePct : 0);
+      if (!REDUCED_MOTION) requestAnimationFrame(function () {
+        requestAnimationFrame(function () { ring.style.setProperty('--pct', agePct); });
+      });
+    }
+
+    /* Narrative sentence */
+    $('execNarrative').innerHTML =
+      '<b>' + FMT.format(k.total_devices || 0) + '</b> devices across <b>' + FMT.format(roll.centers || 0) +
+      '</b> centers. <b class="' + (onlinePct >= 50 ? 'up' : 'down') + '">' + onlinePct + '%</b> reported in the last 24 hours' +
+      (k.offline_7d ? ', while <b>' + FMT.format(k.offline_7d) + '</b> have been silent for a week or more' : '') +
+      '. <b>' + FMT.format(z.open_tickets || 0) + '</b> support tickets are open' +
+      (tt.devices ? ', and your <b>' + tt.customers + '</b> Top LE accounts run <b>' + FMT.format(tt.devices) + '</b> devices' : '') + '.';
+
+    /* Attention flags */
+    var flags = [];
+    if (roll.attention_centers) flags.push({ cls: 'is-alert', icon: ICONS.inbox, text: FMT.format(roll.attention_centers) + ' centers with 4+ open tickets' });
+    if (z.closed_7d >= z.created_7d && z.created_7d) flags.push({ cls: 'is-good', icon: ICONS.online, text: 'Closing tickets faster than they open' });
+    else if (z.created_7d) flags.push({ cls: '', icon: ICONS.inbox, text: FMT.format(z.created_7d) + ' new tickets this week' });
+    $('execFlags').innerHTML = flags.map(function (f) {
+      return '<span class="exec-flag ' + f.cls + '"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' + f.icon + '</svg>' + f.text + '</span>';
+    }).join('');
+
+    /* Charts */
+    Charts.fleetStatus(d.fleetStatus, null, 'execFleet');
+    Charts.zohoTrend(d.zohoTrend, 'execTrend');
+    Charts.geo((d.geo || []).slice(0, 8), 'execGeo');
+    Charts.rankBar('execTopCust',
+      (d.topCustomers || []).map(function (c) { return { label: shortName(c.hub), cnt: c.devices }; }),
+      { color: '#2E9BD6', empty: 'No customer data' });
+
+    /* Attention tables — rows open the shared center drawer */
+    var cbody = $('execCentersTable').querySelector('tbody');
+    cbody.innerHTML = (d.worstCenters || []).length
+      ? d.worstCenters.map(function (c) {
+          return '<tr class="is-clickable" data-cid="' + escapeHtml(c.center_id) + '" tabindex="0" role="button">' +
+            '<td><strong>' + escapeHtml(c.center || '—') + '</strong></td>' +
+            '<td>' + escapeHtml(c.state || '—') + '</td>' +
+            '<td class="num">' + FMT.format(c.devices) + '</td>' +
+            '<td class="num">' + FMT.format(c.online) + '</td>' +
+            '<td class="num"><span class="badge badge-danger">' + FMT.format(c.open_tickets) + '</span></td></tr>';
+        }).join('')
+      : '<tr><td colspan="5" class="chart-empty">No open tickets</td></tr>';
+    wireCenterRowClicks($('execCentersTable'));
+
+    var rbody = $('execRelTable').querySelector('tbody');
+    rbody.innerHTML = (d.reliability || []).length
+      ? d.reliability.slice(0, 8).map(function (r) {
+          var sev = r.uptime_pct >= 95 ? 'ok' : (r.uptime_pct >= 90 ? 'warn' : 'danger');
+          return '<tr class="is-clickable" data-cid="' + escapeHtml(r.centerid) + '" tabindex="0" role="button">' +
+            '<td><strong>' + escapeHtml(r.center || ('Center #' + r.centerid)) + '</strong></td>' +
+            '<td class="num"><span class="badge badge-' + sev + '">' + escapeHtml(r.uptime_pct) + '%</span></td>' +
+            '<td class="num">' + escapeHtml(r.downtime_pct) + '%</td></tr>';
+        }).join('')
+      : '<tr><td colspan="3" class="chart-empty">No data</td></tr>';
+    wireCenterRowClicks($('execRelTable'));
+  }
+
+  /* ── Top Customers page ──────────────────────────────────────── */
+  function loadTopCustomers() {
+    gsCall(ep('apiGetTopCustomers'), { activeOnly: state.activeOnly })
+      .then(function (payload) {
+        state.topLoaded = true;
+        state.topBundle = payload;
+        renderTopCustomers(payload);
+      })
+      .catch(function (err) {
+        toast('Top customers failed: ' + err.message, 'error');
+      });
+  }
+
+  function renderTopCustomers(payload) {
+    var t = payload.totals || {};
+    setKpi('tcCustomers', t.customers, (t.withData || 0) + ' with live data');
+    setKpi('tcCenters', t.centers, 'across top accounts');
+    setKpi('tcDevices', t.devices, FMT.format(t.online || 0) + ' online (24h)');
+    setKpi('tcAssets', t.assets, 'Jira assets linked');
+    setKpi('tcTicketCount', t.ticket_count, FMT.format(t.open_tickets || 0) + ' currently open');
+    setKpi('tcSlaBreach', t.sla_breach, (t.sla_within_pct != null ? t.sla_within_pct + '% within SLA' : 'past target'));
+
+    tcMap.setData(payload.mapCenters || [], CenterDetail.open);
+
+    // Charts use the top ~15 by the relevant metric.
+    var withDevices = payload.customers.filter(function (c) { return c.devices > 0; });
+    var withCenters = payload.customers.filter(function (c) { return c.centers > 0; });
+    var withTickets = payload.customers.filter(function (c) { return c.open_tickets > 0; });
+
+    Charts.rankBar('chartTcDevices', asRows(topBy(withDevices, 'devices', 15), 'devices'), { color: '#2E9BD6', empty: 'No device data' });
+    Charts.rankBar('chartTcCenters', asRows(topBy(withCenters, 'centers', 15), 'centers'), { color: '#38BDF8', empty: 'No center data' });
+    Charts.rankBar('chartTcTickets', asRows(topBy(withTickets, 'open_tickets', 15), 'open_tickets'), { color: '#F5B301', empty: 'No open tickets' });
+
+    renderTcTable(payload.customers);
+  }
+
+  function topBy(rows, key, n) {
+    return rows.slice().sort(function (a, b) { return b[key] - a[key]; }).slice(0, n);
+  }
+  function asRows(customers, key) {
+    return customers.map(function (c) { return { label: shortName(c.hub), cnt: c[key] }; });
+  }
+  function shortName(name) {
+    return String(name || '').replace(/\s*\(HUB\)\s*/i, '').split(',')[0].slice(0, 34);
+  }
+
+  var TC_COLUMNS = [
+    { key: 'hub', label: 'Customer', sortable: true },
+    { key: 'hub_id', label: 'Hub ID', sortable: true, num: true },
+    { key: 'centers', label: 'Centers', sortable: true, num: true },
+    { key: 'devices', label: 'Devices', sortable: true, num: true },
+    { key: 'online', label: 'Online', sortable: true, num: true },
+    { key: 'open_tickets', label: 'Open tickets', sortable: true, num: true },
+    { key: 'assets', label: 'Assets', sortable: true, num: true }
+  ];
+  var tcSort = { key: 'devices', dir: 'desc' };
+
+  function renderTcTable(customers) {
+    $('tcTableHead').innerHTML = TC_COLUMNS.map(function (col) {
+      var cls = col.num ? ' class="num"' : '';
+      var aria = tcSort.key === col.key ? (tcSort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+      return '<th scope="col"' + cls + ' aria-sort="' + aria + '">' +
+        '<button type="button" class="th-sort" data-k="' + col.key + '" aria-sort="' + aria + '">' + col.label +
+        '<svg class="sort-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        '</button></th>';
+    }).join('');
+    Array.prototype.forEach.call($('tcTableHead').querySelectorAll('.th-sort'), function (btn) {
+      btn.addEventListener('click', function () {
+        var k = btn.getAttribute('data-k');
+        if (tcSort.key === k) tcSort.dir = tcSort.dir === 'asc' ? 'desc' : 'asc';
+        else { tcSort.key = k; tcSort.dir = k === 'hub' ? 'asc' : 'desc'; }
+        renderTcTable(customers);
+      });
+    });
+
+    var sign = tcSort.dir === 'asc' ? 1 : -1;
+    var rows = customers.slice().sort(function (a, b) {
+      var x = a[tcSort.key], y = b[tcSort.key];
+      if (typeof x === 'number' && typeof y === 'number') return (x - y) * sign;
+      return String(x).localeCompare(String(y)) * sign;
+    });
+
+    $('tcTable').querySelector('tbody').innerHTML = rows.map(function (c, i) {
+      var onlinePct = c.devices ? Math.round((c.online / c.devices) * 100) : null;
+      var tb = c.open_tickets > 3 ? 'danger' : (c.open_tickets > 0 ? 'warn' : 'ok');
+      return '<tr class="is-clickable" data-hub="' + escapeHtml(c.hub_id) + '" tabindex="0" role="button" aria-label="Open ' + escapeHtml(c.hub) + '">' +
+        '<td><strong>' + escapeHtml(c.hub) + '</strong> <span class="badge badge-info">' + escapeHtml(c.tier) + '</span></td>' +
+        '<td class="num">' + escapeHtml(c.hub_id) + '</td>' +
+        '<td class="num">' + FMT.format(c.centers) + '</td>' +
+        '<td class="num">' + FMT.format(c.devices) + '</td>' +
+        '<td class="num">' + FMT.format(c.online) + (onlinePct != null ? ' <span class="card-sub">(' + onlinePct + '%)</span>' : '') + '</td>' +
+        '<td class="num"><span class="badge badge-' + tb + '">' + FMT.format(c.open_tickets) + '</span></td>' +
+        '<td class="num">' + FMT.format(c.assets) + '</td>' +
+        '</tr>';
+    }).join('');
+    var byHub = {}; rows.forEach(function (c) { byHub[c.hub_id] = c; });
+    Array.prototype.forEach.call($('tcTable').querySelectorAll('tr.is-clickable'), function (tr) {
+      var hubId = parseInt(tr.getAttribute('data-hub'), 10);
+      function go() {
+        var centersOfHub = (state.topBundle && state.topBundle.mapCenters || [])
+          .filter(function (mc) { return mc[CI.hubId] === hubId; });
+        CenterDetail.openCustomer(byHub[hubId], centersOfHub);
+      }
+      tr.addEventListener('click', go);
+      tr.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    });
+  }
+
+  /* ── tabs ────────────────────────────────────────────────────── */
+  var TAB_IDS = ['tab-overview', 'tab-asset', 'tab-centers', 'tab-support', 'tab-map', 'tab-topcust', 'tab-numbers'];
+
+  /* ── hash routing (#overview, #asset, …) ─────────────────────── */
+  function pageOf(tabId) { return tabId.replace('tab-', ''); }
+  function routeHash() { return '#' + pageOf(state.activeTab); }
+
+  function updateHash() {
+    var h = routeHash();
+    if (location.hash !== h) {
+      try { history.replaceState(null, '', h); } catch (e) { location.hash = h; }
+    }
+  }
+
+  /** Apply the URL hash on boot / back-forward. Legacy #new-<page> links still resolve. */
+  function applyHashRoute() {
+    var h = (location.hash || '').replace(/^#/, '');
+    if (!h) return;
+    if (h.indexOf('new-') === 0) h = h.slice(4); // legacy alias from the old edition routes
+    var tabId = 'tab-' + h;
+    if (TAB_IDS.indexOf(tabId) !== -1) activateTab(tabId);
+  }
+
+  function activateTab(tabId) {
+    state.activeTab = tabId;
+    TAB_IDS.forEach(function (id) {
+      var tab = $(id);
+      var panel = $(id.replace('tab-', 'panel-'));
+      var active = id === tabId;
+      tab.classList.toggle('is-active', active);
+      tab.setAttribute('aria-selected', String(active));
+      tab.tabIndex = active ? 0 : -1;
+      panel.hidden = !active;
+      panel.classList.toggle('is-active', active);
+    });
+    Charts.flushVisible();
+    updateSearchPlaceholder();
+    if (tabId === 'tab-overview' && !state.execLoaded) loadExec();
+    if (tabId === 'tab-map') {
+      if (!mainMap.ensureMap()) {
+        $('geoProgress').textContent = 'Map library failed to load — check your network and refresh.';
+        return;
+      }
+      if (!state.mapLoaded) loadMapData();
+    }
+    if (tabId === 'tab-topcust') {
+      tcMap.ensureMap();
+      if (!state.topLoaded) loadTopCustomers();
+    }
+    if (tabId === 'tab-numbers') {
+      if (!state.numbersLoaded) loadNumbers();
+      if (!state.cdRaw.total) loadCdRaw();
+    }
+    updateHash();
+  }
+
+  /* ── Numbers page (center_details counts + raw data) ───────────── */
+  function loadNumbers(bypass) {
+    gsCall('apiGetNumbers', { bypassCache: !!bypass, activeOnly: state.activeOnly })
+      .then(function (d) { state.numbersLoaded = true; renderNumbers(d); })
+      .catch(function (err) {
+        $('numCentersKpi').innerHTML = '<div class="num-empty">Failed: ' + escapeHtml(err.message) + '</div>';
+      });
+  }
+
+  function loadCdRaw() {
+    $('cdRawInfo').textContent = 'Loading…';
+    gsCall('apiGetCenterDetailsRaw', { page: state.cdRaw.page, pageSize: state.cdRaw.pageSize, activeOnly: state.activeOnly })
+      .then(renderCdRaw)
+      .catch(function (err) {
+        $('cdRawInfo').textContent = 'Failed: ' + err.message;
+      });
+  }
+
+  function renderCdRaw(payload) {
+    var rows = payload.rows || [];
+    state.cdRaw.total = payload.totalRows || 0;
+    var body = $('cdRawTable').querySelector('tbody');
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="14" class="chart-empty">No rows</td></tr>';
+    } else {
+      body.innerHTML = rows.map(function (r) {
+        return '<tr>' +
+          '<td class="num">' + escapeHtml(r.center_id) + '</td>' +
+          '<td><strong>' + escapeHtml(r.center || '—') + '</strong></td>' +
+          '<td>' + escapeHtml(r.status || '—') + '</td>' +
+          '<td>' + escapeHtml(r.type || '—') + '</td>' +
+          '<td>' + escapeHtml(r.segment || '—') + '</td>' +
+          '<td class="num">' + escapeHtml(r.hub_id == null ? '—' : r.hub_id) + '</td>' +
+          '<td>' + escapeHtml(r.hub || '—') + '</td>' +
+          '<td>' + escapeHtml(r.city || '—') + '</td>' +
+          '<td>' + escapeHtml(r.state || '—') + '</td>' +
+          '<td>' + escapeHtml(r.pin || '—') + '</td>' +
+          '<td>' + escapeHtml(r.deployed || '—') + '</td>' +
+          '<td>' + escapeHtml(r.deactivated || '—') + '</td>' +
+          '<td class="num">' + FMT.format(r.devices || 0) + '</td>' +
+          '<td><span class="badge badge-' + ((r.devices || 0) > 0 ? 'ok">Yes' : 'muted">No') + '</span></td>' +
+          '</tr>';
+      }).join('');
+    }
+    var start = state.cdRaw.page * state.cdRaw.pageSize;
+    var end = Math.min(start + state.cdRaw.pageSize, state.cdRaw.total);
+    $('cdRawInfo').textContent = state.cdRaw.total
+      ? (FMT.format(start + 1) + '–' + FMT.format(end) + ' of ' + FMT.format(state.cdRaw.total) + ' centers')
+      : '0 centers';
+    var maxPage = Math.max(0, Math.ceil(state.cdRaw.total / state.cdRaw.pageSize) - 1);
+    $('cdRawPage').textContent = (state.cdRaw.page + 1) + ' / ' + (maxPage + 1);
+    $('cdRawPrev').disabled = state.cdRaw.page <= 0;
+    $('cdRawNext').disabled = state.cdRaw.page >= maxPage;
+  }
+
+  function numCompare(items) {
+    return items.map(function (it) {
+      return '<div class="num-cell' + (it.hi ? ' is-hi' : '') + '">' +
+        '<span class="num-cell-val">' + FMT.format(it.value || 0) + '</span>' +
+        '<span class="num-cell-label">' + escapeHtml(it.label) + '</span></div>';
+    }).join('');
+  }
+
+  function numTable(title, rows) {
+    if (!rows || !rows.length) {
+      return '<div class="num-table"><h3>' + escapeHtml(title) + '</h3><p class="num-empty">—</p></div>';
+    }
+    var body = rows.map(function (r) {
+      return '<tr><td>' + escapeHtml(r.k) + '</td><td class="num">' + FMT.format(r.n || 0) + '</td></tr>';
+    }).join('');
+    return '<div class="num-table"><h3>' + escapeHtml(title) + '</h3>' +
+      '<table class="data-table"><tbody>' + body + '</tbody></table></div>';
+  }
+
+  function renderNumbers(d) {
+    $('numCentersKpi').innerHTML = numCompare([
+      { label: 'Centers (center_details)', value: d.centers.total, hi: true }
+    ]);
+    $('numCentersStatus').innerHTML = numTable('By status', d.centers.by_status);
+    $('numCentersSegment').innerHTML = numTable('By segment', d.centers.by_segment);
+
+    $('numHubsKpi').innerHTML = numCompare([
+      { label: 'Hubs (center_details)', value: d.hubs.total, hi: true }
+    ]);
+    $('numHubsStatus').innerHTML = numTable('By hub status', d.hubs.by_status);
+    $('numHubsSegment').innerHTML = numTable('By hub segment', d.hubs.by_segment);
+
+    var devSrc = { 'google-sheet': 'live Google Sheet', 'dump-snapshot': 'offline dump (Sheets API pending)', 'sheet-unavailable': 'unavailable' }[d.devices.source] || '';
+    var mapSrc = { 'center_details': 'center_details serial', 'cloud_devices': 'serial→cloud_devices' }[d.devices.center_source] || 'serial';
+    $('numDevicesKpi').innerHTML = numCompare([
+      { label: 'Devices (fleet)', value: d.devices.total, hi: true },
+      { label: 'Devices mapped', value: d.devices.with_center },
+      { label: 'Centers mapped', value: d.devices.jira_centers },
+      { label: 'In center_details', value: d.devices.in_cd }
+    ]) + (devSrc ? '<div class="num-src">source: ' + escapeHtml(devSrc) + ' · mapped by ' + escapeHtml(mapSrc) + ' (Jira Customer ID ignored)</div>' : '');
+    $('numDevicesStatus').innerHTML = numTable('By Jira status', d.devices.by_status);
+
+    $('numTicketsKpi').innerHTML = numCompare([
+      { label: 'Total tickets', value: d.tickets.total, hi: true },
+      { label: 'Tech', value: d.tickets.tech },
+      { label: 'Non-Tech', value: d.tickets.nontech }
+    ]);
+    $('numTicketsStatus').innerHTML = numTable('By status', d.tickets.by_status);
+  }
+
+  function wireTabs() {
+    TAB_IDS.forEach(function (id, index) {
+      var tab = $(id);
+      tab.addEventListener('click', function () { activateTab(id); });
+      tab.addEventListener('keydown', function (event) {
+        var delta = event.key === 'ArrowRight' ? 1 : (event.key === 'ArrowLeft' ? -1 : 0);
+        if (!delta) return;
+        event.preventDefault();
+        var next = TAB_IDS[(index + delta + TAB_IDS.length) % TAB_IDS.length];
+        activateTab(next);
+        $(next).focus();
+      });
+    });
+  }
+
+  /* ── auto refresh ────────────────────────────────────────────── */
+  function refreshAll(bypassCache) {
+    loadExec();
+    loadDashboard(bypassCache);
+    loadDevices();
+    loadCenters();
+    if (state.mapLoaded) loadMapData();
+    if (state.topLoaded) loadTopCustomers();
+    // Numbers page (incl. the Google-Sheet devices count) — only when it's in play.
+    if (state.numbersLoaded || state.activeTab === 'tab-numbers') {
+      loadNumbers(bypassCache);
+      loadCdRaw();
+    }
+  }
+
+  function tickCountdown() {
+    if (!state.autoRefresh) { $('refreshCountdown').textContent = ''; return; }
+    state.countdown -= 1;
+    if (state.countdown <= 0) {
+      refreshAll(true);
+      state.countdown = REFRESH_SECONDS;
+    }
+    var m = Math.floor(state.countdown / 60);
+    var s = String(state.countdown % 60).padStart(2, '0');
+    $('refreshCountdown').textContent = m + ':' + s;
+  }
+
+  /* ── boot ────────────────────────────────────────────────────── */
+  function debounce(fn, wait) {
+    var timer;
+    return function () {
+      clearTimeout(timer);
+      var args = arguments, self = this;
+      timer = setTimeout(function () { fn.apply(self, args); }, wait);
+    };
+  }
+
+  /* ══════════════ Metric explanations ("how is this calculated?") ══════════════
+     One catalog of every metric on the dashboard; a small ⓘ next to each KPI tile
+     and card title opens a popover with its code, formula and data source. */
+  var METRIC_INFO = {
+    // ── Pillar 1 · Asset ──
+    uptime: { code: 'M-A1', name: 'Machine Uptime %',
+      formula: '(life − downtime) ÷ life × 100, per center, clamped 0–100. Downtime = the union of merged device-failure ticket intervals [created → closed/now]; overlaps are counted once. The fleet figure is the average across centers.',
+      source: 'zoho_data failure tickets + center_details.deploymentdate (birth). North-Star target ≥ 99%.' },
+    mtbf: { code: 'M-A2', name: 'Mean Time Between Failures',
+      formula: 'uptime hours ÷ failure count, shown in days. Null when a center has fewer than 2 failures.',
+      source: 'Derived in the uptime engine (zoho_data failures over deployment life).' },
+    health: { code: 'M-A6', name: 'Asset Health Score',
+      formula: '0–100 = 0.5 × uptime% + MTBF-tier score + failure-count-tier score (TRD tiers). Higher is healthier.',
+      source: 'Composed from M-A1 uptime, M-A2 MTBF and failure counts per center.' },
+    ftf: { code: 'M-A3', name: 'First-Time-Failure by batch',
+      formula: 'Per production-year cohort: the share of the cohort whose center has ever logged a device-failure ticket, plus median time-to-first-failure and early fails (<7 days).',
+      source: 'Batch = year of a device’s first Jira appearance (serial parsed from summary); failures from zoho_data at that center.' },
+    batch: { code: 'M-A5', name: 'Batch Failure signal',
+      formula: 'The production-year cohort with the worst first-time-failure rate (minimum 30 devices), flagging a likely batch defect; the top failure category is its signature.',
+      source: 'Same cohort table as M-A3 (zoho_data failures by birth year).' },
+    deployAge: { code: 'M-A4≈', name: 'Deployment / lifecycle age',
+      formula: 'today − deploymentdate, per center. Shown in months, or years (1 dp) once ≥ 12 months.',
+      source: 'center_details.deploymentdate. True TRD dwell needs the Jira changelog — not yet in the sandbox.' },
+    assetLifecycle: { name: 'Asset lifecycle / types',
+      formula: 'Distinct Jira assets grouped by lifecycle status or hardware type — COUNT(DISTINCT issue_key).',
+      source: 'jira_data (asset changelog).' },
+    assetAge: { name: 'Asset lifecycle age',
+      formula: 'Asset age measured from its first Jira appearance.',
+      source: 'jira_data MIN(ticket_created).' },
+
+    // ── Pillar 3 · Service ──
+    sla: { code: 'SLA', name: 'SLA compliance',
+      formula: 'within% = resolved-within-SLA ÷ resolved. A ticket is resolved when Closed with both dates; “within” means resolution days ≤ the SLA days for its ticket type. Split into Tech / Non-Tech.',
+      source: 'zoho_data (Closed tickets) vs the SLA catalog (117 ticket types → days + Tech flag).' },
+    slaType: { code: 'SLA', name: 'SLA breach by issue type',
+      formula: 'Per ticket type (≥ 20 resolved): the share of resolved tickets that missed the catalog SLA, worst first.',
+      source: 'zoho_data resolution time vs SLA-catalog days.' },
+    slaBreach: { code: 'SLA', name: 'SLA breach (open)',
+      formula: 'Open tickets whose current age already exceeds the SLA days for their ticket type.',
+      source: 'zoho_data open tickets vs SLA catalog.' },
+    tat: { code: 'M-S2', name: 'Turnaround Time (TAT)',
+      formula: 'Average (Closed − Received) in days across field-service cases.',
+      source: 'CS-tracker Google Sheet, one row per field case.' },
+
+    // ── Support distributions ──
+    ticketFlow: { name: 'Ticket flow (created vs closed)',
+      formula: 'Monthly counts of tickets created vs closed over the last 12 months.',
+      source: 'zoho_data CreatedAt / ClosedAt (parsed from the date strings).' },
+    attention: { name: 'Centers needing attention',
+      formula: 'Centers ranked by number of open tickets (4+ open = flagged).',
+      source: 'zoho_data open tickets grouped by center, joined to center_details names.' },
+    reliability: { name: 'Reliability watchlist',
+      formula: 'Centers with the lowest Machine Uptime % (M-A1), lowest first.',
+      source: 'The uptime engine (see M-A1).' },
+    backlog: { name: 'Active backlog', formula: 'Open (non-terminal) tickets grouped by status.', source: 'zoho_data (status not Closed / Duplicate / Junk).' },
+    priority: { name: 'Priority mix', formula: 'Open tickets grouped by priority (blank = “Unset”).', source: 'zoho_data.priority.' },
+    categories: { name: 'Issue categories', formula: 'Ticket counts grouped by issue category / type.', source: 'zoho_data.IssueCategory (or CS-sheet issue type).' },
+    channels: { name: 'Intake channels', formula: 'Tickets grouped by the channel they arrived through.', source: 'zoho_data.Channel.' },
+    segment: { name: 'Tickets by segment', formula: 'Tickets grouped by customer / hub segment.', source: 'zoho_data.hub_master_segment.' },
+    machines: { name: 'Machines in the field', formula: 'Field cases grouped by machine / device type.', source: 'CS-tracker sheet.' },
+    owners: { name: 'Case owners', formula: 'Field cases grouped by assigned owner.', source: 'CS-tracker sheet.' },
+    fieldCases: { name: 'Field cases', formula: 'Count of field-service cases logged.', source: 'CS-tracker sheet.' },
+    created7d: { name: 'Created · 7d', formula: 'Tickets created in the last 7 days.', source: 'zoho_data.CreatedAt.' },
+    closed7d: { name: 'Closed · 7d', formula: 'Tickets closed in the last 7 days.', source: 'zoho_data.ClosedAt.' },
+    openAge: { name: 'Avg open age', formula: 'Average age (days) of currently-open tickets.', source: 'zoho_data (now − CreatedAt).' },
+    openTickets: { name: 'Open tickets', formula: 'Tickets not in a terminal status (Closed / Duplicate / Junk).', source: 'zoho_data.' },
+    ticketsCount: { name: 'Ticket count', formula: 'All tickets ever recorded (COUNT).', source: 'zoho_data.' },
+
+    // ── Fleet / device ──
+    fleetStatus: { name: 'Fleet status (heartbeat)',
+      formula: 'Devices bucketed by last heartbeat vs IST-now: Live <1h, Online <24h, … Never seen (epoch-1970).',
+      source: 'cloud_devices.LastTimeStamp (stored as IST wall-time).' },
+    devicesCount: { name: 'Devices / fleet',
+      formula: 'Distinct devices in the Jira export (deduped by Key). “Mapped” = those whose serial resolves to a center.',
+      source: 'Jira devices Google Sheet; serial (from Summary) → center via cloud_devices.' },
+    devicesMapped: { name: 'Devices mapped', formula: 'Devices whose serial resolves to a CenterID.', source: 'Jira-sheet serial ⋈ cloud_devices.DeviceID → CenterID.' },
+    activePlacements: { name: 'Active placements', formula: 'Device-center deployments currently open (no end date).', source: 'legacy device_center_mapping (enddatetime IS NULL).' },
+    poorSignal: { name: 'Poor signal', formula: 'Devices reporting signal quality CSQ < 10.', source: 'cloud_devices.CSQ.' },
+    unsynced: { name: 'Unsynced ECGs', formula: 'Devices with data still waiting to upload.', source: 'cloud_devices.UnsyncedData > 0.' },
+    firmware: { name: 'Firmware spread', formula: 'Devices grouped by firmware version.', source: 'cloud_devices.FirmwareName.' },
+
+    // ── Centers ──
+    centersCount: { name: 'Centers',
+      formula: 'COUNT(DISTINCT CenterID). F2P_CENTER segment excluded; the Active-centers toggle adds Status = ACTIVE.',
+      source: 'center_details (sole center source).' },
+    centersMapped: { name: 'Centers (mapped)', formula: 'Distinct centers that have at least one mapped device.', source: 'center_details ⋈ mapped devices.' },
+    hubs: { name: 'Hubs', formula: 'COUNT(DISTINCT HubID) from center_details.', source: 'center_details.' },
+    geo: { name: 'Geographic spread', formula: 'Centers / devices grouped by state (or city).', source: 'center_details.state / city.' },
+    statesReach: { name: 'States', formula: 'Distinct states with at least one center.', source: 'center_details.state.' },
+    citiesReach: { name: 'Cities', formula: 'Distinct cities with at least one center.', source: 'center_details.city.' },
+    deployStatus: { name: 'Deployment / lifecycle status', formula: 'Centers (or assets) grouped by status — active vs ended / lifecycle stage.', source: 'center_details.Status / jira_data.status_name.' },
+    center360: { name: 'Center 360', formula: 'One row per center: devices, online, open tickets, uptime and age — joined from every source in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data (hash-joined).' },
+    centersRaw: { name: 'center_details · raw data', formula: 'Raw center_details rows (F2P-excluded), paginated, with a per-center device count and mapped flag.', source: 'center_details + LEFT JOIN cloud_devices.' },
+
+    // ── Customers ──
+    topHubs: { name: 'Top hubs', formula: 'Hubs ranked by device count.', source: 'center_details / device mapping grouped by hub.' },
+    topLe: { name: 'Top LE customers', formula: 'The curated 27 large-enterprise accounts, ranked by devices.', source: 'TopCustomers.js hub list.' },
+    topLeDevices: { name: 'Top LE devices', formula: 'Devices run by the 27 curated “Top LE” hub accounts.', source: 'TopCustomers hub list ⋈ device mapping.' },
+    centersPerCust: { name: 'Centers per customer', formula: 'Distinct centers per top account.', source: 'center_details grouped by hub.' },
+    leaderboard: { name: 'Customer leaderboard', formula: 'Top accounts ranked, with devices / centers / open tickets.', source: 'aggregated from center_details + devices + zoho_data.' }
+  };
+
+  // KPI tile id → metric key
+  var KPI_METRIC = {
+    exUptime: 'uptime', kpiUptime: 'uptime',
+    exActive: 'devicesCount', kpiTotal: 'devicesCount', mapDevices: 'devicesCount', tcDevices: 'devicesCount',
+    exCenters: 'centersCount', kpiCenters: 'centersMapped', mapCenters: 'centersCount', tcCenters: 'centersCount',
+    exTickets: 'openTickets', kpiZOpen: 'openTickets', mapTickets: 'openTickets',
+    exTopLe: 'topLeDevices', tcCustomers: 'topLe',
+    exTat: 'tat', kpiCsTat: 'tat',
+    exTicketCount: 'ticketsCount', tcTicketCount: 'ticketsCount',
+    exSlaBreach: 'slaBreach', tcSlaBreach: 'slaBreach',
+    kpiHealth: 'health', kpiSignal: 'poorSignal', kpiUnsynced: 'unsynced',
+    kpiMapped: 'devicesMapped', kpiActiveDep: 'activePlacements',
+    kpiStates: 'statesReach', kpiCities: 'citiesReach',
+    kpiZIn: 'created7d', kpiZOut: 'closed7d', kpiZAge: 'openAge', kpiCsCases: 'fieldCases',
+    mapAssets: 'assetLifecycle', tcAssets: 'assetLifecycle'
+  };
+
+  // normalized card-title text → metric key
+  var TITLE_METRIC = {
+    'fleet health': 'fleetStatus', 'fleet status': 'fleetStatus',
+    'support ticket flow': 'ticketFlow', 'ticket flow': 'ticketFlow',
+    'centers needing attention': 'attention', 'reliability watchlist': 'reliability',
+    'top le customers': 'topLe', 'where the fleet lives': 'geo', 'firmware spread': 'firmware',
+    'asset lifecycle': 'assetLifecycle', 'asset types': 'assetLifecycle',
+    'asset health score': 'health', 'first-time-failure by production batch': 'ftf',
+    'batch signal': 'batch', 'batch cohort detail': 'ftf',
+    'devices by state': 'geo', 'deployment age': 'deployAge', 'deployment status': 'deployStatus',
+    'top hubs': 'topHubs', 'center 360': 'center360',
+    'sla compliance': 'sla', 'sla breach by issue type': 'slaType',
+    'priority mix': 'priority', 'active backlog': 'backlog', 'top issue categories': 'categories',
+    'intake channels': 'channels', 'tickets by customer segment': 'segment',
+    'field service tat': 'tat', 'machines in the field': 'machines', 'field issue types': 'categories',
+    'case owners': 'owners', 'assets by machine type': 'assetLifecycle', 'asset lifecycle age': 'assetAge',
+    'assets by category': 'assetLifecycle', 'centers by state': 'geo',
+    'devices per customer': 'topLeDevices', 'centers per customer': 'centersPerCust',
+    'open tickets per customer': 'openTickets', 'customer leaderboard': 'leaderboard',
+    'centers': 'centersCount', 'hubs': 'hubs', 'devices': 'devicesCount', 'tickets': 'ticketsCount',
+    'center_details · raw data': 'centersRaw'
+  };
+
+  function infoDotHtml(key) {
+    var m = METRIC_INFO[key];
+    if (!m) return '';
+    return '<button type="button" class="info-dot" data-metric="' + key +
+      '" aria-label="How ' + escapeHtml(m.name) + ' is calculated" tabindex="0">i</button>';
+  }
+
+  function setupMetricInfo() {
+    var pop = document.createElement('div');
+    pop.className = 'info-pop';
+    pop.id = 'infoPop';
+    pop.setAttribute('role', 'tooltip');
+    document.body.appendChild(pop);
+
+    // Inject a dot into every recognised card title (KPI dots come from kpiTile).
+    var titles = document.querySelectorAll('.card-title');
+    for (var i = 0; i < titles.length; i++) {
+      var el = titles[i];
+      if (el.querySelector('.info-dot')) continue;
+      var key = TITLE_METRIC[(el.textContent || '').trim().toLowerCase()];
+      if (key) el.insertAdjacentHTML('beforeend', ' ' + infoDotHtml(key));
+    }
+
+    var pinned = false;
+    function showPop(dot) {
+      var m = METRIC_INFO[dot.getAttribute('data-metric')];
+      if (!m) return;
+      pop.innerHTML =
+        '<div class="info-pop-head">' +
+          (m.code ? '<span class="metric-tag">' + escapeHtml(m.code) + '</span>' : '') +
+          '<span class="info-pop-name">' + escapeHtml(m.name) + '</span></div>' +
+        '<div class="info-pop-row"><span class="info-pop-label">How it’s calculated</span>' +
+          '<span class="info-pop-formula">' + escapeHtml(m.formula) + '</span></div>' +
+        '<div class="info-pop-row"><span class="info-pop-label">Source</span>' + escapeHtml(m.source) + '</div>' +
+        (m.note ? '<div class="info-pop-row info-pop-note">' + escapeHtml(m.note) + '</div>' : '');
+      pop.classList.add('is-open');
+      var r = dot.getBoundingClientRect();
+      var pw = pop.offsetWidth, ph = pop.offsetHeight;
+      var left = Math.max(12, Math.min(r.left, window.innerWidth - pw - 12));
+      var top = r.bottom + 8;
+      if (top + ph > window.innerHeight - 12) top = Math.max(12, r.top - ph - 8);
+      pop.style.left = left + 'px';
+      pop.style.top = top + 'px';
+    }
+    function hidePop() { pop.classList.remove('is-open'); pinned = false; }
+
+    document.addEventListener('mouseover', function (e) {
+      var dot = e.target.closest && e.target.closest('.info-dot');
+      if (dot && !pinned) showPop(dot);
+    });
+    document.addEventListener('mouseout', function (e) {
+      var dot = e.target.closest && e.target.closest('.info-dot');
+      if (dot && !pinned) hidePop();
+    });
+    document.addEventListener('focusin', function (e) {
+      var dot = e.target.closest && e.target.closest('.info-dot');
+      if (dot) showPop(dot);
+    });
+    document.addEventListener('focusout', function (e) {
+      var dot = e.target.closest && e.target.closest('.info-dot');
+      if (dot && !pinned) hidePop();
+    });
+    document.addEventListener('click', function (e) {
+      var dot = e.target.closest && e.target.closest('.info-dot');
+      if (dot) { e.preventDefault(); e.stopPropagation(); pinned = !pinned; if (pinned) showPop(dot); else hidePop(); return; }
+      if (pinned && !(e.target.closest && e.target.closest('.info-pop'))) hidePop();
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hidePop(); });
+    window.addEventListener('resize', hidePop);
+  }
+
+  function init() {
+    buildKpiSkeletons();
+    buildDeviceHeader();
+    buildStatusChips();
+    buildCenterHeader();
+    setupMetricInfo();
+    wireTabs();
+
+    $('refreshBtn').addEventListener('click', function () { refreshAll(true); });
+    $('retryBtn').addEventListener('click', function () { loadDashboard(true); });
+
+    // Theme (persisted) — replaces the old auto-refresh toggle.
+    applyTheme(localStorage.getItem('sip.theme') || 'dark', false);
+    $('themeDark').addEventListener('click', function () { applyTheme('dark', true); });
+    $('themeLight').addEventListener('click', function () { applyTheme('light', true); });
+
+    // Auto-refresh now runs unconditionally in the background.
+    state.autoRefresh = true;
+    setInterval(tickCountdown, 1000);
+
+    // Global search — one box drives the active list page.
+    $('globalSearch').addEventListener('input', debounce(function (e) {
+      state.search = e.target.value.trim();
+      reloadActiveList();
+    }, 350));
+
+    // Global hub filter — re-queries the server-side lists + aggregates.
+    $('hubFilter').addEventListener('change', function (event) {
+      state.hub = event.target.value.trim();
+      state.devices.page = 0; state.centers.page = 0;
+      refreshAll(false);
+    });
+
+    // Global segment filter — applies to centers (server) + map (client).
+    $('globalSegment').addEventListener('change', function (event) {
+      state.segment = event.target.value;
+      state.centers.page = 0;
+      if (state.mapLoaded) applyMapFilters();
+      loadCenters();
+    });
+
+    // "Active centers" toggle — filters center_details to Status = 'ACTIVE' across all pages.
+    $('activeOnlyBtn').addEventListener('click', function () {
+      state.activeOnly = !state.activeOnly;
+      var b = $('activeOnlyBtn');
+      b.classList.toggle('is-active', state.activeOnly);
+      b.setAttribute('aria-pressed', String(state.activeOnly));
+      // Invalidate per-view caches so every page refetches with the new filter.
+      state.execLoaded = false; state.mapLoaded = false; state.topLoaded = false;
+      state.numbersLoaded = false; state.lastDashboard = null; state.cdRaw.total = 0;
+      state.centers.page = 0;
+      refreshAll(false);
+      if (state.activeTab === 'tab-map') { mainMap.ensureMap(); loadMapData(); }
+      if (state.activeTab === 'tab-topcust') { tcMap.ensureMap(); loadTopCustomers(); }
+    });
+
+    $('prevPageBtn').addEventListener('click', function () {
+      state.devices.page = Math.max(0, state.devices.page - 1);
+      loadDevices();
+    });
+    $('nextPageBtn').addEventListener('click', function () {
+      state.devices.page += 1;
+      loadDevices();
+    });
+    $('ctrPrevBtn').addEventListener('click', function () {
+      state.centers.page = Math.max(0, state.centers.page - 1);
+      loadCenters();
+    });
+    $('ctrNextBtn').addEventListener('click', function () {
+      state.centers.page += 1;
+      loadCenters();
+    });
+    $('exportCsvBtn').addEventListener('click', exportCsv);
+
+    // Shared center drawer close (button, scrim click, Esc).
+    $('centerDrawerClose').addEventListener('click', CenterDetail.close);
+    $('centerScrim').addEventListener('click', CenterDetail.close);
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && !$('centerDrawer').hidden) CenterDetail.close();
+    });
+
+    // Clickable ticket-bucket legend on the map.
+    Array.prototype.forEach.call(document.querySelectorAll('.legend-filter'), function (btn) {
+      btn.addEventListener('click', function () {
+        var b = btn.getAttribute('data-bucket');
+        state.ticketBucket = (state.ticketBucket === b) ? '' : b;
+        syncLegendActive();
+        applyMapFilters();
+      });
+    });
+
+    window.addEventListener('hashchange', applyHashRoute);
+
+    // center_details raw-data table pager.
+    $('cdRawPrev').addEventListener('click', function () {
+      if (state.cdRaw.page > 0) { state.cdRaw.page -= 1; loadCdRaw(); }
+    });
+    $('cdRawNext').addEventListener('click', function () {
+      var maxPage = Math.max(0, Math.ceil(state.cdRaw.total / state.cdRaw.pageSize) - 1);
+      if (state.cdRaw.page < maxPage) { state.cdRaw.page += 1; loadCdRaw(); }
+    });
+
+    updateSearchPlaceholder();
+    refreshAll(false);
+    applyHashRoute(); // deep-link support: #overview, #asset, …
+  }
+
+  /** Reloads whichever list the active tab shows, honouring global filters. */
+  function reloadActiveList() {
+    if (state.activeTab === 'tab-asset') { state.devices.page = 0; loadDevices(); }
+    else if (state.activeTab === 'tab-centers') { state.centers.page = 0; loadCenters(); }
+    else if (state.activeTab === 'tab-map') applyMapFilters();
+  }
+
+  function updateSearchPlaceholder() {
+    var map = {
+      'tab-asset': 'Search devices by ID, center or hub…',
+      'tab-centers': 'Search centers by name, ID, hub or state…',
+      'tab-map': 'Search the map: center, hub, device or serial…'
+    };
+    $('globalSearch').placeholder = map[state.activeTab] || 'Search centers, devices, hubs, serials…';
+  }
+
+  function syncLegendActive() {
+    Array.prototype.forEach.call(document.querySelectorAll('.legend-filter'), function (btn) {
+      btn.setAttribute('aria-pressed', String(btn.getAttribute('data-bucket') === state.ticketBucket));
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>

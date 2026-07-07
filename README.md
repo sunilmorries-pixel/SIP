@@ -1,0 +1,98 @@
+# SIP Insights — Device Fleet Intelligence Dashboard
+
+A production-ready, **Tricog-branded**, interactive analytics dashboard built on **Google
+Apps Script + BigQuery**. It surfaces live insights from the `abi_team_sip_devtest_poc`
+dataset plus two Google Sheets: center reliability, revenue-at-risk, support-ticket flow
+(Zoho), SLA compliance, device fleet, and asset reliability.
+
+![stack](https://img.shields.io/badge/stack-Apps%20Script%20%C2%B7%20BigQuery%20%C2%B7%20ECharts-E5344F)
+
+## What it shows (7 tabs)
+
+| Tab | Insights |
+|---|---|
+| **Overview** | Executive rollup: narrative hero, device-age ring, KPI strip, fleet donut, ticket flow, centers-needing-attention + reliability tables |
+| **Asset** | Fleet health (uptime/MTBF/health M-A1/A2/A6), fleet-status donut, asset health-score table, failure-analysis cohort (M-A3/A5), reliability watchlist, device explorer (search/sort/paginate/CSV) |
+| **Centers / Customers** | Geo, deployment age, active-vs-ended, top hubs, Center-360 table (clickable rows → drawer) |
+| **Support / CS** | Zoho KPIs, ticket flow, **SLA-compliance suite** (within% + Tech/Non-Tech + breach-by-type), backlog, categories; CS-sheet TAT/machines/owners |
+| **Map** | Leaflet map of located centers, clustered, colored by open tickets, clickable ticket-bucket legend |
+| **Top Customers** | Curated 27 "Top LE" hubs: KPIs, map, ranked bars, leaderboard (→ customer drawer) |
+| **Numbers** | Source-reconciliation counts + raw paginated `center_details` table (Devices + Mapped columns) |
+
+Interactive everywhere: global search/hub/segment filters, **Active-centers toggle**, light/dark
+theme, a shared center-detail drawer (KPIs + Zoho ticket links + Jira-devices table), **ⓘ
+metric-explanation tooltips** on every KPI and card (formula + data source), flowing animations,
+auto-refresh every 5 minutes, skeleton loading, graceful error/empty states. **Responsive** down
+to 320px (breakpoints in `src/client/Styles.html`).
+
+## Repository layout
+
+```
+demo-sip/
+├── src/                      # everything that deploys to Apps Script
+│   ├── appsscript.json       # manifest: OAuth2 lib, scopes, web-app config
+│   ├── server/               # .gs backend (plain JS)
+│   │   ├── Config.js         # env constants — single source of truth
+│   │   ├── Auth.js           # service-account OAuth (read-only BigQuery)
+│   │   ├── BigQuery.js       # parallel query runner + cache + row parsing
+│   │   ├── Queries.js        # base SQL statements, parameterised
+│   │   ├── EditionCD.js      # center_details data layer — LIVE client endpoints
+│   │   ├── SlaCatalog.js     # SLA catalog + Tech/Non-Tech classification
+│   │   ├── Numbers.js        # Numbers page + Jira-sheet device stats
+│   │   ├── SheetSource.js    # reads Jira + CS Google Sheets (REST API)
+│   │   ├── JiraDump.js       # offline device snapshot (Sheets-API fallback)
+│   │   ├── Api.js            # legacy endpoints (retained; CD versions are live)
+│   │   ├── TopCustomers.js   # curated 27 "Top LE" hubs
+│   │   ├── ExecOverview.js   # legacy exec endpoint
+│   │   ├── Geo.js            # progressive geocoder
+│   │   ├── Join.js           # Apps Script hash-join utils
+│   │   ├── WebApp.js         # doGet router + HTML includes
+│   │   └── Setup.js          # one-time key setup + diagnostics
+│   └── client/               # HTML-service frontend
+│       ├── Index.html        # page shell (7 tabs, shared drawer)
+│       ├── Styles.html       # Tricog design tokens + components + motion
+│       ├── Charts.html       # all ECharts configs
+│       ├── MapView.html      # Leaflet factory (map + top-customers)
+│       └── App.html          # state, data loading, interactions
+├── design-system/            # original design brief (MASTER.md; Styles.html is truth)
+├── docs/                     # architecture, deployment, BQ setup notes
+├── credentials/              # service-account key (gitignored — never commit)
+├── scripts/                  # local helper scripts
+└── .clasp.json.example       # copy to .clasp.json to use clasp push
+```
+
+## Quick start
+
+1. **Deploy the code** — two options, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md):
+   - `clasp push` (recommended), or
+   - copy-paste each file into the Apps Script editor.
+2. **Store the service-account key** (one time): open `Setup.js` (or `Setup.gs`),
+   paste the JSON from `credentials/` into `setupServiceAccountKey()`, run it,
+   then **delete the pasted key** from the source.
+3. **Verify**: run `diagnostics()` — the log should list row counts for every panel.
+4. **Deploy → New deployment → Web app** (execute as you, access: your domain).
+5. Open the web-app URL. Done.
+
+## Security model
+
+- BigQuery access is **read-only** (`bigquery.readonly` scope).
+- The service-account key lives **only in Script Properties**, never in source.
+- All user input (search, hub, paging) goes through **named query parameters** —
+  no string-concatenated SQL.
+- Sort columns are validated against a whitelist.
+- `credentials/` is gitignored; commit history stays clean.
+
+## Local preview
+
+The frontend runs standalone with mock data (no Apps Script needed):
+
+```powershell
+powershell -File scripts/build_preview.ps1   # assembles + serves preview
+```
+
+## Docs
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — data flow, caching, query design
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — clasp + manual deployment paths
+- [docs/AppsScript_BigQuery_Setup.md](docs/AppsScript_BigQuery_Setup.md) — original BQ connection notes
+- [design-system/sip-insights/MASTER.md](design-system/sip-insights/MASTER.md) — Tricog brand tokens (shipped values live in `src/client/Styles.html`)

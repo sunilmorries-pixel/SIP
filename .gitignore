@@ -1,0 +1,24 @@
+# Secrets — never commit service account keys
+credentials/
+*.json.key
+*service_account*.json
+
+# clasp local config (contains scriptId; keep example only)
+.clasp.json
+
+# OS / editor noise
+Thumbs.db
+.DS_Store
+*.log
+
+# Node (if tooling added later)
+node_modules/
+
+# Local Claude Code settings (personal permission allow-list, not shared config)
+.claude/settings.local.json
+
+# Generated local-preview output (scripts/build_preview.ps1)
+dist/
+
+# Throwaway verification scripts (see docs/superpowers/plans — not deployed, rootDir is src)
+scratch/

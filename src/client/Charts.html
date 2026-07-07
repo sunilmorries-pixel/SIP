@@ -1,0 +1,575 @@
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   Charts.html — every ECharts config in one place.
+   Charts render lazily: options are staged per element id and applied
+   only while the element is visible (hidden tab panels have zero size),
+   then re-applied/resized when a tab becomes active.
+   ═══════════════════════════════════════════════════════════════════ */
+var Charts = (function () {
+  'use strict';
+
+  var REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var FMT = new Intl.NumberFormat('en-IN');
+
+  // Series colors are shared across themes (they read well on both). Only the
+  // chart "chrome" (text, grid, axis, tooltip, slice borders) flips with theme.
+  // Tricog data palette: blue-led data, red for emphasis, teal accent.
+  var C = {
+    primary: '#2E9BD6', info: '#38BDF8', accent: '#E5344F', ok: '#2FD39B',
+    warn: '#F5B301', danger: '#FF6262', violet: '#A78BFA', orange: '#FB923C',
+    teal: '#04E0B8', muted: '#64748B',
+    // chrome — reassigned by applyTheme()
+    text: '#A2B4C8', textDim: '#869AB2',
+    grid: 'rgba(46,155,214,0.12)', axis: 'rgba(46,155,214,0.24)',
+    tooltipBg: '#0A2340', tooltipText: '#EAF1F8', sliceBorder: '#04182C'
+  };
+
+  /** Repoints chart chrome colors for the given theme. */
+  function applyTheme(theme) {
+    var light = theme === 'light';
+    C.text = light ? '#3E546B' : '#A2B4C8';
+    C.textDim = light ? '#566A80' : '#869AB2';
+    C.grid = light ? 'rgba(1,41,78,0.08)' : 'rgba(46,155,214,0.12)';
+    C.axis = light ? 'rgba(1,41,78,0.20)' : 'rgba(46,155,214,0.24)';
+    C.tooltipBg = light ? '#FFFFFF' : '#0A2340';
+    C.tooltipText = light ? '#01294E' : '#EAF1F8';
+    C.sliceBorder = light ? '#FFFFFF' : '#04182C';
+  }
+
+  var instances = {};   // id → echarts instance
+  var staged = {};      // id → option waiting to be applied
+
+  function isVisible(el) {
+    return !!(el && el.offsetWidth > 0 && el.offsetHeight > 0);
+  }
+
+  function base(extra) {
+    return Object.assign({
+      animation: !REDUCED_MOTION,
+      animationDuration: 400,
+      animationEasing: 'cubicOut',
+      textStyle: { fontFamily: "'Fira Sans', sans-serif", color: C.text },
+      tooltip: {
+        trigger: 'item',
+        backgroundColor: C.tooltipBg,
+        borderColor: C.axis,
+        textStyle: { color: C.tooltipText, fontSize: 13 },
+        confine: true
+      },
+      grid: { left: 8, right: 16, top: 32, bottom: 8, containLabel: true }
+    }, extra || {});
+  }
+
+  function catAxis(overrides) {
+    return Object.assign({
+      type: 'category',
+      axisLine: { lineStyle: { color: C.axis } },
+      axisTick: { show: false },
+      axisLabel: { color: C.textDim, fontSize: 11, hideOverlap: true }
+    }, overrides || {});
+  }
+
+  function valAxis(overrides) {
+    return Object.assign({
+      type: 'value',
+      splitLine: { lineStyle: { color: C.grid } },
+      axisLabel: { color: C.textDim, fontSize: 11 }
+    }, overrides || {});
+  }
+
+  /** Stage an option; apply immediately when the element is visible. */
+  function render(id, option) {
+    staged[id] = option;
+    var el = document.getElementById(id);
+    if (el) {
+      el.classList.remove('is-loading');
+      if (isVisible(el)) apply_(id);
+    }
+  }
+
+  function apply_(id) {
+    var el = document.getElementById(id);
+    if (!el || !staged[id]) return;
+    if (!instances[id]) instances[id] = echarts.init(el);
+    instances[id].setOption(staged[id], true);
+    instances[id].resize();
+  }
+
+  /** Called on tab switch: materialise anything staged inside the panel. */
+  function flushVisible() {
+    Object.keys(staged).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (isVisible(el)) apply_(id);
+    });
+  }
+
+  function setLoading(ids) {
+    ids.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.classList.add('is-loading');
+    });
+  }
+
+  function showEmpty(id, message) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('is-loading');
+    if (instances[id]) { instances[id].dispose(); delete instances[id]; }
+    delete staged[id];
+    el.innerHTML = '<div class="chart-empty"><span>' + (message || 'No data available') + '</span></div>';
+  }
+
+  function onClick(id, handler) {
+    if (instances[id]) instances[id].on('click', handler);
+  }
+
+  window.addEventListener('resize', function () {
+    Object.keys(instances).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (isVisible(el)) instances[id].resize();
+    });
+  });
+
+  /* ── panel-specific builders ─────────────────────────────────── */
+
+  var FLEET_ORDER = ['Live (<1h)', 'Online (<24h)', 'Idle (1-7d)', 'Offline (7-30d)', 'Dark (>30d)', 'Never seen'];
+  var FLEET_COLORS = {
+    'Live (<1h)': C.ok, 'Online (<24h)': C.primary, 'Idle (1-7d)': C.warn,
+    'Offline (7-30d)': C.orange, 'Dark (>30d)': C.danger, 'Never seen': C.muted
+  };
+
+  function fleetStatus(rows, onSlice, id) {
+    id = id || 'chartFleetStatus';
+    if (!rows || !rows.length) return showEmpty(id);
+    var byStatus = {};
+    rows.forEach(function (r) { byStatus[r.status] = r.cnt; });
+    var data = FLEET_ORDER.filter(function (s) { return byStatus[s]; })
+      .map(function (s) {
+        return { name: s, value: byStatus[s], itemStyle: { color: FLEET_COLORS[s] } };
+      });
+    render(id, base({
+      legend: {
+        bottom: 0, icon: 'circle',
+        textStyle: { color: C.text, fontSize: 12 },
+        itemWidth: 9, itemHeight: 9
+      },
+      series: [{
+        type: 'pie', radius: ['58%', '80%'], center: ['50%', '44%'],
+        avoidLabelOverlap: true,
+        itemStyle: { borderColor: C.sliceBorder, borderWidth: 2 },
+        label: { show: false },
+        emphasis: {
+          label: {
+            show: true, fontSize: 14, fontWeight: 700, color: C.tooltipText,
+            formatter: function (p) { return p.name + '\n' + FMT.format(p.value); }
+          },
+          scaleSize: 4
+        },
+        data: data
+      }]
+    }));
+    if (onSlice) onClick(id, function (p) { onSlice(p.name); });
+  }
+
+
+  function hubs(rows) {
+    if (!rows || !rows.length) return showEmpty('chartHubs');
+    var sorted = rows.slice().reverse(); // largest at top of horizontal chart
+    render('chartHubs', base({
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      legend: { top: 0, textStyle: { color: C.text, fontSize: 12 }, icon: 'circle', itemWidth: 9, itemHeight: 9 },
+      grid: { left: 8, right: 24, top: 32, bottom: 8, containLabel: true },
+      xAxis: valAxis(),
+      yAxis: catAxis({ data: sorted.map(function (r) { return r.hub; }),
+        axisLabel: { color: C.text, fontSize: 11, width: 150, overflow: 'truncate' } }),
+      series: [
+        {
+          name: 'Online (24h)', type: 'bar', stack: 'fleet', barMaxWidth: 16,
+          itemStyle: { color: C.ok },
+          data: sorted.map(function (r) { return r.online; })
+        },
+        {
+          name: 'Offline', type: 'bar', stack: 'fleet', barMaxWidth: 16,
+          itemStyle: { color: 'rgba(134,154,178,0.3)', borderRadius: [0, 6, 6, 0] },
+          data: sorted.map(function (r) { return r.devices - r.online; })
+        }
+      ]
+    }));
+  }
+
+  function geo(rows, id) {
+    id = id || 'chartGeo';
+    if (!rows || !rows.length) return showEmpty(id);
+    var sorted = rows.slice().reverse();
+    render(id, base({
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      grid: { left: 8, right: 24, top: 12, bottom: 8, containLabel: true },
+      xAxis: valAxis(),
+      yAxis: catAxis({ data: sorted.map(function (r) { return r.state; }),
+        axisLabel: { color: C.text, fontSize: 11, width: 110, overflow: 'truncate' } }),
+      series: [{
+        type: 'bar', barMaxWidth: 14,
+        itemStyle: {
+          borderRadius: [0, 6, 6, 0],
+          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+            { offset: 0, color: 'rgba(56,189,248,0.55)' },
+            { offset: 1, color: C.info }
+          ])
+        },
+        data: sorted.map(function (r) { return r.devices; })
+      }]
+    }));
+  }
+
+  function horizontalBar(id, rows, labelKey, valueKey, color) {
+    if (!rows || !rows.length) return showEmpty(id);
+    var sorted = rows.slice().reverse();
+    render(id, base({
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      grid: { left: 8, right: 28, top: 12, bottom: 8, containLabel: true },
+      xAxis: valAxis(),
+      yAxis: catAxis({ data: sorted.map(function (r) { return r[labelKey]; }),
+        axisLabel: { color: C.text, fontSize: 11, width: 170, overflow: 'truncate' } }),
+      series: [{
+        type: 'bar', barMaxWidth: 15,
+        itemStyle: { borderRadius: [0, 6, 6, 0], color: color },
+        label: {
+          show: true, position: 'right', color: C.textDim, fontSize: 11,
+          formatter: function (p) { return FMT.format(p.value); }
+        },
+        data: sorted.map(function (r) { return r[valueKey]; })
+      }]
+    }));
+  }
+
+  function assetStatus(rows) { horizontalBar('chartAssetStatus', rows, 'label', 'cnt', C.primary); }
+  function assetTypes(rows)  { horizontalBar('chartAssetTypes', rows, 'label', 'cnt', C.violet); }
+  function zohoCategories(rows) { horizontalBar('chartZohoCategories', rows, 'category', 'cnt', C.info); }
+  function firmware(rows)    { horizontalBar('chartFirmware', rows, 'firmware', 'devices', C.info); }
+  function zohoSegment(rows) { horizontalBar('chartZohoSegment', rows, 'segment', 'cnt', C.primary); }
+  function csMachine(rows)   { horizontalBar('chartCsMachine', rows, 'label', 'cnt', C.violet); }
+  function csIssueType(rows) { horizontalBar('chartCsIssueType', rows, 'label', 'cnt', C.accent); }
+
+  var AGE_ORDER = ['<3 mo', '3-6 mo', '6-12 mo', '1-2 yr', '2+ yr'];
+
+  function deploymentAge(rows) {
+    if (!rows || !rows.length) return showEmpty('chartDeploymentAge');
+    var byBand = {};
+    rows.forEach(function (r) { byBand[r.band] = r.devices; });
+    var cats = AGE_ORDER.filter(function (b) { return byBand[b]; });
+    render('chartDeploymentAge', base({
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      xAxis: catAxis({ data: cats }),
+      yAxis: valAxis(),
+      series: [{
+        type: 'bar', barMaxWidth: 36,
+        itemStyle: {
+          borderRadius: [6, 6, 0, 0],
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: C.primary },
+            { offset: 1, color: 'rgba(46,155,214,0.45)' }
+          ])
+        },
+        data: cats.map(function (b) { return byBand[b]; })
+      }]
+    }));
+  }
+
+  function activeVsEnded(rows) {
+    if (!rows || !rows.length) return showEmpty('chartActiveEnded');
+    var colors = { Active: C.ok, Ended: C.muted };
+    render('chartActiveEnded', base({
+      legend: { bottom: 0, icon: 'circle', textStyle: { color: C.text, fontSize: 12 }, itemWidth: 9, itemHeight: 9 },
+      series: [{
+        type: 'pie', radius: ['55%', '78%'], center: ['50%', '44%'],
+        itemStyle: { borderColor: C.sliceBorder, borderWidth: 2 },
+        label: { show: false },
+        emphasis: {
+          label: {
+            show: true, fontSize: 14, fontWeight: 700, color: C.tooltipText,
+            formatter: function (p) { return p.name + '\n' + FMT.format(p.value); }
+          }
+        },
+        data: rows.map(function (r) {
+          return { name: r.status, value: r.devices, itemStyle: { color: colors[r.status] || C.info } };
+        })
+      }]
+    }));
+  }
+
+  var CHANNEL_PALETTE = [C.primary, C.info, C.accent, C.ok, C.violet, C.warn, C.orange, C.muted];
+
+  function zohoChannel(rows) {
+    if (!rows || !rows.length) return showEmpty('chartZohoChannel');
+    render('chartZohoChannel', base({
+      legend: { bottom: 0, icon: 'circle', textStyle: { color: C.text, fontSize: 12 }, itemWidth: 9, itemHeight: 9 },
+      series: [{
+        type: 'pie', radius: ['55%', '78%'], center: ['50%', '42%'],
+        itemStyle: { borderColor: C.sliceBorder, borderWidth: 2 },
+        label: { show: false },
+        emphasis: {
+          label: {
+            show: true, fontSize: 14, fontWeight: 700, color: C.tooltipText,
+            formatter: function (p) { return p.name + '\n' + FMT.format(p.value); }
+          }
+        },
+        data: rows.map(function (r, i) {
+          return { name: r.channel, value: r.cnt, itemStyle: { color: CHANNEL_PALETTE[i % CHANNEL_PALETTE.length] } };
+        })
+      }]
+    }));
+  }
+
+  function tatTrend(rows) {
+    if (!rows || !rows.length) return showEmpty('chartTatTrend', 'CS tracker sheet not available');
+    render('chartTatTrend', base({
+      tooltip: { trigger: 'axis' },
+      legend: { top: 0, textStyle: { color: C.text, fontSize: 12 }, icon: 'circle', itemWidth: 9, itemHeight: 9 },
+      grid: { left: 8, right: 8, top: 36, bottom: 8, containLabel: true },
+      xAxis: catAxis({ data: rows.map(function (r) { return r.month; }) }),
+      yAxis: [
+        valAxis({ name: 'cases' }),
+        valAxis({ name: 'avg TAT (d)', splitLine: { show: false } })
+      ],
+      series: [
+        {
+          name: 'Cases resolved', type: 'bar', barMaxWidth: 26,
+          itemStyle: { borderRadius: [6, 6, 0, 0], color: C.primary },
+          data: rows.map(function (r) { return r.cases; })
+        },
+        {
+          name: 'Avg TAT (days)', type: 'line', yAxisIndex: 1, smooth: true, symbolSize: 7,
+          lineStyle: { width: 2.5, color: C.accent }, itemStyle: { color: C.accent },
+          data: rows.map(function (r) { return r.avg_tat; })
+        }
+      ]
+    }));
+  }
+
+  function zohoTrend(rows, id) {
+    id = id || 'chartZohoTrend';
+    if (!rows || !rows.length) return showEmpty(id);
+    render(id, base({
+      tooltip: { trigger: 'axis' },
+      legend: { top: 0, textStyle: { color: C.text, fontSize: 12 }, icon: 'circle', itemWidth: 9, itemHeight: 9 },
+      xAxis: catAxis({ data: rows.map(function (r) { return r.month; }), boundaryGap: false }),
+      yAxis: valAxis(),
+      series: [
+        {
+          name: 'Created', type: 'line', smooth: true, symbolSize: 6,
+          lineStyle: { width: 2.5, color: C.accent }, itemStyle: { color: C.accent },
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(229,52,79,0.24)' },
+              { offset: 1, color: 'rgba(229,52,79,0.02)' }
+            ])
+          },
+          data: rows.map(function (r) { return r.created; })
+        },
+        {
+          name: 'Closed', type: 'line', smooth: true, symbolSize: 6,
+          lineStyle: { width: 2.5, color: C.ok }, itemStyle: { color: C.ok },
+          data: rows.map(function (r) { return r.closed; })
+        }
+      ]
+    }));
+  }
+
+  function zohoStatus(rows) {
+    if (!rows || !rows.length) return showEmpty('chartZohoStatus');
+    render('chartZohoStatus', base({
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      xAxis: catAxis({ data: rows.map(function (r) { return r.status; }),
+        axisLabel: { color: C.textDim, fontSize: 10, interval: 0, rotate: 28, width: 110, overflow: 'truncate' } }),
+      yAxis: valAxis(),
+      series: [{
+        type: 'bar', barMaxWidth: 30,
+        itemStyle: { borderRadius: [6, 6, 0, 0], color: C.warn },
+        data: rows.map(function (r) { return r.cnt; })
+      }]
+    }));
+  }
+
+  var PRIORITY_COLORS = {
+    High: C.danger, Medium: C.warn, Low: C.ok, Unset: C.muted, None: C.muted
+  };
+
+  function zohoPriority(rows) {
+    if (!rows || !rows.length) return showEmpty('chartZohoPriority');
+    render('chartZohoPriority', base({
+      legend: { bottom: 0, icon: 'circle', textStyle: { color: C.text, fontSize: 12 }, itemWidth: 9, itemHeight: 9 },
+      series: [{
+        type: 'pie', radius: ['55%', '78%'], center: ['50%', '44%'],
+        itemStyle: { borderColor: C.sliceBorder, borderWidth: 2 },
+        label: { show: false },
+        emphasis: {
+          label: {
+            show: true, fontSize: 14, fontWeight: 700, color: C.tooltipText,
+            formatter: function (p) { return p.name + '\n' + FMT.format(p.value); }
+          }
+        },
+        data: rows.map(function (r) {
+          return {
+            name: r.priority, value: r.cnt,
+            itemStyle: { color: PRIORITY_COLORS[r.priority] || C.violet }
+          };
+        })
+      }]
+    }));
+  }
+
+  /* ── Map page charts (fed pre-aggregated {label,cnt} arrays) ──── */
+  function verticalBar(id, rows, labelKey, valueKey, color, emptyMsg) {
+    if (!rows || !rows.length) return showEmpty(id, emptyMsg);
+    render(id, base({
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      xAxis: catAxis({ data: rows.map(function (r) { return r[labelKey]; }),
+        axisLabel: { color: C.textDim, fontSize: 10, interval: 0, rotate: 28, width: 90, overflow: 'truncate' } }),
+      yAxis: valAxis(),
+      series: [{
+        type: 'bar', barMaxWidth: 40,
+        itemStyle: {
+          borderRadius: [6, 6, 0, 0],
+          color: (typeof color === 'function') ? color
+            : new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: color }, { offset: 1, color: 'rgba(46,155,214,0.3)' }])
+        },
+        data: rows.map(function (r) { return r[valueKey]; })
+      }]
+    }));
+  }
+
+  /**
+   * Ranked horizontal bar for leaderboards. rows: [{label,cnt}] (already
+   * ordered largest→smallest). opts: { color, pct, max, empty }.
+   */
+  function rankBar(id, rows, opts) {
+    opts = opts || {};
+    if (!rows || !rows.length) return showEmpty(id, opts.empty);
+    var sorted = rows.slice().reverse(); // largest at top
+    render(id, base({
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      grid: { left: 8, right: 44, top: 12, bottom: 8, containLabel: true },
+      xAxis: valAxis(opts.max ? { max: opts.max } : {}),
+      yAxis: catAxis({ data: sorted.map(function (r) { return r.label; }),
+        axisLabel: { color: C.text, fontSize: 11, width: 170, overflow: 'truncate' } }),
+      series: [{
+        type: 'bar', barMaxWidth: 16,
+        itemStyle: { borderRadius: [0, 6, 6, 0], color: opts.color || C.primary },
+        label: {
+          show: true, position: 'right', color: C.textDim, fontSize: 11,
+          formatter: function (p) { return opts.pct ? p.value + '%' : FMT.format(p.value); }
+        },
+        data: sorted.map(function (r) { return r.cnt; })
+      }]
+    }));
+  }
+
+  function assetByType(rows)     { verticalBar('chartAssetByType', rows, 'label', 'cnt', C.primary, 'No assets match'); }
+  function assetByCategory(rows) { horizontalBar('chartAssetByCat', rows, 'label', 'cnt', C.violet); }
+  function centersByState(rows)  { horizontalBar('chartCentersByState', rows, 'label', 'cnt', C.info); }
+
+  var ASSET_AGE_ORDER = ['<6 mo', '6-12 mo', '1-2 yr', '2-3 yr', '3-5 yr', '5+ yr'];
+  function assetAge(rows) {
+    if (!rows || !rows.length) return showEmpty('chartAssetAge', 'No assets match');
+    var by = {}; rows.forEach(function (r) { by[r.label] = r.cnt; });
+    var cats = ASSET_AGE_ORDER.filter(function (b) { return by[b]; });
+    render('chartAssetAge', base({
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      xAxis: catAxis({ data: cats }),
+      yAxis: valAxis(),
+      series: [{
+        type: 'bar', barMaxWidth: 40,
+        itemStyle: {
+          borderRadius: [6, 6, 0, 0],
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: C.accent }, { offset: 1, color: 'rgba(229,52,79,0.3)' }])
+        },
+        data: cats.map(function (b) { return by[b]; })
+      }]
+    }));
+  }
+
+  /**
+   * Batch-cohort failure combo (M-A3 + M-A5): FTF rate % bars (coloured by
+   * severity vs the fleet mean) + failures/device line on a second axis.
+   */
+  function cohort(rows) {
+    if (!rows || !rows.length) return showEmpty('chartCohort');
+    var mean = rows.reduce(function (a, r) { return a + (r.ftf_rate_pct || 0); }, 0) / rows.length;
+    var byYear = {};
+    rows.forEach(function (r) { byYear[r.batch_year] = r; });
+    render('chartCohort', base({
+      tooltip: {
+        trigger: 'axis', axisPointer: { type: 'shadow' },
+        formatter: function (ps) {
+          if (!ps || !ps.length) return '';
+          var r = byYear[ps[0].axisValue] || {};
+          var out = '<strong>' + ps[0].axisValue + ' batch</strong> · ' + FMT.format(r.devices || 0) + ' devices';
+          ps.forEach(function (p) {
+            var val = p.seriesName === 'FTF rate' ? (p.value == null ? '—' : p.value + '%')
+              : (p.value == null ? '—' : p.value + ' /device');
+            out += '<br>' + p.marker + ' ' + p.seriesName + ': <strong>' + val + '</strong>';
+          });
+          return out;
+        }
+      },
+      legend: { top: 0, textStyle: { color: C.text, fontSize: 12 }, icon: 'circle', itemWidth: 9, itemHeight: 9 },
+      grid: { left: 8, right: 8, top: 36, bottom: 8, containLabel: true },
+      xAxis: catAxis({ data: rows.map(function (r) { return r.batch_year; }) }),
+      yAxis: [
+        valAxis({ name: 'FTF %', axisLabel: { color: C.textDim, fontSize: 11, formatter: '{value}%' } }),
+        valAxis({ name: 'fails/device', splitLine: { show: false } })
+      ],
+      series: [
+        {
+          name: 'FTF rate', type: 'bar', barMaxWidth: 34,
+          // value labels shown by default so the metric never depends on colour/hover alone
+          label: { show: true, position: 'top', formatter: '{c}%', color: C.textDim, fontSize: 11, fontWeight: 600 },
+          data: rows.map(function (r) {
+            var v = r.ftf_rate_pct || 0;
+            var col = v >= mean + 5 ? C.danger : (v >= mean ? C.warn : C.primary);
+            return { value: v, itemStyle: { borderRadius: [6, 6, 0, 0], color: col } };
+          })
+        },
+        {
+          name: 'Failures/device', type: 'line', yAxisIndex: 1, smooth: true, symbolSize: 7,
+          lineStyle: { width: 2.5, color: C.accent }, itemStyle: { color: C.accent },
+          data: rows.map(function (r) { return r.avg_failures; })
+        }
+      ]
+    }));
+  }
+
+  return {
+    setLoading: setLoading,
+    flushVisible: flushVisible,
+    showEmpty: showEmpty,
+    cohort: cohort,
+    applyTheme: applyTheme,
+    rankBar: rankBar,
+    assetByType: assetByType,
+    assetByCategory: assetByCategory,
+    assetAge: assetAge,
+    centersByState: centersByState,
+    fleetStatus: fleetStatus,
+    hubs: hubs,
+    geo: geo,
+    firmware: firmware,
+    deploymentAge: deploymentAge,
+    activeVsEnded: activeVsEnded,
+    assetStatus: assetStatus,
+    assetTypes: assetTypes,
+    zohoTrend: zohoTrend,
+    zohoStatus: zohoStatus,
+    zohoCategories: zohoCategories,
+    zohoPriority: zohoPriority,
+    zohoChannel: zohoChannel,
+    zohoSegment: zohoSegment,
+    tatTrend: tatTrend,
+    csMachine: csMachine,
+    csIssueType: csIssueType,
+    FLEET_ORDER: FLEET_ORDER
+  };
+})();
+</script>

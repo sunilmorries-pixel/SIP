@@ -1,0 +1,338 @@
+/**
+ * Api.js — the only functions the client is allowed to call via
+ * google.script.run. Every endpoint:
+ *   1. sanitises input,
+ *   2. serves from cache when possible,
+ *   3. returns an { ok, data | error } envelope so the client never
+ *      has to guess what a failure looks like.
+ */
+
+/** Wraps a producer in the standard response envelope. */
+function respond_(producer) {
+  try {
+    return { ok: true, data: producer(), meta: { generatedAt: new Date().toISOString() } };
+  } catch (err) {
+    console.error(err && err.stack ? err.stack : err);
+    return { ok: false, error: { message: String(err && err.message ? err.message : err) } };
+  }
+}
+
+/**
+ * Main dashboard payload — all panels in one parallel batch.
+ * @param {{hub:(string|undefined), bypassCache:(boolean|undefined)}=} options
+ * @return {Object} envelope with every panel dataset keyed by name
+ */
+function apiGetDashboard(options) {
+  options = options || {};
+  var hub = String(options.hub || '').slice(0, 120);
+  return respond_(function () {
+    var cacheKey = 'dash_v6_' + shortHash(hub);
+    return withCache(cacheKey, function () {
+      var specs = buildDashboardQuerySpecs(hub);
+      var results = runQueriesParallel(specs);
+      enrichCenterNames_(results.reliability);
+      enrichCenterNames_(results.assetHealth);
+      results.csTracker = readCsTracker(); // Google Sheet source (null-safe)
+      results.appName = CONFIG.APP_NAME;
+      results.appVersion = CONFIG.APP_VERSION;
+      results.hub = hub;
+      return results;
+    }, options.bypassCache === true);
+  });
+}
+
+/**
+ * Paginated device explorer.
+ * @param {{search:string, hub:string, status:string, sortBy:string,
+ *          sortDir:string, page:number, pageSize:number}=} options
+ * @return {Object} envelope with { rows, totalRows, page, pageSize }
+ */
+function apiGetDevices(options) {
+  options = options || {};
+  var clean = {
+    search: String(options.search || '').toLowerCase().slice(0, 80),
+    hub: String(options.hub || '').slice(0, 120),
+    status: String(options.status || '').slice(0, 40),
+    sortBy: String(options.sortBy || 'last_seen'),
+    sortDir: options.sortDir === 'asc' ? 'asc' : 'desc',
+    page: Math.max(0, parseInt(options.page, 10) || 0),
+    pageSize: Math.min(100, Math.max(5, parseInt(options.pageSize, 10) || 15))
+  };
+  return respond_(function () {
+    var cacheKey = 'dev_v1_' + shortHash(JSON.stringify(clean));
+    return withCache(cacheKey, function () {
+      var query = buildDeviceExplorerQuery(clean);
+      var rows = runQuery(query.sql, query.params);
+      var totalRows = rows.length ? rows[0].total_rows : 0;
+      rows.forEach(function (row) { delete row.total_rows; });
+      return { rows: rows, totalRows: totalRows, page: clean.page, pageSize: clean.pageSize };
+    });
+  });
+}
+
+/** Whitelisted sort columns for the joined Center-360 rows. */
+var CENTER_SORT_KEYS = {
+  center: 'center', state: 'state', devices: 'devices',
+  online: 'online', open_tickets: 'open_tickets', last_seen: 'last_seen'
+};
+
+/**
+ * Paginated Center-360 explorer — one row per center.
+ * The three sources are SINGLE-TABLE BigQuery reads (Queries.js) and the
+ * join happens HERE in Apps Script via Join.js:
+ *   cloud_devices agg ⟕ latest location ⟕ open-ticket counts, on CenterID.
+ * Filtering, sorting and paging also run in JS over the joined rows.
+ * @param {{search:string, hub:string, sortBy:string, sortDir:string,
+ *          page:number, pageSize:number}=} options
+ * @return {Object} envelope with { rows, totalRows, page, pageSize }
+ */
+function apiGetCenters(options) {
+  options = options || {};
+  var clean = {
+    search: String(options.search || '').toLowerCase().slice(0, 80),
+    hub: String(options.hub || '').slice(0, 120),
+    segment: String(options.segment || '').slice(0, 80),
+    sortBy: String(options.sortBy || 'devices'),
+    sortDir: options.sortDir === 'asc' ? 'asc' : 'desc',
+    page: Math.max(0, parseInt(options.page, 10) || 0),
+    pageSize: Math.min(100, Math.max(5, parseInt(options.pageSize, 10) || 15))
+  };
+  return respond_(function () {
+    var joined = getCenter360Rows_();
+
+    var filtered = joined.filter(function (row) {
+      if (clean.hub && row.hub !== clean.hub) return false;
+      if (clean.segment && row.segment !== clean.segment) return false;
+      if (!clean.search) return true;
+      return (String(row.center).toLowerCase().indexOf(clean.search) !== -1 ||
+              String(row.center_id).indexOf(clean.search) !== -1 ||
+              String(row.hub).toLowerCase().indexOf(clean.search) !== -1 ||
+              String(row.state).toLowerCase().indexOf(clean.search) !== -1);
+    });
+
+    sortRows(filtered, CENTER_SORT_KEYS[clean.sortBy] || 'devices', clean.sortDir);
+
+    var start = clean.page * clean.pageSize;
+    return {
+      rows: filtered.slice(start, start + clean.pageSize),
+      totalRows: filtered.length,
+      page: clean.page,
+      pageSize: clean.pageSize
+    };
+  });
+}
+
+/**
+ * Fetches the three center sources in parallel and joins them in JS.
+ * The joined result (~5k small rows) is cached with the chunked large-cache.
+ * @return {Array<Object>}
+ */
+function getCenter360Rows_() {
+  var cached = cacheGetLarge('ctr360_v3');
+  if (cached) return cached;
+
+  var sources = runQueriesParallel(buildCenterSourceSpecs());
+
+  // Anchor on the full center dimension; live telemetry & tickets are optional.
+  var withTelemetry = leftJoin(sources.centerBase || [], sources.centerTelemetry || [], {
+    leftKey: 'center_id',
+    rightKey: 'center_id',
+    select: function (base, tel) {
+      return {
+        center_id: base.center_id,
+        center: base.center || '',
+        hub: base.hub || '',
+        hub_id: base.hub_id != null ? base.hub_id : '',
+        city: base.city || '',
+        state: base.state || '',
+        pin: base.pin || '',
+        country: base.country || '',
+        devices: tel ? tel.devices : 0,
+        online: tel ? tel.online : 0,
+        last_seen: (tel && tel.last_seen) || ''
+      };
+    }
+  });
+
+  var joined = leftJoin(withTelemetry, sources.centerTickets || [], {
+    leftKey: 'center_id',
+    rightKey: 'center_id',
+    select: function (row, tickets) {
+      row.open_tickets = tickets ? tickets.open_tickets : 0;
+      row.segment = (tickets && tickets.segment) || '';
+      return row;
+    }
+  });
+
+  cachePutLarge('ctr360_v3', joined, 600);
+  return joined;
+}
+
+/* ═══════════ Map view: asset index + map data + center detail ═══════════ */
+
+/**
+ * Adds a friendly `center` name to rows keyed by `centerid`, using the cached
+ * Center-360 rows (no extra query). Falls back to "Center #<id>".
+ * @param {Array<Object>} rows mutated in place
+ * @return {Array<Object>}
+ */
+function enrichCenterNames_(rows) {
+  if (!rows || !rows.length) return rows;
+  var byId = {};
+  getCenter360Rows_().forEach(function (r) { byId[r.center_id] = r; });
+  rows.forEach(function (r) {
+    var c = byId[r.centerid];
+    r.center = (c && c.center) || ('Center #' + r.centerid);
+    if (r.devices == null) r.devices = c ? c.devices : 0;
+  });
+  return rows;
+}
+
+/**
+ * Jira assets linked to centers — the Apps Script-level join the Map view
+ * runs on: serial → device_center_mapping.deviceid, and SIM assets via
+ * IMSI → cloud_devices.IMSI → CenterID.
+ * @return {Array<Object>} assets with .center_id (or null when unlocated)
+ */
+function getAssetIndex_() {
+  var cached = cacheGetLarge('assets_v1');
+  if (cached) return cached;
+
+  var sources = runQueriesParallel(buildAssetSourceSpecs());
+  var byDevice = indexRows(sources.deviceCenters || [], 'device_key');
+  var byImsi = indexRows(sources.imsiCenters || [], 'imsi');
+
+  var assets = (sources.jiraAssets || []).map(function (asset) {
+    var hit = null;
+    if (asset.serial && byDevice[asset.serial]) hit = byDevice[asset.serial];
+    else if (asset.imsi && byImsi[asset.imsi]) hit = byImsi[asset.imsi];
+    return {
+      key: asset.issue_key,
+      summary: asset.summary,
+      serial: asset.serial || asset.imsi || '',
+      type: asset.machine_type || 'Other',
+      category: asset.category || '',
+      birthday: asset.birthday || '',
+      age_days: asset.age_days,
+      center_id: hit ? hit.centerid : null
+    };
+  });
+
+  cachePutLarge('assets_v1', assets, 1800);
+  return assets;
+}
+
+/**
+ * Everything the Map page needs in one cached payload — the client does all
+ * filtering, KPI recompute and chart aggregation from this, so there are no
+ * round-trips on filter changes.
+ *
+ * centers: compact arrays, indices are STABLE (MapView + App depend on them):
+ *   [0]center_id [1]name [2]lat [3]lng [4]devices [5]online
+ *   [6]open_tickets [7]assets [8]hub [9]hub_id [10]segment [11]state
+ * assets: dictionary-encoded to stay compact at 12k–49k rows:
+ *   [0]center_id [1]typeIdx [2]catIdx [3]age_days [4]serial
+ *   with assetTypes[] / assetCats[] as the dictionaries.
+ */
+function apiGetMapData() {
+  return respond_(function () {
+    var cached = cacheGetLarge('map_v3');
+    if (cached) return cached;
+
+    var centers = getCenter360Rows_();
+    var assets = getAssetIndex_();
+    var geoStore = loadGeoStore();
+
+    var assetCount = {};
+    assets.forEach(function (asset) {
+      if (asset.center_id !== null) {
+        assetCount[asset.center_id] = (assetCount[asset.center_id] || 0) + 1;
+      }
+    });
+
+    var locatedIds = {};
+    var located = [];
+    var unlocated = 0;
+    centers.forEach(function (row) {
+      var coords = geoStore[geoKeyFor(row)];
+      if (coords && coords !== 'x') {
+        var parts = coords.split(',');
+        locatedIds[row.center_id] = true;
+        located.push([
+          row.center_id, row.center,
+          parseFloat(parts[0]), parseFloat(parts[1]),
+          row.devices, row.online, row.open_tickets,
+          assetCount[row.center_id] || 0,
+          row.hub || '', row.hub_id != null ? row.hub_id : '',
+          row.segment || '', row.state || ''
+        ]);
+      } else {
+        unlocated++;
+      }
+    });
+
+    var typeDict = [], catDict = [], typeIdx = {}, catIdx = {};
+    function intern_(dict, index, value) {
+      var v = value || 'Other';
+      if (!(v in index)) { index[v] = dict.length; dict.push(v); }
+      return index[v];
+    }
+    var assetRows = [];
+    assets.forEach(function (asset) {
+      if (asset.center_id === null || !locatedIds[asset.center_id]) return;
+      assetRows.push([
+        asset.center_id,
+        intern_(typeDict, typeIdx, asset.type),
+        intern_(catDict, catIdx, asset.category),
+        asset.age_days == null ? null : asset.age_days,
+        asset.serial || ''
+      ]);
+    });
+
+    var payload = {
+      centers: located,
+      assets: assetRows,
+      assetTypes: typeDict,
+      assetCats: catDict,
+      unlocatedCenters: unlocated,
+      geo: geoStats(),
+      matchedAssets: Object.keys(assetCount).length
+    };
+    cachePutLarge('map_v3', payload, 600);
+    return payload;
+  });
+}
+
+/**
+ * Sidebar payload for one center: center/hub info, fleet, tickets and the
+ * Jira assets currently linked to it.
+ * @param {{centerId:number}} options
+ */
+function apiGetCenterDetail(options) {
+  var centerId = parseInt(options && options.centerId, 10);
+  return respond_(function () {
+    if (!isFinite(centerId)) throw new Error('centerId is required');
+    return withCache('ctrdet_v1_' + centerId, function () {
+      var detail = runQueriesParallel(buildCenterDetailSpecs(centerId));
+      var assets = getAssetIndex_()
+        .filter(function (asset) { return asset.center_id === centerId; })
+        .sort(function (a, b) { return (b.age_days || 0) - (a.age_days || 0); })
+        .slice(0, 100);
+      return {
+        info: (detail.info && detail.info[0]) || null,
+        tickets: (detail.tickets && detail.tickets[0]) || null,
+        openTickets: detail.openTickets || [],
+        devices: detail.devices || [],
+        assets: assets
+      };
+    });
+  });
+}
+
+/** Connectivity self-test — run from the editor after setup. */
+function apiHealthCheck() {
+  return respond_(function () {
+    var rows = runQuery('SELECT 1 AS ok');
+    return { bigquery: rows.length === 1 && rows[0].ok === 1 };
+  });
+}

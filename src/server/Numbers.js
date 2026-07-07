@@ -1,0 +1,180 @@
+/**
+ * Numbers.js — the "Numbers" page: counts only (KPIs + small tables) for the
+ * sole center source, center_details, plus device (Jira) and ticket (Zoho)
+ * totals broken down by status / type.
+ *
+ * device_center_mapping has been removed as a data source, so this page now
+ * reports center_details only. F2P_CENTER centers are excluded everywhere
+ * (CD_SEG_FILTER, shared with EditionCD.js). Status/segment come from
+ * center_details; Devices (Jira) and Tickets (Zoho) are source-independent.
+ */
+/**
+ * Device serial → CenterID map, used to map a Jira device (by its Summary
+ * serial) to a center. PREFERS center_details.MacSerialID / DeviceID (the
+ * mapping the user wants) and AUTO-ACTIVATES the moment those columns are
+ * loaded into the sandbox; until then it falls back to cloud_devices.DeviceID.
+ * The Jira "Customer ID" column is never used.
+ * @return {{map:Object, source:string}} SERIAL(upper) → CenterID
+ */
+function deviceCenterMap_() {
+  var map = {};
+  ['MacSerialID', 'DeviceID'].forEach(function (coln) {
+    try {
+      runQuery("SELECT UPPER(TRIM(" + coln + ")) AS did, ANY_VALUE(CenterID) AS cid FROM " +
+        T('center_details') + " WHERE " + coln + " IS NOT NULL AND CenterID IS NOT NULL GROUP BY did")
+        .forEach(function (r) { if (r.did && !(r.did in map)) map[r.did] = r.cid; });
+    } catch (e) { /* column not loaded yet → skip */ }
+  });
+  if (Object.keys(map).length) return { map: map, source: 'center_details' };
+
+  runQuery("SELECT UPPER(TRIM(DeviceID)) AS did, ANY_VALUE(CenterID) AS cid FROM " +
+    T('cloud_devices') + " WHERE DeviceID IS NOT NULL AND CenterID IS NOT NULL GROUP BY did")
+    .forEach(function (r) { if (r.did) map[r.did] = r.cid; });
+  return { map: map, source: 'cloud_devices' };
+}
+
+/**
+ * Fleet/device stats shared by the Numbers page, Asset "Total fleet" and
+ * Overview "Devices" KPI. Devices = Jira issues (dedup by Key). A device is
+ * "mapped" when its serial resolves to a center via deviceCenterMap_. Cached.
+ * @return {{total,with_center,jira_centers,in_cd,by_status,source,center_source}}
+ */
+function jiraDeviceStats_() {
+  return withCache('jiradev_v1', function () {
+    var jiraRows = readJiraSheet();
+    if (jiraRows) {
+      var cdIds = {};
+      getCenter360RowsCD_().forEach(function (c) { cdIds[c.center_id] = true; });
+      // The Jira "Customer ID" column is IGNORED — a device's center comes from
+      // its serial (parsed from Summary) via deviceCenterMap_.
+      var dcm = deviceCenterMap_();
+      var dev2ctr = dcm.map;
+      var SERIAL_RE = /([A-Za-z0-9]{2}-[A-Za-z0-9]{6,})/;
+      var byIssue = {};
+      jiraRows.forEach(function (row) {
+        var ik = String(row.issue_key || row.summary || '');
+        if (!ik) return;
+        if (!byIssue[ik]) {
+          var m = SERIAL_RE.exec(String(row.summary || '').toUpperCase());
+          var cid = m ? dev2ctr[m[1]] : undefined;
+          byIssue[ik] = { status: String(row.status_name || '').trim(), cid: (cid == null ? NaN : cid) };
+        }
+      });
+      var dTotal = 0, dWith = 0, dCenters = {}, dInCd = {}, dStatus = {};
+      Object.keys(byIssue).forEach(function (ik) {
+        var o = byIssue[ik]; dTotal++;
+        if (isFinite(o.cid)) { dWith++; dCenters[o.cid] = true; if (cdIds[o.cid]) dInCd[o.cid] = true; }
+        var st = o.status || '(blank)';
+        dStatus[st] = (dStatus[st] || 0) + 1;
+      });
+      return {
+        total: dTotal, with_center: dWith,
+        jira_centers: Object.keys(dCenters).length, in_cd: Object.keys(dInCd).length,
+        by_status: Object.keys(dStatus).map(function (k) { return { k: k, n: dStatus[k] }; })
+          .sort(function (a, b) { return b.n - a.n; }),
+        source: 'google-sheet', center_source: dcm.source
+      };
+    }
+    return {
+      total: JIRA_DUMP.total, with_center: JIRA_DUMP.with_center,
+      jira_centers: JIRA_DUMP.jira_centers, in_cd: JIRA_DUMP.in_cd,
+      by_status: JIRA_DUMP.by_status, source: 'dump-snapshot', center_source: 'cloud_devices'
+    };
+  });
+}
+
+function apiGetNumbers(options) {
+  options = options || {};
+  var activeOnly = options.activeOnly === true;
+  return respond_(function () {
+    return withCache('numbers_v2' + (activeOnly ? '_a' : ''), function () {
+      var CD = T('center_details');
+      // Devices source swapped from BigQuery jira_data to a Google Sheet — see below.
+      // var JIRA = T('jira_data');   // commented out per request (use JIRA_SHEET_ID)
+      var ZOHO = T('zoho_data');
+      var techBool = techBoolSql_("IFNULL(IssueCategory,'')");
+      var F = cdFilter_(activeOnly); // exclude F2P_CENTER (+ Status='ACTIVE' when active-only)
+
+      var specs = [
+        { key: 'centersTot', sql:
+          "SELECT COUNT(DISTINCT CenterID) AS total FROM " + CD + " WHERE " + F },
+        { key: 'centersStatus', maxRows: 50, sql:
+          "SELECT IFNULL(NULLIF(TRIM(Status), ''), '(blank)') AS k, COUNT(DISTINCT CenterID) AS n " +
+          "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC" },
+        { key: 'centersSegment', maxRows: 50, sql:
+          "SELECT IFNULL(NULLIF(TRIM(Spoke_Center_Segment), ''), '(blank)') AS k, COUNT(DISTINCT CenterID) AS n " +
+          "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC LIMIT 15" },
+
+        { key: 'hubsTot', sql:
+          "SELECT COUNT(DISTINCT HubID) AS total FROM " + CD + " WHERE " + F },
+        { key: 'hubsStatus', maxRows: 50, sql:
+          "SELECT IFNULL(NULLIF(TRIM(HubStatus), ''), '(blank)') AS k, COUNT(DISTINCT HubID) AS n " +
+          "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC" },
+        { key: 'hubsSegment', maxRows: 50, sql:
+          "SELECT IFNULL(NULLIF(TRIM(HubSegment), ''), '(blank)') AS k, COUNT(DISTINCT HubID) AS n " +
+          "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC LIMIT 15" },
+
+        // Devices come from the Google Sheet (readJiraSheet), not BigQuery — see below.
+
+        // Tickets = Zoho, total + by status + by Tech/Non-Tech (SLA catalog).
+        { key: 'ticketsTot', sql:
+          "SELECT COUNT(*) AS total, COUNTIF(is_tech) AS tech, COUNTIF(NOT is_tech) AS nontech " +
+          "FROM (SELECT " + techBool + " AS is_tech FROM " + ZOHO + ")" },
+        { key: 'ticketsStatus', maxRows: 50, sql:
+          "SELECT IFNULL(NULLIF(TRIM(status), ''), '(blank)') AS k, COUNT(*) AS n " +
+          "FROM " + ZOHO + " GROUP BY k ORDER BY n DESC LIMIT 15" }
+      ];
+
+      var r = runQueriesParallel(specs);
+      var centersTot = (r.centersTot && r.centersTot[0]) || {};
+      var hubsTot = (r.hubsTot && r.hubsTot[0]) || {};
+      var ticketsTot = (r.ticketsTot && r.ticketsTot[0]) || {};
+
+      var devices = jiraDeviceStats_();
+
+      return {
+        centers: {
+          total: centersTot.total || 0,
+          by_status: r.centersStatus || [], by_segment: r.centersSegment || []
+        },
+        hubs: {
+          total: hubsTot.total || 0,
+          by_status: r.hubsStatus || [], by_segment: r.hubsSegment || []
+        },
+        devices: devices,
+        tickets: {
+          total: ticketsTot.total || 0, tech: ticketsTot.tech || 0, nontech: ticketsTot.nontech || 0,
+          by_status: r.ticketsStatus || []
+        }
+      };
+    }, options.bypassCache === true);
+  });
+}
+
+/**
+ * Paginated RAW center_details rows for the Numbers page table (F2P excluded).
+ * @param {{page:number, pageSize:number}=} options
+ */
+function apiGetCenterDetailsRaw(options) {
+  options = options || {};
+  var page = Math.max(0, parseInt(options.page, 10) || 0);
+  var pageSize = Math.min(100, Math.max(5, parseInt(options.pageSize, 10) || 25));
+  var activeOnly = options.activeOnly === true;
+  return respond_(function () {
+    var sql =
+      "WITH dev AS (SELECT CenterID, COUNT(*) AS devices FROM " + T('cloud_devices') +
+      " WHERE CenterID IS NOT NULL GROUP BY CenterID) " +
+      "SELECT c.CenterID AS center_id, c.Centername AS center, c.Status AS status, c.Type AS type, " +
+      " c.Spoke_Center_Segment AS segment, c.HubID AS hub_id, c.HubName AS hub, c.City AS city, " +
+      " c.State AS state, c.pin, CAST(c.deploymentdate AS STRING) AS deployed, " +
+      " CAST(c.deactivationdate AS STRING) AS deactivated, IFNULL(d.devices, 0) AS devices, " +
+      " COUNT(*) OVER() AS total_rows " +
+      "FROM " + T('center_details') + " c LEFT JOIN dev d ON d.CenterID = c.CenterID " +
+      "WHERE " + cdFilter_(activeOnly) + " " +
+      "ORDER BY c.CenterID LIMIT " + pageSize + " OFFSET " + (page * pageSize);
+    var rows = runQuery(sql);
+    var total = rows.length ? rows[0].total_rows : 0;
+    rows.forEach(function (r) { delete r.total_rows; });
+    return { rows: rows, totalRows: total, page: page, pageSize: pageSize };
+  });
+}

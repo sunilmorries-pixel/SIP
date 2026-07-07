@@ -15,6 +15,17 @@ Plan: `docs/superpowers/plans/2026-07-07-raw-data-jira-filter-fleet-status-swap-
 + new version + live verification) is gated on explicit go-ahead, since it affects the
 live shared dashboard.
 
+**Progress (4/10 tasks landed, reviewed clean):**
+- ✅ Task 1 — `swap` added to `CONFIG.TECH_FALLBACK_REGEX`
+- ✅ Task 2 — `CONFIG.JIRA_DEVICE_TYPES` + `isTrackedJiraDeviceType_()` filter in `jiraDeviceStats_()` (Numbers.js), cache key bumped to `jiradev_v2`
+- ✅ Task 3 — `Charts.jiraStatus()` donut builder (Charts.html)
+- ✅ Task 4 — Overview card retitled "Fleet status (Jira)", wired to the new donut, tooltip catalog split, mock data updated (verified visually in local preview)
+- ⏳ Task 5 (next) — generic raw Google-Sheet reader (`readRawSheetRows_`, SheetSource.js)
+- ⏳ Tasks 6-9 — Raw Data page (server layer, markup, client logic) + `diagnostics()` extension
+- ⏳ Task 10 — live deploy, gated on user go-ahead
+
+Live ledger: `.superpowers/sdd/progress.md` inside the worktree.
+
 Read this first when resuming. It captures what the project is, where it's deployed,
 how to change/deploy it, the non-obvious data facts, the current feature set, and the
 open items. Deeper detail lives in `docs/` and `design-system/`. The full version-by-version

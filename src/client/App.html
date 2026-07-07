@@ -177,7 +177,9 @@
         topCustomers: ['VIJAYA DIAGNOSTIC', 'Aarthi Scans', 'Apollo Hospital', 'Metropolis', 'Fortis Hospital', 'Suburban Diagnostics'].map(function (n) { return { hub: n, devices: rnd(15, 160) }; }),
         topTotals: { customers: 27, devices: 665, centers: 720 },
         uptimeFleet: { scored: 11344, avg_uptime: 98.9, pct99: 80.6, avg_mtbf_days: 572.9, avg_health: 95.0, pct_healthy: 98.6 },
-        fleet: { total: 43794, with_center: 9888, jira_centers: 4621, in_cd: 9888 },
+        fleet: { total: 43794, with_center: 9888, jira_centers: 4621, in_cd: 9888,
+          by_status: [{ k: 'Deployed', n: 5210 }, { k: 'Store', n: 1180 }, { k: 'Hardware', n: 640 },
+            { k: 'Decommissioned', n: 410 }, { k: 'Field', n: 260 }, { k: 'Exported', n: 90 }] },
         cs: { total_cases: 1284, avg_tat_days: 3.4 }
       });
     }
@@ -1386,7 +1388,7 @@
     }).join('');
 
     /* Charts */
-    Charts.fleetStatus(d.fleetStatus, null, 'execFleet');
+    Charts.jiraStatus((d.fleet && d.fleet.by_status) || [], 'execFleet');
     Charts.zohoTrend(d.zohoTrend, 'execTrend');
     Charts.geo((d.geo || []).slice(0, 8), 'execGeo');
     Charts.rankBar('execTopCust',
@@ -1813,6 +1815,9 @@
     fleetStatus: { name: 'Fleet status (heartbeat)',
       formula: 'Devices bucketed by last heartbeat vs IST-now: Live <1h, Online <24h, … Never seen (epoch-1970).',
       source: 'cloud_devices.LastTimeStamp (stored as IST wall-time).' },
+    jiraFleetStatus: { name: 'Fleet status (Jira)',
+      formula: 'Jira devices grouped by lifecycle status (Deployed, Store, Hardware, Decommissioned, …). Restricted to Issue Type = Connector or ECG Machine.',
+      source: 'Jira devices Google Sheet (issuetype_name filtered to CONFIG.JIRA_DEVICE_TYPES).' },
     devicesCount: { name: 'Devices / fleet',
       formula: 'Distinct devices in the Jira export (deduped by Key). “Mapped” = those whose serial resolves to a center.',
       source: 'Jira devices Google Sheet; serial (from Summary) → center via cloud_devices.' },
@@ -1862,7 +1867,7 @@
 
   // normalized card-title text → metric key
   var TITLE_METRIC = {
-    'fleet health': 'fleetStatus', 'fleet status': 'fleetStatus',
+    'fleet health': 'jiraFleetStatus', 'fleet status': 'fleetStatus',
     'support ticket flow': 'ticketFlow', 'ticket flow': 'ticketFlow',
     'centers needing attention': 'attention', 'reliability watchlist': 'reliability',
     'top le customers': 'topLe', 'where the fleet lives': 'geo', 'firmware spread': 'firmware',

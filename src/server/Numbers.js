@@ -34,15 +34,28 @@ function deviceCenterMap_() {
 }
 
 /**
+ * Is this Jira "Issue Type" one of the device categories the app tracks?
+ * Permanent restriction (2026-07-07): only Connector and ECG Machine count
+ * as fleet devices — everywhere jiraDeviceStats_() is consumed.
+ * @param {string} issueTypeName raw Issue Type cell from the Jira sheet
+ * @return {boolean}
+ */
+function isTrackedJiraDeviceType_(issueTypeName) {
+  var key = String(issueTypeName || '').trim().toLowerCase();
+  return CONFIG.JIRA_DEVICE_TYPES.indexOf(key) !== -1;
+}
+
+/**
  * Fleet/device stats shared by the Numbers page, Asset "Total fleet" and
  * Overview "Devices" KPI. Devices = Jira issues (dedup by Key). A device is
  * "mapped" when its serial resolves to a center via deviceCenterMap_. Cached.
  * @return {{total,with_center,jira_centers,in_cd,by_status,source,center_source}}
  */
 function jiraDeviceStats_() {
-  return withCache('jiradev_v1', function () {
+  return withCache('jiradev_v2', function () {
     var jiraRows = readJiraSheet();
     if (jiraRows) {
+      jiraRows = jiraRows.filter(function (row) { return isTrackedJiraDeviceType_(row.issuetype_name); });
       var cdIds = {};
       getCenter360RowsCD_().forEach(function (c) { cdIds[c.center_id] = true; });
       // The Jira "Customer ID" column is IGNORED — a device's center comes from

@@ -114,7 +114,7 @@ function clearDashboardCache() {
   var cache = CacheService.getScriptCache();
   var h = shortHash('');
   cache.removeAll(['dash_v6_' + h, 'dashcd_v1_' + h, 'exec_v4', 'execcd_v1',
-    'topcust_v1', 'topcustcd_v1', 'numbers_v2']);
+    'topcust_v1', 'topcustcd_v1', 'numbers_v2', 'numbers_v2_a', 'jiradev_v2']);
   // Large (gzip-chunked) caches: remove #meta + each chunk.
   ['ctr360_v3', 'ctr360cd_v1', 'map_v3', 'mapcd_v1', 'assets_v1'].forEach(function (base) {
     var meta = cache.get(base + '#meta');

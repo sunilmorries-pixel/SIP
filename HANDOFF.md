@@ -40,6 +40,7 @@ flowing entrance/hover animations (motion tokens, reduced-motion guarded); auto-
 
 ## 2. Where it's deployed + how to change it
 
+- **Source Code Repository:** Hosted on GitHub at [sunilmorries-pixel/SIP](https://github.com/sunilmorries-pixel/SIP).
 - **Apps Script project:** name **`sip`**, scriptId **`1AH4QA5XQf4bw0mQCOVL8KXXgBzfd_LXR8EhT5Bzt1KtRqf6ufUrwwOeG`**
   (the other project "demo-sip" is an old mock — ignore it). `.clasp.json` points here, `rootDir: src`.
 - **clasp is installed and logged in.** Deploy flow:

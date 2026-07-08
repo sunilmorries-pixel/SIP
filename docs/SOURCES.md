@@ -26,7 +26,7 @@ upstream DWH queries that *produced* the sandbox tables — read them for column
   A device's center is resolved by its **serial** parsed from `Summary`
   (regex `[A-Za-z0-9]{2}-[A-Za-z0-9]{6,}`) → bridged via `cloud_devices.DeviceID`→CenterID
   (9,888 of 43,794 map to a center). The Jira **`Customer ID` column is ignored** (per user).
-- **Permanent restriction (2026-07-07, in progress):** `jiraDeviceStats_()` only counts rows
+- **Permanent restriction (v5.2):** `jiraDeviceStats_()` only counts rows
   whose `Issue Type` is `Connector` or `ECG Machine` (`CONFIG.JIRA_DEVICE_TYPES`, matched
   case-insensitively via `isTrackedJiraDeviceType_()`) — every other Issue Type is excluded
   from the fleet/devices count and from the Numbers-page devices section. This does **not**
@@ -53,7 +53,7 @@ upstream DWH queries that *produced* the sandbox tables — read them for column
 - **Join key to BigQuery:** `Zoho ID` ↔ `zoho_data.ticketNumber` (strip the `#`),
   `Center ID` ↔ `CenterID`.
 
-## Raw Data page (2026-07-07, in progress)
+## Raw Data page (v5.2)
 
 A dedicated "Raw Data" tab exposes all **8** sources this app has ever touched — the 6
 BigQuery tables above plus both Google Sheets — each as its own paginated, full-column
@@ -85,7 +85,7 @@ so it's built here as a **ticket-based proxy** at **center grain** (`centerUptim
 - **Live engine note:** the failure-ticket filter shown above (`FAILURE_CATEGORY_REGEX`) is
   the legacy `centerUptimeSql_`/`Queries.js` description; the live path
   (`centerUptimeSqlCD_` in `EditionCD.js`) uses `techBoolSql_()` (`SlaCatalog.js` — catalog
-  `tech` flag first, `CONFIG.TECH_FALLBACK_REGEX` fallback). **2026-07-07 (in progress):**
+  `tech` flag first, `CONFIG.TECH_FALLBACK_REGEX` fallback). **v5.2:**
   `TECH_FALLBACK_REGEX` gained the keyword `swap`, so any swap-worded ticket category not
   already an exact `SLA_CATALOG` match now counts as technical/downtime — same mechanism
   also feeds M-A2 MTBF, M-A6 health, the batch-cohort analysis, and the SLA Tech/Non-Tech split.

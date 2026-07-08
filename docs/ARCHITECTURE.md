@@ -34,11 +34,12 @@ See `docs/SOURCES.md` for the full source-of-truth table. Summary of current rol
 | CS tracker Google Sheet | — | Support/CS field cases (TAT/machine/owner) |
 | `device_center_mapping`, `jira_data` (BQ) | — | **Retired as user-facing sources** (legacy serial-linking / asset spec only); still surfaced read-only on the Raw Data page |
 
-**2026-07-07 (in progress):** the Jira devices Google Sheet's fleet count is now permanently
-restricted to Issue Type = Connector or ECG Machine (`CONFIG.JIRA_DEVICE_TYPES`, applied in
-`jiraDeviceStats_()`) — see `docs/SOURCES.md` → "Jira devices export". A new **Raw Data**
-view (`src/server/RawData.js`) exposes all 8 sources above unfiltered, paginated, with
-full-table CSV export — see `docs/SOURCES.md` → "Raw Data page".
+**v5.2:** the Jira devices Google Sheet's fleet count is permanently restricted to Issue
+Type = Connector or ECG Machine (`CONFIG.JIRA_DEVICE_TYPES`, applied in `jiraDeviceStats_()`).
+A **Raw Data** view (`src/server/RawData.js`) exposes all 8 sources unfiltered, paginated,
+with full-table CSV export. `swap` tickets are now classified as technical in
+`TECH_FALLBACK_REGEX`. The Overview's fleet donut is a Jira lifecycle-status donut
+(`Charts.jiraStatus()`).
 
 ## Key design decisions
 

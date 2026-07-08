@@ -1,30 +1,15 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-07-07 · **Version:** 5.0 · **Status:** live, deployed via clasp.
+**Last updated:** 2026-07-08 · **Version:** 5.2 · **Status:** code-complete, pending deploy.
 
-**In progress (2026-07-07):** implementing 4 changes — a new "Raw Data" tab (all 8
-sources — 6 BigQuery tables + 2 Google Sheets — paginated, no site filters, full-table
-CSV export), a **permanent** Jira Issue-Type restriction (Connector/ECG Machine only) on
-every Jira-derived device count, the Overview's duplicate heartbeat donut replaced with a
-Jira lifecycle-status donut ("Fleet status (Jira)"), and a downtime-classification fix so
-worded "swap" tickets always count as technical (M-A1/A2/A6 + SLA Tech split). Design doc:
-`docs/superpowers/specs/2026-07-07-raw-data-jira-filter-fleet-status-swap-downtime-design.md`.
-Plan: `docs/superpowers/plans/2026-07-07-raw-data-jira-filter-fleet-status-swap-downtime.md`
-— executing task-by-task (subagent-driven-development) on git worktree branch
-`worktree-raw-data-jira-filter`. **Not yet deployed** — the plan's Task 10 (`clasp push`
-+ new version + live verification) is gated on explicit go-ahead, since it affects the
-live shared dashboard.
+**v5.2 changes (2026-07-08, code-complete — deploy gated on go-ahead):**
+- ✅ **Raw Data tab** — 8th view exposing all 8 data sources (6 BQ tables + 2 Google Sheets) as paginated, unfiltered tables with full-table CSV export. No site filters apply. Server: `RawData.js`, client: pill selector + dynamic table in `App.html`.
+- ✅ **Jira device-type filter** — permanent restriction: only Connector + ECG Machine issue types counted in device stats (`CONFIG.JIRA_DEVICE_TYPES` + `isTrackedJiraDeviceType_()`).
+- ✅ **Fleet status (Jira) donut** — Overview's duplicate heartbeat donut replaced with a Jira lifecycle-status donut (`Charts.jiraStatus()`).
+- ✅ **Swap-downtime fix** — `swap` added to `CONFIG.TECH_FALLBACK_REGEX` so swap-related tickets always classify as technical (affects M-A1/A2/A6 uptime + SLA Tech/Non-Tech split).
+- ✅ **Extended diagnostics** — `diagnostics()` now logs Jira device-type filter stats + row counts for all 8 raw-data sources.
 
-**Progress (4/10 tasks landed, reviewed clean):**
-- ✅ Task 1 — `swap` added to `CONFIG.TECH_FALLBACK_REGEX`
-- ✅ Task 2 — `CONFIG.JIRA_DEVICE_TYPES` + `isTrackedJiraDeviceType_()` filter in `jiraDeviceStats_()` (Numbers.js), cache key bumped to `jiradev_v2`
-- ✅ Task 3 — `Charts.jiraStatus()` donut builder (Charts.html)
-- ✅ Task 4 — Overview card retitled "Fleet status (Jira)", wired to the new donut, tooltip catalog split, mock data updated (verified visually in local preview)
-- ⏳ Task 5 (next) — generic raw Google-Sheet reader (`readRawSheetRows_`, SheetSource.js)
-- ⏳ Tasks 6-9 — Raw Data page (server layer, markup, client logic) + `diagnostics()` extension
-- ⏳ Task 10 — live deploy, gated on user go-ahead
-
-Live ledger: `.superpowers/sdd/progress.md` inside the worktree.
+Branch: `worktree-raw-data-jira-filter` (9 commits). **Not yet deployed** — Task 10 (`clasp push` + new version) is gated on explicit go-ahead.
 
 Read this first when resuming. It captures what the project is, where it's deployed,
 how to change/deploy it, the non-obvious data facts, the current feature set, and the
@@ -42,14 +27,15 @@ insights from the `magnaquest-sand-box.abi_team_sip_devtest_poc` BigQuery datase
 **Jira devices Google Sheet**, and a **CS-tracker Google Sheet**, for Tricog's device
 fleet / service operations.
 
-**Seven views (tabs), Overview is the landing page:**
-1. **Overview** — executive rollup: narrative hero band, avg-device-age ring, KPI strip, fleet donut, ticket-flow, "centers needing attention" + "reliability watchlist" tables, top-customer + geo charts.
+**Eight views (tabs), Overview is the landing page:**
+1. **Overview** — executive rollup: narrative hero band, avg-device-age ring, KPI strip, **Fleet status (Jira)** lifecycle donut, ticket-flow, "centers needing attention" + "reliability watchlist" tables, top-customer + geo charts.
 2. **Asset** — fleet health KPIs (uptime/MTBF/health), fleet-status donut, firmware, Jira asset lifecycle/types, **asset health-score table (M-A6)**, **failure-analysis cohort (M-A3/M-A5)**, center-level reliability watchlist, device explorer (search/sort/paginate/CSV).
 3. **Centers / Customers** — geo, deployment age, active-vs-ended, top hubs, **Center 360** table (clickable rows).
 4. **Support / CS** — Zoho KPIs, ticket flow, **SLA-compliance suite (within% + Tech/Non-Tech + breach-by-type)**, backlog, categories, priority, channel, segment; CS-sheet TAT/machines/issue-types/owners.
 5. **Map** — Leaflet map of all located centers, clustered, colored by open tickets, clickable legend ticket-bucket filter, click a marker → center drawer.
 6. **Top Customers** — curated 27 "Top LE" hubs: KPIs, map, ranked bars, leaderboard (clickable → customer drawer).
 7. **Numbers** — source-reconciliation / raw counts: KPI cards + **raw `center_details` table** (paginated, Devices + Mapped columns), devices from the Jira sheet.
+8. **Raw Data** — every underlying data source (6 BQ tables + 2 Sheets) as a paginated, unfiltered table with pill-selector and full-table CSV export. **No site filters apply** (no F2P exclusion, no Active toggle, no hub/segment/search).
 
 **Cross-cutting UI:** global top-bar search + hub + segment filters (apply to every page);
 **"Active centers" toggle** (top bar → `Status='ACTIVE'` on all center_details queries);
@@ -91,14 +77,15 @@ PowerShell backtick-escaping collision). Auth via
 ## 3. File map
 
 **Server (`src/server/*.js` → deploy as `.gs`):**
-- `Config.js` — env constants (project, dataset, cache TTL, IST offset=330, `JIRA_SHEET_ID`, `CS_SHEET_ID`, `SLA_DEFAULT_DAYS=5`, `TECH_FALLBACK_REGEX`, terminal Zoho statuses, Zoho date format).
+- `Config.js` — env constants (project, dataset, cache TTL, IST offset=330, `JIRA_SHEET_ID`, `CS_SHEET_ID`, `SLA_DEFAULT_DAYS=5`, `TECH_FALLBACK_REGEX` (includes `swap`), `JIRA_DEVICE_TYPES`, terminal Zoho statuses, Zoho date format).
 - `Auth.js` — service-account OAuth for BigQuery (OAuth2 lib, key in Script Properties `SA_KEY`).
 - `BigQuery.js` — parallel query runner (`runQueriesParallel`, `runQuery`), pagination, `withCache` + chunked-gzip `cachePutLarge/cacheGetLarge`, `shortHash`.
 - `Queries.js` — base SQL statements (single-table reads); `buildDashboardQuerySpecs`, device/center explorer, `centerUptimeSql_` (M-A1/A2/A6, uses `techBoolSql_`), `cohortReliabilitySql_` (M-A3/A5), SLA specs. Lazy `nowIstSql_`/`fleetBucketSql_`.
 - **`EditionCD.js`** — **the center_details data layer (SOLE edition).** `CD_SEG_FILTER` (F2P exclusion), `cdFilter_(activeOnly)`, `centerUptimeSqlCD_`, `buildDashboardQuerySpecsCD`, `getCenter360RowsCD_`, and all client endpoints `apiGet{Dashboard,Centers,MapData,TopCustomers,ExecOverview,CenterDetail}CD`. These are what the client actually calls.
 - **`SlaCatalog.js`** — `SLA_CATALOG` (117 issue types → {days, tech}), `slaFor`, `techBoolSql_(col)`, `slaDaysCaseSql_(col)`, CD-safe emitters. Tech/Non-Tech classification + per-ticket SLA days.
-- **`Numbers.js`** — `apiGetNumbers(options)` (center_details-only counts, F2P/active filtered), `jiraDeviceStats_()` (cached fleet totals from the Jira sheet/dump), `deviceCenterMap_()` (serial→center bridge), `apiGetCenterDetailsRaw(options)` (paginated raw center_details + per-center device count + Mapped flag).
-- **`SheetSource.js`** — reads BOTH Google Sheets via the **Sheets REST API**: `readJiraSheet()` (devices; tolerant header map Key/Issue Type/Summary/Status/Created/Customer ID) and `readCsTracker()` (CS field cases).
+- **`Numbers.js`** — `apiGetNumbers(options)` (center_details-only counts, F2P/active filtered), `jiraDeviceStats_()` (cached fleet totals from the Jira sheet/dump, **filtered to Connector + ECG Machine only** via `isTrackedJiraDeviceType_()`), `deviceCenterMap_()` (serial→center bridge), `apiGetCenterDetailsRaw(options)` (paginated raw center_details + per-center device count + Mapped flag).
+- **`SheetSource.js`** — reads BOTH Google Sheets via the **Sheets REST API**: `readJiraSheet()` (devices; tolerant header map Key/Issue Type/Summary/Status/Created/Customer ID), `readCsTracker()` (CS field cases), and `readRawSheetRows_(sheetId, sheetName)` (generic full-fidelity reader for Raw Data page).
+- **`RawData.js`** — `rawSources_()` registry (6 BQ tables + 2 Sheets), `apiGetRawPage(options)` (paginated), `apiGetRawExport(options)` (full-table CSV, capped at 100k rows). No site filters.
 - **`JiraDump.js`** — `JIRA_DUMP` offline snapshot (43,794 devices, pre-aggregated) used when the Sheets API is disabled; auto-swaps to live once enabled.
 - `Join.js` — Apps Script-level hash-join utils (`indexRows`, `leftJoin`, `sortRows`).
 - `Api.js` — legacy device_center_mapping endpoints (`apiGetDashboard` etc.) — **retained but unused** (client calls the CD versions); still hosts `getCenter360Rows_`, `getAssetIndex_`, `enrichCenterNames_`.
@@ -106,14 +93,14 @@ PowerShell backtick-escaping collision). Auth via
 - `ExecOverview.js` — legacy exec endpoint (CD version in EditionCD.js is the live one).
 - `Geo.js` — progressive geocoder (`runGeocodeBatch`, `geoStats`) → chunked Script-Properties store.
 - `WebApp.js` — `doGet` + `include()` templating.
-- `Setup.js` — `setupServiceAccountKey()` (one-time), `diagnostics()` (points at CD endpoints), `clearDashboardCache()`.
+- `Setup.js` — `setupServiceAccountKey()` (one-time), `diagnostics()` (points at CD endpoints + Jira device-type stats + raw-data row counts for all 8 sources), `clearDashboardCache()`.
 
 **Client (`src/client/*.html`):**
-- `Index.html` — page shell (topbar, 7 tabs, all panels incl. **Numbers**, shared drawer, script includes). `#activeOnlyBtn` toggle. Uses `<?!= include('...') ?>`.
-- `Styles.html` — Tricog design tokens (dark + light), component CSS, motion tokens + entrance/hover animations, `.info-dot`/`.info-pop` (metric tooltips), `.sla-*`, `.num-*`, `.batch-signal`, responsive breakpoints (320px+).
-- `Charts.html` — all ECharts configs (`Charts` module), theme-aware palette, `fleetStatus`/`zohoTrend`/`geo`/`cohort`/`rankBar`, lazy render/flush.
+- `Index.html` — page shell (topbar, **8 tabs** incl. **Raw Data**, all panels, shared drawer, script includes). `#activeOnlyBtn` toggle. Uses `<?!= include('...') ?>`.
+- `Styles.html` — Tricog design tokens (dark + light), component CSS, motion tokens + entrance/hover animations, `.info-dot`/`.info-pop` (metric tooltips), `.sla-*`, `.num-*`, `.raw-*` (pill selector + actions), `.batch-signal`, responsive breakpoints (320px+).
+- `Charts.html` — all ECharts configs (`Charts` module), theme-aware palette, `fleetStatus`/`zohoTrend`/`geo`/`cohort`/`rankBar`/**`jiraStatus`**, lazy render/flush.
 - `MapView.html` — **factory** `MapView(containerId)` → Leaflet instance (CARTO tiles, markercluster).
-- `App.html` — state (`activeOnly`, `cdRaw`, …), `ep(name)`→`name+'CD'`, data loading, `countUp/countUpText`, `setKpi/setKpiText`, `renderExec`, `renderDashboard`, `renderNumbers/renderCdRaw`, center drawer, global filters, theme, tabs, **metric-explanation tooltips** (`METRIC_INFO`, `KPI_METRIC`, `TITLE_METRIC`, `setupMetricInfo`), mocks.
+- `App.html` — state (`activeOnly`, `cdRaw`, `rawData`, …), `ep(name)`→`name+'CD'`, data loading, `countUp/countUpText`, `setKpi/setKpiText`, `renderExec`, `renderDashboard`, `renderNumbers/renderCdRaw`, **`loadRawTable/renderRawTable/exportRawFull`**, center drawer, global filters, theme, tabs, **metric-explanation tooltips** (`METRIC_INFO`, `KPI_METRIC`, `TITLE_METRIC`, `setupMetricInfo`), mocks (incl. all 8 raw-data sources).
 
 **Docs / data:** `docs/SOURCES.md`, `docs/DATA_LOADING.md`, `docs/ARCHITECTURE.md`, `docs/DEPLOYMENT.md`,
 `docs/AppsScript_BigQuery_Setup.md`, `sql/*.lineage.sql` (upstream DWH queries — reference only),
@@ -170,7 +157,7 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 ---
 
 ## 7. How to verify after changes
-- `diagnostics()` in the editor logs row counts for every panel + center360/map/top-customers/exec/SLA/devices lines. Use it as the health check.
+- `diagnostics()` in the editor logs row counts for every panel + center360/map/top-customers/exec/SLA/devices lines + **Jira device-type filter stats** + **raw-data row counts for all 8 sources**. Use it as the health check.
 - Local: rebuild + browser-preview (section 2), check console for errors, screenshot each tab + both themes.
 - SQL: verify new queries on live BQ via the scratchpad node → `bq query < file.sql` pattern (section 2) before wiring.
 - Deliver: hard-refresh editor tab → `clasp push --force` → New version deploy.

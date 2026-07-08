@@ -188,37 +188,74 @@ function enrichCenterNames_(rows) {
   return rows;
 }
 
+/** Parse a Jira-sheet date cell ("4/14/2026 18:45:21" or a Date) → 'YYYY-MM-DD' or ''. */
+function assetDateStr_(value) {
+  if (!value) return '';
+  var d = (value instanceof Date) ? value : new Date(String(value));
+  if (isNaN(d.getTime())) return '';
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+
+/** Whole days from a Jira-sheet date until today; null if unparseable. (age = today − Created, per user) */
+function assetAgeDays_(value) {
+  if (!value) return null;
+  var d = (value instanceof Date) ? value : new Date(String(value));
+  if (isNaN(d.getTime())) return null;
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
+}
+
+/** Model/machine token parsed from the Summary prefix (e.g. "Vcardia - B2-…" → VCARDIA). */
+function assetMachineModel_(summary) {
+  var s = String(summary || '').trim();
+  var a = /^([A-Za-z]{3,})/.exec(s);
+  if (a) return a[1].toUpperCase();
+  var b = /^([A-Za-z0-9]{2})-/.exec(s);
+  return b ? b[1].toUpperCase() : '';
+}
+
 /**
- * Jira assets linked to centers — the Apps Script-level join the Map view
- * runs on: serial → device_center_mapping.deviceid, and SIM assets via
- * IMSI → cloud_devices.IMSI → CenterID.
- * @return {Array<Object>} assets with .center_id (or null when unlocated)
+ * Jira assets linked to centers — now sourced from the JIRA GOOGLE SHEET
+ * (readJiraSheet), NOT the jira_data BQ table (ignored per user 2026-07-08).
+ * Restricted to Connector + ECG Machine (isTrackedJiraDeviceType_), 1 row/device
+ * (deduped by Key). Per user's field mapping:
+ *   Key = ticket id · Summary = Device ID / Mac Serial ID · Issue Type = device
+ *   type · Status = device status · age = today − Created.
+ * A device's center: serial parsed from Summary → deviceCenterMap_ (cloud_devices
+ * first, center_details fallback). The Jira "Customer ID" column is ignored.
+ * @return {Array<Object>} assets with .center_id (or null when unmapped)
  */
 function getAssetIndex_() {
-  var cached = cacheGetLarge('assets_v2');
+  var cached = cacheGetLarge('assets_v3');
   if (cached) return cached;
 
-  var sources = runQueriesParallel(buildAssetSourceSpecs());
-  var byDevice = indexRows(sources.deviceCenters || [], 'device_key');
-  var byImsi = indexRows(sources.imsiCenters || [], 'imsi');
+  var jiraRows = readJiraSheet() || [];
+  var dev2ctr = jiraRows.length ? deviceCenterMap_().map : {};
+  var SERIAL_RE = /([A-Za-z0-9]{2}-[A-Za-z0-9]{6,})/;
+  var seen = {}, assets = [];
 
-  var assets = (sources.jiraAssets || []).map(function (asset) {
-    var hit = null;
-    if (asset.serial && byDevice[asset.serial]) hit = byDevice[asset.serial];
-    else if (asset.imsi && byImsi[asset.imsi]) hit = byImsi[asset.imsi];
-    return {
-      key: asset.issue_key,
-      summary: asset.summary,
-      serial: asset.serial || asset.imsi || '',
-      type: asset.machine_type || 'Other',
-      category: asset.category || '',
-      birthday: asset.birthday || '',
-      age_days: asset.age_days,
-      center_id: hit ? hit.centerid : null
-    };
+  jiraRows.forEach(function (row) {
+    if (!isTrackedJiraDeviceType_(row.issuetype_name)) return;   // Connector + ECG Machine only
+    var key = String(row.issue_key || '').trim();
+    if (!key || seen[key]) return;                                // dedupe by Key (1 row/device)
+    seen[key] = true;
+    var summary = String(row.summary || '');
+    var m = SERIAL_RE.exec(summary.toUpperCase());
+    var serial = m ? m[1] : '';
+    var cid = (serial && (serial in dev2ctr)) ? dev2ctr[serial] : null;
+    assets.push({
+      key: key,
+      summary: summary,
+      serial: serial,
+      type: String(row.issuetype_name || 'Other'),   // device type = Issue Type (per user)
+      category: assetMachineModel_(summary),          // model token from Summary
+      status: String(row.status_name || ''),          // device status = Status
+      birthday: assetDateStr_(row.ticket_created),
+      age_days: assetAgeDays_(row.ticket_created),
+      center_id: (cid == null ? null : cid)
+    });
   });
 
-  cachePutLarge('assets_v2', assets, 1800);
+  cachePutLarge('assets_v3', assets, 1800);
   return assets;
 }
 

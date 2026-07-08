@@ -10,27 +10,29 @@
  */
 /**
  * Device serial → CenterID map, used to map a Jira device (by its Summary
- * serial) to a center. PREFERS center_details.MacSerialID / DeviceID (the
- * mapping the user wants) and AUTO-ACTIVATES the moment those columns are
- * loaded into the sandbox; until then it falls back to cloud_devices.DeviceID.
- * The Jira "Customer ID" column is never used.
+ * serial) to a center. Precedence per user (2026-07-08):
+ *   1. PRIMARY  — cloud_devices.DeviceID → CenterID.
+ *   2. FALLBACK — center_details.DeviceID / MacSerialID, ONLY for serials not
+ *      already matched in cloud_devices.
+ * The two are UNIONed (max coverage); cloud_devices wins any conflict. The Jira
+ * "Customer ID" column is never used.
  * @return {{map:Object, source:string}} SERIAL(upper) → CenterID
  */
 function deviceCenterMap_() {
   var map = {};
-  ['MacSerialID', 'DeviceID'].forEach(function (coln) {
+  // 1. PRIMARY: cloud_devices.DeviceID.
+  runQuery("SELECT UPPER(TRIM(DeviceID)) AS did, ANY_VALUE(CenterID) AS cid FROM " +
+    T('cloud_devices') + " WHERE DeviceID IS NOT NULL AND CenterID IS NOT NULL GROUP BY did")
+    .forEach(function (r) { if (r.did) map[r.did] = r.cid; });
+  // 2. FALLBACK: center_details DeviceID / MacSerialID (only serials not in cloud_devices).
+  ['DeviceID', 'MacSerialID'].forEach(function (coln) {
     try {
       runQuery("SELECT UPPER(TRIM(" + coln + ")) AS did, ANY_VALUE(CenterID) AS cid FROM " +
         T('center_details') + " WHERE " + coln + " IS NOT NULL AND CenterID IS NOT NULL GROUP BY did")
         .forEach(function (r) { if (r.did && !(r.did in map)) map[r.did] = r.cid; });
-    } catch (e) { /* column not loaded yet → skip */ }
+    } catch (e) { /* column not present → skip */ }
   });
-  if (Object.keys(map).length) return { map: map, source: 'center_details' };
-
-  runQuery("SELECT UPPER(TRIM(DeviceID)) AS did, ANY_VALUE(CenterID) AS cid FROM " +
-    T('cloud_devices') + " WHERE DeviceID IS NOT NULL AND CenterID IS NOT NULL GROUP BY did")
-    .forEach(function (r) { if (r.did) map[r.did] = r.cid; });
-  return { map: map, source: 'cloud_devices' };
+  return { map: map, source: 'cloud_devices+center_details' };
 }
 
 /**

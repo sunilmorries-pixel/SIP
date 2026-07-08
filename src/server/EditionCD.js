@@ -133,14 +133,107 @@ function buildDashboardQuerySpecsCD(hub, activeOnly) {
   };
   var specs = buildDashboardQuerySpecs(hub).map(function (s) {
     return cd[s.key] ? { key: s.key, params: s.params, sql: cd[s.key], maxRows: s.maxRows } : s;
-  });
+  // Drop the jira_data BQ specs — the status/type donut and the batch cohort are
+  // now computed in JS from the Jira SHEET asset index (see apiGetDashboardCD).
+  }).filter(function (s) { return s.key !== 'assets' && s.key !== 'cohortReliability'; });
+
   // Distinct real segment values (center_details), for the topbar segment filter.
   specs.push({
     key: 'segmentOptions', maxRows: 200,
     sql: "SELECT DISTINCT TRIM(Spoke_Center_Segment) AS segment FROM " + CD +
       " WHERE " + F + " AND NULLIF(TRIM(Spoke_Center_Segment), '') IS NOT NULL ORDER BY segment"
   });
+  // Per-center Zoho failure aggregate (Zoho only — no jira) feeding the JS cohort.
+  var P = "SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', ";
+  specs.push({
+    key: 'zohoFailByCenter', maxRows: 60000,
+    sql:
+      "WITH ftix AS (SELECT CenterID AS cid, " + P + "CreatedAt) AS created, IssueCategory AS cat " +
+      " FROM " + T('zoho_data') + " WHERE CenterID IS NOT NULL AND " +
+      techBoolSql_("IFNULL(IssueCategory,'')") + " AND " + P + "CreatedAt) IS NOT NULL), " +
+      "pc AS (SELECT cid, CAST(MIN(created) AS STRING) AS first_fail, COUNT(*) AS n_fail FROM ftix GROUP BY cid), " +
+      "cr AS (SELECT cid, cat, ROW_NUMBER() OVER (PARTITION BY cid ORDER BY COUNT(*) DESC) AS rn " +
+      " FROM ftix GROUP BY cid, cat) " +
+      "SELECT pc.cid, pc.first_fail, pc.n_fail, c.cat AS top_cat " +
+      "FROM pc LEFT JOIN cr c ON c.cid = pc.cid AND c.rn = 1"
+  });
   return specs;
+}
+
+/**
+ * Status + Issue-Type counts for the Asset-page donuts, computed from the Jira
+ * SHEET asset index (replaces the old jira_data BQ `assets` spec). Same shape:
+ * [{dim:'status'|'type', label, cnt}], each block sorted by cnt desc.
+ * @param {Array<Object>} assets getAssetIndex_() output
+ */
+function assetsDonutFromIndex_(assets) {
+  var byStatus = {}, byType = {};
+  assets.forEach(function (a) {
+    var s = String(a.status || '').trim() || '(blank)';
+    byStatus[s] = (byStatus[s] || 0) + 1;
+    var t = String(a.type || 'Other');
+    byType[t] = (byType[t] || 0) + 1;
+  });
+  function rows(dim, map) {
+    return Object.keys(map).map(function (k) { return { dim: dim, label: k, cnt: map[k] }; })
+      .sort(function (x, y) { return y.cnt - x.cnt; });
+  }
+  return rows('status', byStatus).concat(rows('type', byType));
+}
+
+/**
+ * Batch-cohort failure analysis (M-A3/M-A5) computed in JS from the Jira SHEET
+ * asset index + a per-center Zoho failure aggregate. Batch = YEAR of the device's
+ * Created date (approx: the flat sheet has no changelog, so "first appearance"
+ * collapses to Created). Failure signal is CENTER-grain, as in the old BQ version.
+ * Same output shape as the retired cohortReliabilitySql_.
+ * @param {Array<Object>} assets getAssetIndex_() output
+ * @param {Array<{cid,first_fail,n_fail,top_cat}>} zohoFail per-center Zoho aggregate
+ */
+function cohortFromIndex_(assets, zohoFail) {
+  var fc = {};
+  (zohoFail || []).forEach(function (r) {
+    fc[r.cid] = { first_fail: r.first_fail || null, n_fail: r.n_fail || 0, top_cat: r.top_cat || '' };
+  });
+  var years = {};
+  assets.forEach(function (a) {
+    if (!a.birthday) return;
+    var y = parseInt(a.birthday.slice(0, 4), 10);
+    if (!y) return;
+    var g = years[y] || (years[y] = { devices: 0, everFail: 0, ttff: [], early: 0, failSum: 0, cats: {} });
+    g.devices++;
+    var f = (a.center_id != null) ? fc[a.center_id] : null;
+    if (f && f.first_fail) {
+      g.everFail++;
+      g.failSum += f.n_fail;
+      var bd = new Date(a.birthday), ff = new Date(f.first_fail);
+      if (!isNaN(bd.getTime()) && !isNaN(ff.getTime()) && ff > bd) {
+        var days = Math.floor((ff - bd) / 86400000);
+        g.ttff.push(days);
+        if (days < 7) g.early++;
+      }
+      if (f.top_cat) g.cats[f.top_cat] = (g.cats[f.top_cat] || 0) + 1;
+    }
+  });
+  function median(arr) {
+    if (!arr.length) return null;
+    var s = arr.slice().sort(function (a, b) { return a - b; });
+    var mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+  }
+  return Object.keys(years).map(function (y) {
+    var g = years[y], topCat = '', topN = 0;
+    Object.keys(g.cats).forEach(function (c) { if (g.cats[c] > topN) { topN = g.cats[c]; topCat = c; } });
+    return {
+      batch_year: parseInt(y, 10),
+      devices: g.devices,
+      ftf_rate_pct: g.devices ? Math.round(g.everFail / g.devices * 1000) / 10 : 0,
+      median_ttff_days: median(g.ttff),
+      early_fails: g.early,
+      avg_failures: g.devices ? Math.round(g.failSum / g.devices * 100) / 100 : 0,
+      top_issue: topCat
+    };
+  }).sort(function (a, b) { return a.batch_year - b.batch_year; });
 }
 
 /* ═══════════════ Center-360 rows from center_details ═════════════════════ */
@@ -232,10 +325,16 @@ function apiGetDashboardCD(options) {
   var hub = String(options.hub || '').slice(0, 120);
   var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('dashcd_v3_' + (activeOnly ? 'a' : '') + shortHash(hub), function () {
+    return withCache('dashcd_v4_' + (activeOnly ? 'a' : '') + shortHash(hub), function () {
       var results = runQueriesParallel(buildDashboardQuerySpecsCD(hub, activeOnly));
       enrichCenterNamesCD_(results.reliability, activeOnly);
       enrichCenterNamesCD_(results.assetHealth, activeOnly);
+      // Jira status/type donut + batch cohort — computed in JS from the Jira SHEET
+      // asset index (jira_data BQ is ignored). Same payload shapes as before.
+      var assetIdx = getAssetIndex_();
+      results.assets = assetsDonutFromIndex_(assetIdx);
+      results.cohortReliability = cohortFromIndex_(assetIdx, results.zohoFailByCenter);
+      delete results.zohoFailByCenter;   // internal — not shipped to the client
       results.activeOnly = activeOnly;
       results.csTracker = readCsTracker();
       results.appName = CONFIG.APP_NAME;
@@ -286,11 +385,11 @@ function apiGetMapDataCD(options) {
   options = options || {};
   var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    var cached = cacheGetLarge('mapcd_v3' + (activeOnly ? '_a' : ''));
+    var cached = cacheGetLarge('mapcd_v4' + (activeOnly ? '_a' : ''));
     if (cached) return cached;
 
     var centers = getCenter360RowsCD_(activeOnly);
-    var assets = getAssetIndex_();               // serial linkage via device_center_mapping (flagged)
+    var assets = getAssetIndex_();               // from the Jira SHEET (Connector + ECG only)
     var geoStore = loadGeoStore();
 
     var assetCount = {};
@@ -332,7 +431,7 @@ function apiGetMapDataCD(options) {
       matchedAssets: Object.keys(assetCount).length,
       edition: 'center_details', flags: FLAGS_CD
     };
-    cachePutLarge('mapcd_v3' + (activeOnly ? '_a' : ''), payload, 600);
+    cachePutLarge('mapcd_v4' + (activeOnly ? '_a' : ''), payload, 600);
     return payload;
   });
 }
@@ -402,7 +501,7 @@ function apiGetTopCustomersCD(options) {
   options = options || {};
   var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('topcustcd_v3' + (activeOnly ? '_a' : ''), function () { return computeTopCustomersCD_(activeOnly); });
+    return withCache('topcustcd_v4' + (activeOnly ? '_a' : ''), function () { return computeTopCustomersCD_(activeOnly); });
   });
 }
 
@@ -410,7 +509,7 @@ function apiGetExecOverviewCD(options) {
   options = options || {};
   var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('execcd_v3' + (activeOnly ? '_a' : ''), function () {
+    return withCache('execcd_v4' + (activeOnly ? '_a' : ''), function () {
       var centers = getCenter360RowsCD_(activeOnly);
       var top = computeTopCustomersCD_(activeOnly);
       var want = { kpis: 1, fleetStatus: 1, zohoKpis: 1, zohoTrend: 1, geo: 1, reliability: 1, uptimeFleet: 1, slaKpis: 1 };

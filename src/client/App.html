@@ -125,8 +125,6 @@
           gen: function (i) { return ['H4-DEMO' + i, 10000 + i, 'Demo Hub 1', '404550000' + i, String(rnd(20, 95)), new Date().toISOString()]; } },
         zoho_data: { columns: ['ticketNumber', 'CenterID', 'status', 'CreatedAt', 'ClosedAt', 'IssueCategory'],
           gen: function (i) { return [149000 + i, 10000 + i, 'Closed', '02-Jul-2026 04:59:16 PM', '03-Jul-2026 10:12:00 AM', 'Lead cable']; } },
-        jira_data: { columns: ['issue_key', 'summary', 'customerid', 'status_name', 'issuetype_name', 'ticket_created'],
-          gen: function (i) { return ['TA-' + (45000 + i), 'H4-DEMO' + i + ' ECG issue', 10000 + i, 'Deployed', 'ECG Machine', '2024-01-01']; } },
         jira_sheet: { columns: ['Key', 'Issue Type', 'Summary', 'Status', 'Created', 'Customer ID'],
           gen: function (i) { return ['TA-' + (45000 + i), 'ECG Machine', 'H4-DEMO' + i + ' swap request', 'Deployed', '2024-01-01', 10000 + i]; } },
         cs_tracker: { columns: ['T O M', 'Received Date', 'Closed Date', 'Zoho ID', 'Center ID', 'Machine & DeviceType', 'Issue Type', 'TAT (Days)'],

@@ -18,11 +18,10 @@ function rawSources_() {
     center_details: { label: 'Center Details', kind: 'bq', table: 'center_details', orderBy: 'CenterID' },
     cloud_devices: { label: 'Cloud Devices', kind: 'bq', table: 'cloud_devices', orderBy: 'DeviceID' },
     zoho_data: { label: 'Zoho Tickets', kind: 'bq', table: 'zoho_data', orderBy: 'ticketNumber' },
-    // device_metrics and device_center_mapping removed as user-facing sources
-    // (2026-07-08, per request) — both BQ tables still exist; device_metrics
-    // has no other usage in the app, device_center_mapping is still read
-    // internally by Geo.js.
-    jira_data: { label: 'Jira Issues (legacy BQ)', kind: 'bq', table: 'jira_data', orderBy: 'issue_key' },
+    // Removed as user-facing sources (2026-07-08, per request); BQ tables still
+    // exist: device_metrics (no other app usage), device_center_mapping (still
+    // read internally by Geo.js), jira_data (Jira is now sourced from the Sheet
+    // only — the BQ jira_data table is ignored app-wide).
     jira_sheet: { label: 'Jira Devices (Sheet)', kind: 'sheet', sheetId: CONFIG.JIRA_SHEET_ID },
     cs_tracker: { label: 'CS Tracker (Sheet)', kind: 'sheet', sheetId: CONFIG.CS_SHEET_ID }
   };

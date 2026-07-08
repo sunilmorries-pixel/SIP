@@ -44,7 +44,7 @@ var FLAGS_CD = [
   'No device grain in center queries: "devices" figures are CENTER counts.',
   'startdatetime→deploymentdate, enddatetime→deactivationdate (active = not deactivated).',
   'No coordinate columns since the reload — pins come from the pin-geocode store only.',
-  'Serial→center mapping now prefers center_details DeviceID/MacSerialID (deviceCenterMap_).'
+  'Jira from the Google Sheet only (jira_data BQ ignored); serial→center = cloud_devices first, center_details fallback.'
 ];
 
 /* ═══════════════ Uptime / MTBF / Health (birth = deploymentdate) ═════════ */

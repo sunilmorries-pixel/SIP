@@ -1,6 +1,28 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-07-08 · **Version:** 5.5 · **Status:** LIVE (deployment @24, same URL).
+**Last updated:** 2026-07-08 · **Version:** 5.6 · **Status:** LIVE (deployment @25, same URL).
+
+**v5.6 (2026-07-08, deployed @25):** Jira is now sourced **solely from the Google Sheet**;
+the `jira_data` BQ table is **ignored app-wide** (still exists, just unused). Everything Jira
+stays restricted to **Connector + ECG Machine** at page level. Changes:
+- **`deviceCenterMap_` precedence flipped** (per user): match a device's Summary-serial to
+  **cloud_devices.DeviceID first**, then **center_details DeviceID/MacSerialID** as fallback
+  for devices not in cloud_devices. Old code early-returned on center_details alone and never
+  unioned cloud_devices → serial coverage **11,330 → 27,373**, mapped devices **~9,888 →
+  ~17,323** across **12,028** centers (validated vs live BQ + the real Sheet).
+- **`getAssetIndex_` rewritten to read the Sheet** (`readJiraSheet`), Connector+ECG only,
+  dedupe by Key. Field map per user: Summary = Device ID/serial, Issue Type = device type,
+  Status = device status, age = today − Created, center via `deviceCenterMap_`. Same output
+  shape (+`status`) → map overlay / drawer / top-customers / exec unchanged.
+- **Asset status/type donut + batch cohort (M-A3/M-A5) now computed in JS** from the Sheet
+  asset index (`assetsDonutFromIndex_`, `cohortFromIndex_`) + a Zoho-by-center failure
+  aggregate. The two `jira_data` BQ specs are dropped from `buildDashboardQuerySpecsCD`.
+  Cohort batch = YEAR of Created (approx — flat Sheet has no changelog; user accepted).
+- **Raw Data page**: removed the "Jira Issues (legacy BQ)" pill → 5 sources
+  (center_details, cloud_devices, zoho_data, jira_sheet, cs_tracker).
+- Cache bumped: `assets_v3`, `dashcd_v4`/`mapcd_v4`/`topcustcd_v4`/`execcd_v4`.
+- **Devices/Fleet count** is now confirmed = count of ALL Jira-Sheet devices filtered to
+  Connector + ECG Machine (~28,444: 18,030 ECG + 10,414 Connector).
 
 **v5.5 (2026-07-08, deployed @24):** removed **device_metrics** as a user-facing Raw
 Data source (dropped from `rawSources_` in RawData.js, the source pill in Index.html,
@@ -169,7 +191,7 @@ Private key lives only in Script Properties `SA_KEY`, never in source.
 
 - **Sandbox is a PARTIAL copy of production** with exactly **6 tables** (no `DIM_Centers`). **`center_details` was RELOADED 2026-07-07 12:28 UTC** with a **114-column schema**: now HAS `DeviceID`/`MacSerialID`/`MachineType` (serial→center mapping auto-activated) + `F2P_Customer` flag; REMOVED `pin`→`PinCode`, `Country`→`Spoke_Country`, `latitude`/`longitude` (gone — geocode store is the only coord source), `HubStatus`/`HubSegment` (gone). **Row duplication**: 35,804 rows → 27,778 distinct full rows → **27,410 distinct centers** (8,026 exact full-row dupes + 368 centers with genuinely-different rows) → queries dedupe (`SELECT DISTINCT` / `COUNT(DISTINCT …)`). ⚠️ `Age_In_Months` exists but is UNTRUSTWORTHY — matches neither `deploymentdate` (0%) nor `AcquiredDate` (6%); age charts use `deploymentdate`.
 - **`center_details` is the SOLE center source** (the device_center_mapping "edition" was removed; dcm is also no longer a Raw Data source **and no longer used by Geo.js** — geocoding now reads `center_details`). Everywhere: centers = `COUNT(DISTINCT CenterID)`. **F2P exclusion** keys on `IFNULL(F2P_Customer,0)=0` only (old `'F2P_CENTER'` segment value = 0 rows; flag is all-0 today so nothing is excluded — activates when DE sets it). Counts: **27,410** centers (→ fewer with `Status='ACTIVE'` toggle). Segment (`Spoke_Center_Segment`) is free-text hospital/GP/diagnostic categories with 3+ spellings, 23,247 blank — kept as-is (no normalization); topbar segment filter + dropdown both read this field.
-- **Devices come from the Jira Google Sheet** (`JIRA_SHEET_ID`), ~**43,794** rows (≈1 row/issue, deduped by Key). A device's center is resolved by its **serial** (parsed from Summary, regex `[A-Za-z0-9]{2}-[A-Za-z0-9]{6,}`) bridged via **`cloud_devices.DeviceID`→CenterID** (the only serial↔center source in the sandbox). Coverage: 9,888 of 43,794 map to a center (4,621 distinct centers). `deviceCenterMap_()` is **pre-wired** to prefer `center_details.MacSerialID`/`DeviceID` and auto-activate the moment DE loads those columns. Jira "Customer ID" column is **ignored** (per user).
+- **ALL Jira data comes from the Jira Google Sheet** (`JIRA_SHEET_ID`); the `jira_data` BQ table is **ignored app-wide** (v5.6). **Devices/fleet = count of Sheet rows filtered to Connector + ECG Machine** (~28,444: 18,030 ECG + 10,414 Connector), deduped by Key. Field map: Key = ticket id, Summary = Device ID/serial, Issue Type = device type, Status = device status, age = today − Created. A device's center is resolved by the **serial parsed from Summary** (regex `[A-Za-z0-9]{2}-[A-Za-z0-9]{6,}`) via `deviceCenterMap_()`: **cloud_devices.DeviceID first, then center_details DeviceID/MacSerialID fallback** (union — cloud wins conflicts). Coverage ~**17,323 mapped / 12,028 centers** (serial map = 27,373). Jira "Customer ID" column is **ignored** (per user). `getAssetIndex_` (Api.js) reads the Sheet; the status/type donut + cohort are computed in JS (EditionCD `assetsDonutFromIndex_`/`cohortFromIndex_`).
 - `cloud_devices` — 1 row/device (~11.3k). `LastTimeStamp` is **IST wall-time** (+330 min at load) → recency SQL uses `nowIstSql_()`. `BatteryLevel` can be `"Charging"`. Epoch-1970 = never seen.
 - `zoho_data` — 1 row/ticket (~84.5k). `CreatedAt`/`ClosedAt` are **strings** `"02-Jul-2026 04:59:16 PM"` → `SAFE.PARSE_DATETIME('%d-%b-%Y %I:%M:%S %p', …)`. Has `TicketLink` (drawer links), `priority` often empty. **Does NOT hold** the SLA-quality fields (Resolution/First-Response in Business Hours, thread counts) → blocks FCR/FRT/CHI.
 - `device_metrics` — device rows, **duplicated** → dedupe `GROUP BY deviceid`. `down_time_percentage` is cumulative ticket-time ÷ deployment days (**can exceed 100%** — a service-burden index); `mean_time_between_failures_hrs` is actually in DAYS.

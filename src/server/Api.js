@@ -26,7 +26,7 @@ function apiGetDashboard(options) {
   options = options || {};
   var hub = String(options.hub || '').slice(0, 120);
   return respond_(function () {
-    var cacheKey = 'dash_v6_' + shortHash(hub);
+    var cacheKey = 'dash_v7_' + shortHash(hub);
     return withCache(cacheKey, function () {
       var specs = buildDashboardQuerySpecs(hub);
       var results = runQueriesParallel(specs);
@@ -195,7 +195,7 @@ function enrichCenterNames_(rows) {
  * @return {Array<Object>} assets with .center_id (or null when unlocated)
  */
 function getAssetIndex_() {
-  var cached = cacheGetLarge('assets_v1');
+  var cached = cacheGetLarge('assets_v2');
   if (cached) return cached;
 
   var sources = runQueriesParallel(buildAssetSourceSpecs());
@@ -218,7 +218,7 @@ function getAssetIndex_() {
     };
   });
 
-  cachePutLarge('assets_v1', assets, 1800);
+  cachePutLarge('assets_v2', assets, 1800);
   return assets;
 }
 

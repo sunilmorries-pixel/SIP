@@ -22,6 +22,19 @@ function T(table) {
 }
 
 /**
+ * WHERE fragment restricting jira_data rows to real fleet devices
+ * (CONFIG.JIRA_DEVICE_TYPES: Connector + ECG Machine) — the same permanent
+ * filter jiraDeviceStats_ applies to the Jira Sheet. Lazy for load order.
+ * @return {string}
+ */
+function jiraTypeFilterSql_() {
+  var list = CONFIG.JIRA_DEVICE_TYPES.map(function (t) {
+    return "'" + String(t).toLowerCase().replace(/'/g, "\\'") + "'";
+  }).join(', ');
+  return "LOWER(TRIM(IFNULL(issuetype_name, ''))) IN (" + list + ")";
+}
+
+/**
  * LastTimeStamp is IST wall-time (see CONFIG.IST_OFFSET_MINUTES), so "now"
  * for heartbeat-recency comparisons must also be IST.
  * Functions (not top-level consts) because Apps Script executes files
@@ -118,6 +131,7 @@ function cohortReliabilitySql_() {
     " SELECT " + SERIAL + " AS serial, MIN(ticket_created) AS birth, " +
     "  ANY_VALUE(SAFE_CAST(customerid AS INT64)) AS center_id " +
     " FROM " + T('jira_data') + " WHERE REGEXP_CONTAINS(summary, r'[A-Za-z0-9]{2}-[A-Za-z0-9]{6,}') " +
+    "  AND " + jiraTypeFilterSql_() + " " +   // fleet devices only (Connector + ECG Machine)
     " GROUP BY serial), " +
     "ftix AS (" +
     " SELECT CenterID AS center_id, " + P + "CreatedAt) AS created, IssueCategory " +
@@ -205,11 +219,12 @@ function buildDashboardQuerySpecs(hub) {
     {
       key: 'assets',
       sql:
+        // Permanent fleet-device filter (Connector + ECG Machine only).
         "SELECT 'status' AS dim, status_name AS label, COUNT(DISTINCT issue_key) AS cnt " +
-        "FROM " + T('jira_data') + " GROUP BY label " +
+        "FROM " + T('jira_data') + " WHERE " + jiraTypeFilterSql_() + " GROUP BY label " +
         "UNION ALL " +
         "SELECT 'type' AS dim, issuetype_name AS label, COUNT(DISTINCT issue_key) AS cnt " +
-        "FROM " + T('jira_data') + " GROUP BY label " +
+        "FROM " + T('jira_data') + " WHERE " + jiraTypeFilterSql_() + " GROUP BY label " +
         "ORDER BY dim, cnt DESC"
     },
     {
@@ -567,7 +582,8 @@ function buildAssetSourceSpecs() {
         " ANY_VALUE(issuetype_name) AS category, " +
         " CAST(DATE(MIN(ticket_created)) AS STRING) AS birthday, " +
         " DATE_DIFF(CURRENT_DATE(), DATE(MIN(ticket_created)), DAY) AS age_days " +
-        " FROM " + T('jira_data') + " GROUP BY issue_key) " +
+        // Permanent fleet-device filter (Connector + ECG Machine only).
+        " FROM " + T('jira_data') + " WHERE " + jiraTypeFilterSql_() + " GROUP BY issue_key) " +
         "SELECT issue_key, summary, category, birthday, age_days, " +
         " UPPER(TRIM(REGEXP_EXTRACT(summary, r'([A-Za-z0-9]{2}-[A-Za-z0-9]{8})'))) AS serial, " +
         " REGEXP_EXTRACT(summary, r'^IMSI[- ]*([0-9]{8,})') AS imsi, " +

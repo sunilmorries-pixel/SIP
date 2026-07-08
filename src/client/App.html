@@ -127,8 +127,6 @@
           gen: function (i) { return [149000 + i, 10000 + i, 'Closed', '02-Jul-2026 04:59:16 PM', '03-Jul-2026 10:12:00 AM', 'Lead cable']; } },
         device_metrics: { columns: ['deviceid', 'centerid', 'down_time_percentage', 'total_no_of_tickets', 'mean_time_between_failures_hrs'],
           gen: function (i) { return ['H4-DEMO' + i, 10000 + i, rnd(0, 140), rnd(0, 12), rnd(100, 900)]; } },
-        device_center_mapping: { columns: ['deviceid', 'centerid', 'startdatetime', 'enddatetime'],
-          gen: function (i) { return ['H4-DEMO' + i, 10000 + i, '2023-04-12', '']; } },
         jira_data: { columns: ['issue_key', 'summary', 'customerid', 'status_name', 'issuetype_name', 'ticket_created'],
           gen: function (i) { return ['TA-' + (45000 + i), 'H4-DEMO' + i + ' ECG issue', 10000 + i, 'Deployed', 'ECG Machine', '2024-01-01']; } },
         jira_sheet: { columns: ['Key', 'Issue Type', 'Summary', 'Status', 'Created', 'Customer ID'],
@@ -1783,8 +1781,8 @@
     $('numHubsKpi').innerHTML = numCompare([
       { label: 'Hubs (center_details)', value: d.hubs.total, hi: true }
     ]);
-    $('numHubsStatus').innerHTML = numTable('By hub status', d.hubs.by_status);
-    $('numHubsSegment').innerHTML = numTable('By hub segment', d.hubs.by_segment);
+    $('numHubsStatus').innerHTML = numTable('By center status', d.hubs.by_status);
+    $('numHubsSegment').innerHTML = numTable('By master segment', d.hubs.by_segment);
 
     var devSrc = { 'google-sheet': 'live Google Sheet', 'dump-snapshot': 'offline dump (Sheets API pending)', 'sheet-unavailable': 'unavailable' }[d.devices.source] || '';
     var mapSrc = { 'center_details': 'center_details serial', 'cloud_devices': 'serial→cloud_devices' }[d.devices.center_source] || 'serial';

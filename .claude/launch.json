@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sip-preview",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-File", "scripts/build_preview.ps1"],
+      "port": 8765
+    }
+  ]
+}

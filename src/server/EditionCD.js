@@ -8,30 +8,30 @@
  * calls these *CD endpoints only when the "center_details" edition is active
  * (routes #new-overview, #new-asset, …).
  *
- * ── Field mapping device_center_mapping → center_details ──────────────────
- *   centerid/CenterName/hubid/hubname/city/state/country/pin → same (BQ is
- *     case-insensitive; center_details uses CenterID/Centername/HubID/… ).
+ * ── Field mapping (center_details, post 2026-07-07 reload: 114-col schema) ──
+ *   CenterID/Centername/HubID/HubName/City/State → same (BQ case-insensitive;
+ *     new schema stores centerid/city/state lowercase — SQL still resolves).
+ *   pin      → PinCode         (old bare `pin` column removed)
+ *   country  → Spoke_Country   (old bare `Country` column removed)
  *   startdatetime  → deploymentdate  (DATE, center-level)
  *   enddatetime    → deactivationdate (active = deactivationdate IS NULL)
- *   (no coords)    → latitude/longitude (direct; pin-geocode store as fallback)
- *
- * ── FLAGS — fields with NO clean equivalent (see FLAGS_CD, surfaced in UI) ──
- *   deviceid        : absent in the sandbox center_details → device-grain
- *                     metrics become CENTER-grain (device counts = center
- *                     counts; "latest per device" collapses to 1 row/center).
- *   MacSerialID /   : defined in the upstream tricogde-dwh derivation but NOT
- *   MachineType /     loaded into the sandbox copy → unavailable here.
- *   AcquiredDate
- *   Asset→center map: still uses device_center_mapping serials (getAssetIndex_)
- *                     because center_details carries no device serial.
+ *   coords   → NONE (latitude/longitude REMOVED by reload) → pin-geocode store
+ *              is now the ONLY coordinate source (see coordsForCD_).
+ *   NEW cols : DeviceID / MacSerialID / MachineType now EXIST → serial→center
+ *              mapping auto-activates on center_details (deviceCenterMap_).
+ *   Grain    : reload introduced exact duplicate rows (35,804 rows / 27,410
+ *              distinct centers) → centerBase uses SELECT DISTINCT.
  */
 
 /**
- * Business filter: F2P_CENTER (free-to-pilot) centers are excluded from every
- * center_details query — matches the commented-out WHERE in the DIM_Centers
- * derivation. NULL segment is kept (only F2P_CENTER is dropped).
+ * Business filter: F2P (free-to-pilot) centers are excluded from every
+ * center_details query. The 2026-07-07 reload replaced the segment value
+ * 'F2P_CENTER' with a dedicated F2P_Customer flag column (all 0 today), so we
+ * exclude on the flag AND keep the legacy segment guard in case old-style
+ * values ever return. NULL segment/flag is kept.
  */
-var CD_SEG_FILTER = "(Spoke_Center_Segment != 'F2P_CENTER' OR Spoke_Center_Segment IS NULL)";
+var CD_SEG_FILTER = "(IFNULL(F2P_Customer, 0) = 0" +
+  " AND (Spoke_Center_Segment != 'F2P_CENTER' OR Spoke_Center_Segment IS NULL))";
 
 /** center_details WHERE fragment: F2P always excluded, + optional Status='ACTIVE'. */
 function cdFilter_(activeOnly) {
@@ -40,11 +40,11 @@ function cdFilter_(activeOnly) {
 
 /** Machine-readable flags describing the device→center remap (shown in the UI banner). */
 var FLAGS_CD = [
-  'Source: center_details (' + '55,682 centers) vs device_center_mapping (11,344).',
-  'No device grain: "devices" figures are CENTER counts, not device counts.',
+  'Source: center_details (2026-07-07 reload: 35,804 rows / 27,410 distinct centers).',
+  'No device grain in center queries: "devices" figures are CENTER counts.',
   'startdatetime→deploymentdate, enddatetime→deactivationdate (active = not deactivated).',
-  'Coordinates from latitude/longitude (~3.4k centers) with pin-geocode fallback.',
-  'Asset→center linking still uses device_center_mapping (center_details has no serial).'
+  'No coordinate columns since the reload — pins come from the pin-geocode store only.',
+  'Serial→center mapping now prefers center_details DeviceID/MacSerialID (deviceCenterMap_).'
 ];
 
 /* ═══════════════ Uptime / MTBF / Health (birth = deploymentdate) ═════════ */
@@ -141,7 +141,7 @@ function buildDashboardQuerySpecsCD(hub, activeOnly) {
 
 /** center_details center dimension ⟕ live telemetry ⟕ open tickets (by CenterID). */
 function getCenter360RowsCD_(activeOnly) {
-  var ckey = 'ctr360cd_v1' + (activeOnly ? '_a' : '');
+  var ckey = 'ctr360cd_v2' + (activeOnly ? '_a' : '');
   var cached = cacheGetLarge(ckey);
   if (cached) return cached;
 
@@ -150,9 +150,14 @@ function getCenter360RowsCD_(activeOnly) {
     return {
       key: 'centerBase', maxRows: 60000,
       sql:
-        "SELECT CenterID AS center_id, Centername AS center, HubID AS hub_id, HubName AS hub, " +
-        " City AS city, State AS state, pin, Country AS country, " +
-        " latitude AS lat, longitude AS lng, CAST(deploymentdate AS STRING) AS deployment_date " +
+        // DISTINCT: the 2026-07-07 reload has exact duplicate rows per center.
+        // PinCode/Spoke_Country replace the removed pin/Country columns; the
+        // reload dropped latitude/longitude entirely → NULL here, coordinates
+        // come from the pin-geocode store fallback (coordsForCD_).
+        "SELECT DISTINCT CenterID AS center_id, Centername AS center, HubID AS hub_id, HubName AS hub, " +
+        " City AS city, State AS state, PinCode AS pin, Spoke_Country AS country, " +
+        " CAST(NULL AS FLOAT64) AS lat, CAST(NULL AS FLOAT64) AS lng, " +
+        " CAST(deploymentdate AS STRING) AS deployment_date " +
         "FROM " + T('center_details') + " WHERE " + cdFilter_(activeOnly)
     };
   });
@@ -218,7 +223,7 @@ function apiGetDashboardCD(options) {
   var hub = String(options.hub || '').slice(0, 120);
   var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('dashcd_v1_' + (activeOnly ? 'a' : '') + shortHash(hub), function () {
+    return withCache('dashcd_v2_' + (activeOnly ? 'a' : '') + shortHash(hub), function () {
       var results = runQueriesParallel(buildDashboardQuerySpecsCD(hub, activeOnly));
       enrichCenterNamesCD_(results.reliability, activeOnly);
       enrichCenterNamesCD_(results.assetHealth, activeOnly);
@@ -272,7 +277,7 @@ function apiGetMapDataCD(options) {
   options = options || {};
   var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    var cached = cacheGetLarge('mapcd_v1' + (activeOnly ? '_a' : ''));
+    var cached = cacheGetLarge('mapcd_v2' + (activeOnly ? '_a' : ''));
     if (cached) return cached;
 
     var centers = getCenter360RowsCD_(activeOnly);
@@ -318,7 +323,7 @@ function apiGetMapDataCD(options) {
       matchedAssets: Object.keys(assetCount).length,
       edition: 'center_details', flags: FLAGS_CD
     };
-    cachePutLarge('mapcd_v1' + (activeOnly ? '_a' : ''), payload, 600);
+    cachePutLarge('mapcd_v2' + (activeOnly ? '_a' : ''), payload, 600);
     return payload;
   });
 }
@@ -388,7 +393,7 @@ function apiGetTopCustomersCD(options) {
   options = options || {};
   var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('topcustcd_v1' + (activeOnly ? '_a' : ''), function () { return computeTopCustomersCD_(activeOnly); });
+    return withCache('topcustcd_v2' + (activeOnly ? '_a' : ''), function () { return computeTopCustomersCD_(activeOnly); });
   });
 }
 
@@ -396,7 +401,7 @@ function apiGetExecOverviewCD(options) {
   options = options || {};
   var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('execcd_v1' + (activeOnly ? '_a' : ''), function () {
+    return withCache('execcd_v2' + (activeOnly ? '_a' : ''), function () {
       var centers = getCenter360RowsCD_(activeOnly);
       var top = computeTopCustomersCD_(activeOnly);
       var want = { kpis: 1, fleetStatus: 1, zohoKpis: 1, zohoTrend: 1, geo: 1, reliability: 1, uptimeFleet: 1, slaKpis: 1 };
@@ -460,7 +465,7 @@ function apiGetCenterDetailCD(options) {
           sql:
             "SELECT ANY_VALUE(Centername) AS center, ANY_VALUE(HubID) AS hub_id, " +
             " ANY_VALUE(HubName) AS hub, ANY_VALUE(City) AS city, ANY_VALUE(State) AS state, " +
-            " ANY_VALUE(pin) AS pin, ANY_VALUE(Country) AS country, " +
+            " ANY_VALUE(PinCode) AS pin, ANY_VALUE(Spoke_Country) AS country, " +
             " CAST(DATE(MIN(deploymentdate)) AS STRING) AS first_deployment, " +
             " DATE_DIFF(CURRENT_DATE(), DATE(MIN(deploymentdate)), MONTH) AS age_months, " +
             " NULL AS devices_ever " +           // no device grain in center_details

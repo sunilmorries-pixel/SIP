@@ -100,7 +100,7 @@ function apiGetNumbers(options) {
   options = options || {};
   var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('numbers_v2' + (activeOnly ? '_a' : ''), function () {
+    return withCache('numbers_v3' + (activeOnly ? '_a' : ''), function () {
       var CD = T('center_details');
       // Devices source swapped from BigQuery jira_data to a Google Sheet — see below.
       // var JIRA = T('jira_data');   // commented out per request (use JIRA_SHEET_ID)
@@ -120,11 +120,14 @@ function apiGetNumbers(options) {
 
         { key: 'hubsTot', sql:
           "SELECT COUNT(DISTINCT HubID) AS total FROM " + CD + " WHERE " + F },
+        // 2026-07-07 reload removed HubStatus/HubSegment. Nearest equivalents:
+        // hubs by the Status of their centers (a hub can appear under several
+        // statuses) and by hub_master_segment.
         { key: 'hubsStatus', maxRows: 50, sql:
-          "SELECT IFNULL(NULLIF(TRIM(HubStatus), ''), '(blank)') AS k, COUNT(DISTINCT HubID) AS n " +
+          "SELECT IFNULL(NULLIF(TRIM(Status), ''), '(blank)') AS k, COUNT(DISTINCT HubID) AS n " +
           "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC" },
         { key: 'hubsSegment', maxRows: 50, sql:
-          "SELECT IFNULL(NULLIF(TRIM(HubSegment), ''), '(blank)') AS k, COUNT(DISTINCT HubID) AS n " +
+          "SELECT IFNULL(NULLIF(TRIM(hub_master_segment), ''), '(blank)') AS k, COUNT(DISTINCT HubID) AS n " +
           "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC LIMIT 15" },
 
         // Devices come from the Google Sheet (readJiraSheet), not BigQuery — see below.
@@ -176,14 +179,18 @@ function apiGetCenterDetailsRaw(options) {
   return respond_(function () {
     var sql =
       "WITH dev AS (SELECT CenterID, COUNT(*) AS devices FROM " + T('cloud_devices') +
-      " WHERE CenterID IS NOT NULL GROUP BY CenterID) " +
+      " WHERE CenterID IS NOT NULL GROUP BY CenterID), " +
+      // DISTINCT CTE: the 2026-07-07 reload duplicated center rows verbatim —
+      // dedupe BEFORE the COUNT(*) OVER() so the pager total is centers, not rows.
+      "c AS (SELECT DISTINCT CenterID, Centername, Status, Type, Spoke_Center_Segment, " +
+      " HubID, HubName, City, State, PinCode, deploymentdate, deactivationdate " +
+      " FROM " + T('center_details') + " WHERE " + cdFilter_(activeOnly) + ") " +
       "SELECT c.CenterID AS center_id, c.Centername AS center, c.Status AS status, c.Type AS type, " +
       " c.Spoke_Center_Segment AS segment, c.HubID AS hub_id, c.HubName AS hub, c.City AS city, " +
-      " c.State AS state, c.pin, CAST(c.deploymentdate AS STRING) AS deployed, " +
+      " c.State AS state, c.PinCode AS pin, CAST(c.deploymentdate AS STRING) AS deployed, " +
       " CAST(c.deactivationdate AS STRING) AS deactivated, IFNULL(d.devices, 0) AS devices, " +
       " COUNT(*) OVER() AS total_rows " +
-      "FROM " + T('center_details') + " c LEFT JOIN dev d ON d.CenterID = c.CenterID " +
-      "WHERE " + cdFilter_(activeOnly) + " " +
+      "FROM c LEFT JOIN dev d ON d.CenterID = c.CenterID " +
       "ORDER BY c.CenterID LIMIT " + pageSize + " OFFSET " + (page * pageSize);
     var rows = runQuery(sql);
     var total = rows.length ? rows[0].total_rows : 0;

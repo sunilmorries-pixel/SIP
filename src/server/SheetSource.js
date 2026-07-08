@@ -187,3 +187,42 @@ function topEntries_(map, n) {
     .sort(function (a, b) { return b.cnt - a.cnt; })
     .slice(0, n);
 }
+
+/**
+ * Generic full-fidelity sheet reader for the Raw Data page. Unlike
+ * readJiraSheet() / readCsTracker() (which tolerant-map a handful of named
+ * fields), this returns EVERY column using the sheet's own header row as
+ * keys — used only by RawData.js's raw/export endpoints.
+ * @param {string} sheetId
+ * @return {{columns:Array<string>, rows:Array<Object>}}
+ */
+function readRawSheetRows_(sheetId) {
+  var cacheKey = 'rawsheet_v1_' + sheetId;
+  var cached = cacheGetLarge(cacheKey);
+  if (cached) return cached;
+
+  var url = 'https://sheets.googleapis.com/v4/spreadsheets/' +
+    sheetId + '/values/A:ZZ?majorDimension=ROWS';
+  var response = UrlFetchApp.fetch(url, {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true
+  });
+  var data = JSON.parse(response.getContentText());
+  if (response.getResponseCode() >= 400) {
+    throw new Error('Sheet ' + sheetId + ' unreadable: ' +
+      ((data.error && data.error.message) || 'HTTP ' + response.getResponseCode()));
+  }
+  var values = data.values;
+  if (!values || values.length < 1) {
+    return { columns: [], rows: [] };
+  }
+  var columns = values[0].map(function (h, i) { return String(h || '').trim() || ('Column ' + (i + 1)); });
+  var rows = values.slice(1).map(function (r) {
+    var obj = {};
+    columns.forEach(function (c, i) { obj[c] = r[i] != null ? r[i] : ''; });
+    return obj;
+  });
+  var result = { columns: columns, rows: rows };
+  cachePutLarge(cacheKey, result, 600);
+  return result;
+}

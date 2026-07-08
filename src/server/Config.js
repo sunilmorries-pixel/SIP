@@ -44,6 +44,14 @@ var CONFIG = {
    */
   JIRA_SHEET_ID: '1FgLl1HJIE8kpM8R1_mgAFaUyGcDTzieYQ0i5LdoZekc',
 
+  /**
+   * Permanent restriction (per user request, 2026-07-07): only these Jira
+   * "Issue Type" values count as a tracked device everywhere in the app
+   * (Numbers page, Fleet/Devices KPIs, the Overview Jira-status donut).
+   * Lowercase, trimmed — matched in isTrackedJiraDeviceType_ (Numbers.js).
+   */
+  JIRA_DEVICE_TYPES: ['connector', 'ecg machine'],
+
   /** Zoho statuses that mean a ticket is no longer active. */
   ZOHO_TERMINAL_STATUSES: "('Closed','Duplicate','Junk')",
 
@@ -69,7 +77,7 @@ var CONFIG = {
    * category as Tech/device. Used by SlaCatalog.slaFor + techBoolSql_ so JS
    * and SQL agree. Listed categories use their catalog `tech` flag directly.
    */
-  TECH_FALLBACK_REGEX: 'machine|device|hardware|cable|network|sim|accessor|acquisition|battery|printer|connector|adapter|display|keypad|antenna|board|tablet|charg|serial|ups|trilink',
+  TECH_FALLBACK_REGEX: 'machine|device|hardware|cable|network|sim|accessor|acquisition|battery|printer|connector|adapter|display|keypad|antenna|board|tablet|charg|serial|ups|trilink|swap',
 
   /** App metadata shown in the UI. */
   APP_NAME: 'SIP Insights',

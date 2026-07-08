@@ -103,6 +103,20 @@ function diagnostics() {
     ? 'Numbers: centers ' + nums.data.centers.total + ', hubs ' + nums.data.hubs.total +
       ', devices ' + nums.data.devices.total + ' (' + nums.data.devices.source + ')'
     : 'Numbers FAILED: ' + JSON.stringify(nums.error));
+
+  // Jira device-type filter (Connector + ECG Machine only, permanent).
+  var jiraStats = jiraDeviceStats_();
+  Logger.log('Jira devices (Connector + ECG Machine only): ' + jiraStats.total + ' total, ' +
+    jiraStats.with_center + ' mapped to a center, source=' + jiraStats.source);
+  Logger.log('Jira devices by status: ' + JSON.stringify(jiraStats.by_status));
+
+  // Raw Data page — one row-count check per source.
+  Object.keys(rawSources_()).forEach(function (key) {
+    var raw = apiGetRawPage({ source: key, page: 0, pageSize: 1 });
+    Logger.log(raw.ok
+      ? 'Raw data [' + key + ']: ' + raw.data.totalRows + ' rows'
+      : 'Raw data [' + key + '] FAILED: ' + JSON.stringify(raw.error));
+  });
 }
 
 /**
@@ -114,9 +128,10 @@ function clearDashboardCache() {
   var cache = CacheService.getScriptCache();
   var h = shortHash('');
   cache.removeAll(['dash_v6_' + h, 'dashcd_v1_' + h, 'exec_v4', 'execcd_v1',
-    'topcust_v1', 'topcustcd_v1', 'numbers_v2']);
+    'topcust_v1', 'topcustcd_v1', 'numbers_v2', 'numbers_v2_a', 'jiradev_v2']);
   // Large (gzip-chunked) caches: remove #meta + each chunk.
-  ['ctr360_v3', 'ctr360cd_v1', 'map_v3', 'mapcd_v1', 'assets_v1'].forEach(function (base) {
+  ['ctr360_v3', 'ctr360cd_v1', 'map_v3', 'mapcd_v1', 'assets_v1',
+    'rawsheet_v1_' + CONFIG.JIRA_SHEET_ID, 'rawsheet_v1_' + CONFIG.CS_SHEET_ID].forEach(function (base) {
     var meta = cache.get(base + '#meta');
     var n = meta ? parseInt(meta, 10) : 40;
     var keys = [base + '#meta'];

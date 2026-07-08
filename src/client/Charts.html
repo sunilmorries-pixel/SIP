@@ -171,6 +171,41 @@ var Charts = (function () {
     if (onSlice) onClick(id, function (p) { onSlice(p.name); });
   }
 
+  // Jira lifecycle-status categories are open-ended (Deployed/Store/Hardware/
+  // Decommissioned/Field/Exported/…), unlike the fixed 6-bucket FLEET_ORDER —
+  // so colors cycle through this palette by rank instead of a name lookup.
+  var STATUS_PALETTE = [C.primary, C.ok, C.warn, C.violet, C.teal, C.orange, C.info, C.danger, C.muted];
+
+  function jiraStatus(rows, id) {
+    id = id || 'execFleet';
+    if (!rows || !rows.length) return showEmpty(id);
+    var sorted = rows.slice().sort(function (a, b) { return (b.n || 0) - (a.n || 0); });
+    var data = sorted.map(function (r, i) {
+      return { name: r.k, value: r.n, itemStyle: { color: STATUS_PALETTE[i % STATUS_PALETTE.length] } };
+    });
+    render(id, base({
+      legend: {
+        bottom: 0, icon: 'circle',
+        textStyle: { color: C.text, fontSize: 12 },
+        itemWidth: 9, itemHeight: 9
+      },
+      series: [{
+        type: 'pie', radius: ['58%', '80%'], center: ['50%', '44%'],
+        avoidLabelOverlap: true,
+        itemStyle: { borderColor: C.sliceBorder, borderWidth: 2 },
+        label: { show: false },
+        emphasis: {
+          label: {
+            show: true, fontSize: 14, fontWeight: 700, color: C.tooltipText,
+            formatter: function (p) { return p.name + '\n' + FMT.format(p.value); }
+          },
+          scaleSize: 4
+        },
+        data: data
+      }]
+    }));
+  }
+
 
   function hubs(rows) {
     if (!rows || !rows.length) return showEmpty('chartHubs');
@@ -553,6 +588,7 @@ var Charts = (function () {
     assetAge: assetAge,
     centersByState: centersByState,
     fleetStatus: fleetStatus,
+    jiraStatus: jiraStatus,
     hubs: hubs,
     geo: geo,
     firmware: firmware,

@@ -323,6 +323,7 @@
       zohoPriority: [{ priority: 'High', cnt: 320 }, { priority: 'Medium', cnt: 610 }, { priority: 'Low', cnt: 120 }, { priority: 'Unset', cnt: 410 }],
       zohoChannel: ['Email', 'Phone', 'Web', 'Chat', 'Forums'].map(function (ch) { return { channel: ch, cnt: rnd(80, 2400) }; }),
       zohoSegment: ['Enterprise', 'SMB', 'Government', 'Distributor', 'Direct'].map(function (sg) { return { segment: sg, cnt: rnd(120, 1900) }; }),
+      segmentOptions: ['General Practitioner(GP) Clinic', 'Hospital less than 100 beds without cath lab', 'Diagnostic Centre/Diagnostic Chain', 'Hospital more than 100 beds with cath lab', 'Cath Lab'].map(function (sg) { return { segment: sg }; }),
       csTracker: {
         kpis: { total_cases: 1284, avg_tat_days: 3.4, owners: 9 },
         tatByMonth: months.map(function (mo) { return { month: mo, cases: rnd(40, 160), avg_tat: rnd(2, 7) }; }),
@@ -605,8 +606,12 @@
     }
 
     renderHubOptions(data.hubOptions || []);
-    fillSelect('globalSegment', (data.zohoSegment || [])
-      .map(function (s) { return s.segment; })
+    // Real center_details segment values (data.segmentOptions); fall back to the
+    // Zoho ticket segments only if the CD endpoint didn't supply them.
+    var segOpts = (data.segmentOptions && data.segmentOptions.length)
+      ? data.segmentOptions.map(function (s) { return s.segment; })
+      : (data.zohoSegment || []).map(function (s) { return s.segment; });
+    fillSelect('globalSegment', segOpts
       .filter(function (x) { return x && x !== 'Unknown'; }), 'All segments');
 
     $('statusStrip').classList.remove('is-stale');

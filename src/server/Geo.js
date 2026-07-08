@@ -1,17 +1,20 @@
 /**
  * Geo.js — progressive center geocoding with a persistent store.
  *
- * There are no coordinates in the data, so we geocode "pin, city, state,
- * country" strings with the built-in Apps Script Maps geocoder (no API key).
- * The daily quota can't cover all ~8k+ locations at once, so:
+ * center_details carries no coordinates (the 2026-07-07 reload removed the old
+ * latitude/longitude columns), so we geocode "pin, city, state, country"
+ * strings with the built-in Apps Script Maps geocoder (no API key). The daily
+ * quota (resets ~every 14h) can't cover all locations at once, so:
  *
  *   1. Run runGeocodeBatch() from the editor — it geocodes up to BATCH_LIMIT
  *      locations and saves results permanently in Script Properties.
  *   2. Re-run it on following days until `pending` reaches 0
  *      (geoStats() or the Map tab's progress strip shows the counts).
  *
- * The map renders whatever has been located so far — coverage simply grows
- * with each batch.
+ * ACTIVE centers are geocoded FIRST (distinctLocations_ orders active-first) so
+ * the most useful pins land before the quota runs out; centers still awaiting a
+ * geocode simply don't plot until located (coordsForCD_ returns null → the map
+ * skips them). Coverage grows with each batch.
  */
 
 var GEO_STORE_KEY = 'GEO_STORE_V1';
@@ -74,13 +77,22 @@ function saveGeoStore_(store) {
   props.setProperties(kv);
 }
 
-/** Distinct geocodable locations from the latest device-center mapping. */
+/**
+ * Distinct geocodable locations from center_details (the live center source),
+ * ORDERED ACTIVE-FIRST so runGeocodeBatch spends its quota on active centers
+ * before deactivated ones. Locations serving any ACTIVE center sort ahead; the
+ * JS dedup below then keeps that active-first row per geo key.
+ * Reads PinCode/City/State/Spoke_Country (post-reload column names) and honours
+ * the F2P exclusion (CD_SEG_FILTER).
+ */
 function distinctLocations_() {
   var rows = runQuery(
     "SELECT pin, city, state, country FROM ( " +
-    " SELECT pin, city, state, country, " +
-    "  ROW_NUMBER() OVER (PARTITION BY IFNULL(TRIM(pin),''), IFNULL(TRIM(city),'') ORDER BY startdatetime DESC) AS rn " +
-    " FROM " + T('device_center_mapping') + ") WHERE rn = 1",
+    " SELECT PinCode AS pin, City AS city, State AS state, Spoke_Country AS country, " +
+    "  MAX(IF(Status = 'ACTIVE', 1, 0)) AS any_active " +
+    " FROM " + T('center_details') + " WHERE " + CD_SEG_FILTER + " " +
+    " GROUP BY pin, city, state, country) " +
+    "ORDER BY any_active DESC",
     null, { maxRows: 60000 });
   var seen = {};
   return rows.filter(function (row) {

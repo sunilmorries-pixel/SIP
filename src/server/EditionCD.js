@@ -25,13 +25,13 @@
 
 /**
  * Business filter: F2P (free-to-pilot) centers are excluded from every
- * center_details query. The 2026-07-07 reload replaced the segment value
- * 'F2P_CENTER' with a dedicated F2P_Customer flag column (all 0 today), so we
- * exclude on the flag AND keep the legacy segment guard in case old-style
- * values ever return. NULL segment/flag is kept.
+ * center_details query via the F2P_Customer flag (0 = keep, non-zero = drop).
+ * The legacy 'F2P_CENTER' segment value no longer exists in the data (verified
+ * 0 rows after the 2026-07-07 reload), so the flag is the sole F2P signal.
+ * Today all 35,804 rows have F2P_Customer = 0, so nothing is excluded yet —
+ * the filter activates automatically once the DE team populates the flag.
  */
-var CD_SEG_FILTER = "(IFNULL(F2P_Customer, 0) = 0" +
-  " AND (Spoke_Center_Segment != 'F2P_CENTER' OR Spoke_Center_Segment IS NULL))";
+var CD_SEG_FILTER = "IFNULL(F2P_Customer, 0) = 0";
 
 /** center_details WHERE fragment: F2P always excluded, + optional Status='ACTIVE'. */
 function cdFilter_(activeOnly) {
@@ -134,6 +134,12 @@ function buildDashboardQuerySpecsCD(hub, activeOnly) {
   var specs = buildDashboardQuerySpecs(hub).map(function (s) {
     return cd[s.key] ? { key: s.key, params: s.params, sql: cd[s.key], maxRows: s.maxRows } : s;
   });
+  // Distinct real segment values (center_details), for the topbar segment filter.
+  specs.push({
+    key: 'segmentOptions', maxRows: 200,
+    sql: "SELECT DISTINCT TRIM(Spoke_Center_Segment) AS segment FROM " + CD +
+      " WHERE " + F + " AND NULLIF(TRIM(Spoke_Center_Segment), '') IS NOT NULL ORDER BY segment"
+  });
   return specs;
 }
 
@@ -141,7 +147,7 @@ function buildDashboardQuerySpecsCD(hub, activeOnly) {
 
 /** center_details center dimension ⟕ live telemetry ⟕ open tickets (by CenterID). */
 function getCenter360RowsCD_(activeOnly) {
-  var ckey = 'ctr360cd_v2' + (activeOnly ? '_a' : '');
+  var ckey = 'ctr360cd_v3' + (activeOnly ? '_a' : '');
   var cached = cacheGetLarge(ckey);
   if (cached) return cached;
 
@@ -156,6 +162,7 @@ function getCenter360RowsCD_(activeOnly) {
         // come from the pin-geocode store fallback (coordsForCD_).
         "SELECT DISTINCT CenterID AS center_id, Centername AS center, HubID AS hub_id, HubName AS hub, " +
         " City AS city, State AS state, PinCode AS pin, Spoke_Country AS country, " +
+        " IFNULL(TRIM(Spoke_Center_Segment), '') AS segment, " +   // segment from the center itself
         " CAST(NULL AS FLOAT64) AS lat, CAST(NULL AS FLOAT64) AS lng, " +
         " CAST(deploymentdate AS STRING) AS deployment_date " +
         "FROM " + T('center_details') + " WHERE " + cdFilter_(activeOnly)
@@ -170,6 +177,7 @@ function getCenter360RowsCD_(activeOnly) {
         center_id: base.center_id, center: base.center || '', hub: base.hub || '',
         hub_id: base.hub_id != null ? base.hub_id : '', city: base.city || '',
         state: base.state || '', pin: base.pin || '', country: base.country || '',
+        segment: base.segment || '', // from center_details, not Zoho tickets
         lat: base.lat, lng: base.lng, deployment_date: base.deployment_date || '',
         devices: tel ? tel.devices : 0, online: tel ? tel.online : 0,
         last_seen: (tel && tel.last_seen) || ''
@@ -181,7 +189,8 @@ function getCenter360RowsCD_(activeOnly) {
     leftKey: 'center_id', rightKey: 'center_id',
     select: function (row, tickets) {
       row.open_tickets = tickets ? tickets.open_tickets : 0;
-      row.segment = (tickets && tickets.segment) || '';
+      // segment already set from center_details (centerBase) — a center's own
+      // attribute, so centers with no tickets still carry their segment.
       return row;
     }
   });
@@ -223,7 +232,7 @@ function apiGetDashboardCD(options) {
   var hub = String(options.hub || '').slice(0, 120);
   var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('dashcd_v2_' + (activeOnly ? 'a' : '') + shortHash(hub), function () {
+    return withCache('dashcd_v3_' + (activeOnly ? 'a' : '') + shortHash(hub), function () {
       var results = runQueriesParallel(buildDashboardQuerySpecsCD(hub, activeOnly));
       enrichCenterNamesCD_(results.reliability, activeOnly);
       enrichCenterNamesCD_(results.assetHealth, activeOnly);
@@ -277,7 +286,7 @@ function apiGetMapDataCD(options) {
   options = options || {};
   var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    var cached = cacheGetLarge('mapcd_v2' + (activeOnly ? '_a' : ''));
+    var cached = cacheGetLarge('mapcd_v3' + (activeOnly ? '_a' : ''));
     if (cached) return cached;
 
     var centers = getCenter360RowsCD_(activeOnly);
@@ -323,7 +332,7 @@ function apiGetMapDataCD(options) {
       matchedAssets: Object.keys(assetCount).length,
       edition: 'center_details', flags: FLAGS_CD
     };
-    cachePutLarge('mapcd_v2' + (activeOnly ? '_a' : ''), payload, 600);
+    cachePutLarge('mapcd_v3' + (activeOnly ? '_a' : ''), payload, 600);
     return payload;
   });
 }
@@ -393,7 +402,7 @@ function apiGetTopCustomersCD(options) {
   options = options || {};
   var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('topcustcd_v2' + (activeOnly ? '_a' : ''), function () { return computeTopCustomersCD_(activeOnly); });
+    return withCache('topcustcd_v3' + (activeOnly ? '_a' : ''), function () { return computeTopCustomersCD_(activeOnly); });
   });
 }
 
@@ -401,7 +410,7 @@ function apiGetExecOverviewCD(options) {
   options = options || {};
   var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('execcd_v2' + (activeOnly ? '_a' : ''), function () {
+    return withCache('execcd_v3' + (activeOnly ? '_a' : ''), function () {
       var centers = getCenter360RowsCD_(activeOnly);
       var top = computeTopCustomersCD_(activeOnly);
       var want = { kpis: 1, fleetStatus: 1, zohoKpis: 1, zohoTrend: 1, geo: 1, reliability: 1, uptimeFleet: 1, slaKpis: 1 };

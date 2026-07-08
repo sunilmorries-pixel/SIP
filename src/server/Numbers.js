@@ -54,7 +54,7 @@ function isTrackedJiraDeviceType_(issueTypeName) {
  * @return {{total,with_center,jira_centers,in_cd,by_status,source,center_source}}
  */
 function jiraDeviceStats_() {
-  return withCache('jiradev_v2', function () {
+  return withCache('jiradev_v3', function () {
     var jiraRows = readJiraSheet();
     if (jiraRows) {
       jiraRows = jiraRows.filter(function (row) { return isTrackedJiraDeviceType_(row.issuetype_name); });

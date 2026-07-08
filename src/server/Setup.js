@@ -128,7 +128,7 @@ function clearDashboardCache() {
   var cache = CacheService.getScriptCache();
   var h = shortHash('');
   cache.removeAll(['dash_v7_' + h, 'dashcd_v4_' + h, 'dashcd_v4_a' + h, 'exec_v4', 'execcd_v4', 'execcd_v4_a',
-    'topcust_v1', 'topcustcd_v4', 'topcustcd_v4_a', 'numbers_v3', 'numbers_v3_a', 'jiradev_v2']);
+    'topcust_v1', 'topcustcd_v4', 'topcustcd_v4_a', 'numbers_v3', 'numbers_v3_a', 'jiradev_v3']);
   // Large (gzip-chunked) caches: remove #meta + each chunk.
   ['ctr360_v3', 'ctr360cd_v3', 'ctr360cd_v3_a', 'map_v3', 'mapcd_v4', 'mapcd_v4_a', 'assets_v3',
     'rawsheet_v1_' + CONFIG.JIRA_SHEET_ID, 'rawsheet_v1_' + CONFIG.CS_SHEET_ID].forEach(function (base) {

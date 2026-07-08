@@ -1,6 +1,34 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-07-08 · **Version:** 5.3 · **Status:** LIVE (deployment @22, same URL).
+**Last updated:** 2026-07-08 · **Version:** 5.4 · **Status:** LIVE (deployment @23, same URL).
+
+**v5.4 (2026-07-08, deployed @23):** geocoding + F2P + segment-filter fixes.
+- **Geocoding fixed + active-first**: `distinctLocations_()` (Geo.js) was still
+  reading `device_center_mapping` — the WRONG source, since the map plots
+  `center_details` centers. Now reads `center_details` (`PinCode`/`City`/`State`/
+  `Spoke_Country`), and orders **ACTIVE centers first** (`MAX(IF(Status='ACTIVE',1,0))
+  DESC`) so the geocode quota (resets ~every 14h) is spent on active centers before
+  deactivated ones. 10,665 distinct locations, 7,879 serve an active center. Centers
+  awaiting a geocode simply don't plot until located (`coordsForCD_` → null).
+  ⚠️ **Run `runGeocodeBatch()` in the editor** (repeat each ~14h until
+  `geoStats().pending = 0`), then `clearDashboardCache()`.
+- **F2P filter simplified** to `IFNULL(F2P_Customer,0)=0` only (dropped the dead
+  legacy `'F2P_CENTER'` segment guard — that value is 0 rows). All rows are
+  `F2P_Customer=0` today → nothing excluded yet; activates when DE sets the flag.
+- **Segment filter fixed + dynamic**: a center's `segment` now comes from its own
+  `center_details.Spoke_Center_Segment` (was the Zoho-ticket segment, so centers
+  with no tickets were wrongly dropped by any segment selection). Topbar dropdown
+  is populated from a new `segmentOptions` spec (distinct real segment values).
+  All centers kept as-is (no normalization / no blank-segment exclusion).
+- Cache keys bumped for the changed CD payload shape: `dashcd_v3` / `ctr360cd_v3` /
+  `mapcd_v3` / `topcustcd_v3` / `execcd_v3` (clearDashboardCache synced).
+- **Deliberately NOT changed**: `Age_In_Months` — verified it matches neither
+  `deploymentdate` (0%) nor `AcquiredDate` (6%); semantics unclear, so the
+  deployment-age chart stays on `deploymentdate`.
+- **Duplicate-row precision** (corrects the v5.3 "exact duplicates" note): 35,804
+  rows → 27,778 distinct full rows → 27,410 distinct centers. So 8,026 are exact
+  full-row dupes AND 368 centers have genuinely-different multiple rows. `SELECT
+  DISTINCT` + `COUNT(DISTINCT centerid)` handle both. Ask DE why any dupes exist.
 
 **v5.3 hotfix (2026-07-08, deployed @22):** the DE team reloaded `center_details`
 on 2026-07-07 (35,804 rows / 27,410 distinct centers, 114-col schema) which REMOVED
@@ -108,7 +136,7 @@ PowerShell backtick-escaping collision). Auth via
 - `Api.js` — legacy device_center_mapping endpoints (`apiGetDashboard` etc.) — **retained but unused** (client calls the CD versions); still hosts `getCenter360Rows_`, `getAssetIndex_`, `enrichCenterNames_`.
 - `TopCustomers.js` — 27 "Top LE" hub constant + `apiGetTopCustomers` / `computeTopCustomers_` + `topCustomerTicketStats_`.
 - `ExecOverview.js` — legacy exec endpoint (CD version in EditionCD.js is the live one).
-- `Geo.js` — progressive geocoder (`runGeocodeBatch`, `geoStats`) → chunked Script-Properties store.
+- `Geo.js` — progressive geocoder (`runGeocodeBatch`, `geoStats`) → chunked Script-Properties store. Sources locations from `center_details` (PinCode/City/State/Spoke_Country), **ACTIVE centers first**.
 - `WebApp.js` — `doGet` + `include()` templating.
 - `Setup.js` — `setupServiceAccountKey()` (one-time), `diagnostics()` (points at CD endpoints + Jira device-type stats + raw-data row counts for all 8 sources), `clearDashboardCache()`.
 
@@ -130,8 +158,8 @@ Private key lives only in Script Properties `SA_KEY`, never in source.
 
 ## 4. Data model facts (non-obvious — verified against live BQ)
 
-- **Sandbox is a PARTIAL copy of production** with exactly **6 tables** (no `DIM_Centers`). **`center_details` was RELOADED 2026-07-07 12:28 UTC** with a **114-column schema**: now HAS `DeviceID`/`MacSerialID`/`MachineType` (serial→center mapping auto-activated) + `F2P_Customer` flag; REMOVED `pin`→`PinCode`, `Country`→`Spoke_Country`, `latitude`/`longitude` (gone — geocode store is the only coord source), `HubStatus`/`HubSegment` (gone). Contains **exact duplicate rows**: 35,804 rows / 27,410 distinct centers → queries dedupe (`SELECT DISTINCT` / `COUNT(DISTINCT …)`).
-- **`center_details` is the SOLE center source** (the device_center_mapping "edition" was removed; dcm is also no longer a Raw Data source, though Geo.js still reads it internally). Everywhere: centers = `COUNT(DISTINCT CenterID)`. **F2P exclusion** now keys on `IFNULL(F2P_Customer,0)=0` (the old `'F2P_CENTER'` segment value no longer exists; flag is all-0 today so nothing is excluded). Counts: **27,410** centers (→ fewer with `Status='ACTIVE'` toggle). Segment values are now free-text hospital/GP/diagnostic categories, 23,247 blank.
+- **Sandbox is a PARTIAL copy of production** with exactly **6 tables** (no `DIM_Centers`). **`center_details` was RELOADED 2026-07-07 12:28 UTC** with a **114-column schema**: now HAS `DeviceID`/`MacSerialID`/`MachineType` (serial→center mapping auto-activated) + `F2P_Customer` flag; REMOVED `pin`→`PinCode`, `Country`→`Spoke_Country`, `latitude`/`longitude` (gone — geocode store is the only coord source), `HubStatus`/`HubSegment` (gone). **Row duplication**: 35,804 rows → 27,778 distinct full rows → **27,410 distinct centers** (8,026 exact full-row dupes + 368 centers with genuinely-different rows) → queries dedupe (`SELECT DISTINCT` / `COUNT(DISTINCT …)`). ⚠️ `Age_In_Months` exists but is UNTRUSTWORTHY — matches neither `deploymentdate` (0%) nor `AcquiredDate` (6%); age charts use `deploymentdate`.
+- **`center_details` is the SOLE center source** (the device_center_mapping "edition" was removed; dcm is also no longer a Raw Data source **and no longer used by Geo.js** — geocoding now reads `center_details`). Everywhere: centers = `COUNT(DISTINCT CenterID)`. **F2P exclusion** keys on `IFNULL(F2P_Customer,0)=0` only (old `'F2P_CENTER'` segment value = 0 rows; flag is all-0 today so nothing is excluded — activates when DE sets it). Counts: **27,410** centers (→ fewer with `Status='ACTIVE'` toggle). Segment (`Spoke_Center_Segment`) is free-text hospital/GP/diagnostic categories with 3+ spellings, 23,247 blank — kept as-is (no normalization); topbar segment filter + dropdown both read this field.
 - **Devices come from the Jira Google Sheet** (`JIRA_SHEET_ID`), ~**43,794** rows (≈1 row/issue, deduped by Key). A device's center is resolved by its **serial** (parsed from Summary, regex `[A-Za-z0-9]{2}-[A-Za-z0-9]{6,}`) bridged via **`cloud_devices.DeviceID`→CenterID** (the only serial↔center source in the sandbox). Coverage: 9,888 of 43,794 map to a center (4,621 distinct centers). `deviceCenterMap_()` is **pre-wired** to prefer `center_details.MacSerialID`/`DeviceID` and auto-activate the moment DE loads those columns. Jira "Customer ID" column is **ignored** (per user).
 - `cloud_devices` — 1 row/device (~11.3k). `LastTimeStamp` is **IST wall-time** (+330 min at load) → recency SQL uses `nowIstSql_()`. `BatteryLevel` can be `"Charging"`. Epoch-1970 = never seen.
 - `zoho_data` — 1 row/ticket (~84.5k). `CreatedAt`/`ClosedAt` are **strings** `"02-Jul-2026 04:59:16 PM"` → `SAFE.PARSE_DATETIME('%d-%b-%Y %I:%M:%S %p', …)`. Has `TicketLink` (drawer links), `priority` often empty. **Does NOT hold** the SLA-quality fields (Resolution/First-Response in Business Hours, thread counts) → blocks FCR/FRT/CHI.
@@ -165,8 +193,8 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 
 1. **Enable the Sheets API** on GCP project **218180702013**:
    https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=218180702013 → Enable → wait ~2 min. Until then **devices fall back to the offline `JiraDump.js` snapshot** and the CS-tracker panels show empty states (both non-blocking). Also share both sheets (Viewer) with the deploying user.
-2. **DE reload: PARTIALLY DONE (2026-07-07)** — `center_details` arrived with `DeviceID`/`MacSerialID` ✅ (serial→center auto-activated). Still missing: Zoho quality fields (M-C2/M-S1/M-S3) + Jira changelog (M-A4). Ask DE to also **dedupe rows** (exact duplicates) and confirm whether `F2P_Customer` all-0 is correct or the F2P flag isn't populated yet.
-3. **Geocoding — now REQUIRED for the Map** — the reload removed lat/long entirely, so pins come only from the pin-geocode store. Run `runGeocodeBatch()` (server/Geo.js) until `geoStats().pending` = 0, then `clearDashboardCache()`.
+2. **DE reload: PARTIALLY DONE (2026-07-07)** — `center_details` arrived with `DeviceID`/`MacSerialID` ✅ (serial→center auto-activated). Still missing: **Zoho quality fields** (first-response & resolution in business hours, thread/reopen counts → unlock M-C2 Health Index, M-S1 FCR, M-S3 FRT) + **Jira changelog** (status-transition history → M-A4 Lifecycle Dwell). Ask DE to also **dedupe rows** (8,026 exact dupes + 368 centers with genuinely-different rows) and confirm whether `F2P_Customer` all-0 is correct or the flag just isn't populated yet.
+3. **Geocoding — REQUIRED for the Map, run it now** — the reload removed lat/long, so pins come only from the pin-geocode store. `runGeocodeBatch()` (server/Geo.js) now sources `center_details` and does **ACTIVE centers first**; the quota resets ~every 14h, so re-run each day until `geoStats().pending` = 0, then `clearDashboardCache()`.
 4. **Verify the Jira browse domain** — drawer KEY links use `https://tricog.atlassian.net/browse/` (const `JIRA_BROWSE` in App.html) — confirm this is correct.
 5. **Buildable-today enhancement (deferred by user 2026-07-07):** add per-account MRR to the Top-20 leaderboard (M-C3).
 6. **Downtime display** — cumulative (>100% possible). Open offer: cap at 100% / relabel "Service burden %", or keep with tooltip.

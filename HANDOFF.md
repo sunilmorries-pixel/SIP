@@ -1,15 +1,31 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-07-08 · **Version:** 5.2 · **Status:** code-complete, pending deploy.
+**Last updated:** 2026-07-08 · **Version:** 5.3 · **Status:** LIVE (deployment @22, same URL).
 
-**v5.2 changes (2026-07-08, code-complete — deploy gated on go-ahead):**
-- ✅ **Raw Data tab** — 8th view exposing all 8 data sources (6 BQ tables + 2 Google Sheets) as paginated, unfiltered tables with full-table CSV export. No site filters apply. Server: `RawData.js`, client: pill selector + dynamic table in `App.html`.
-- ✅ **Jira device-type filter** — permanent restriction: only Connector + ECG Machine issue types counted in device stats (`CONFIG.JIRA_DEVICE_TYPES` + `isTrackedJiraDeviceType_()`).
-- ✅ **Fleet status (Jira) donut** — Overview's duplicate heartbeat donut replaced with a Jira lifecycle-status donut (`Charts.jiraStatus()`).
-- ✅ **Swap-downtime fix** — `swap` added to `CONFIG.TECH_FALLBACK_REGEX` so swap-related tickets always classify as technical (affects M-A1/A2/A6 uptime + SLA Tech/Non-Tech split).
-- ✅ **Extended diagnostics** — `diagnostics()` now logs Jira device-type filter stats + row counts for all 8 raw-data sources.
+**v5.3 hotfix (2026-07-08, deployed @22):** the DE team reloaded `center_details`
+on 2026-07-07 (35,804 rows / 27,410 distinct centers, 114-col schema) which REMOVED
+`pin`/`Country`/`latitude`/`longitude`/`HubStatus`/`HubSegment` and broke the
+`centerBase` query → centers vanished from Centers/Map/Top Customers/Overview. Fixed:
+- `centerBase` + drawer: `PinCode AS pin`, `Spoke_Country AS country`, `NULL` coords
+  (pin-geocode store is now the ONLY coordinate source), `SELECT DISTINCT` (reload
+  introduced exact duplicate rows).
+- Numbers hubs: `Status` / `hub_master_segment` replace the removed hub columns.
+- `CD_SEG_FILTER`: excludes on the new `F2P_Customer` flag ('F2P_CENTER' segment
+  value no longer exists; flag is all-0 today so nothing is excluded).
+- **Jira type filter extended to legacy BQ paths** (assets lifecycle spec, jiraAssets
+  index → map overlay/drawer, cohort) via `jiraTypeFilterSql_()` — assets everywhere
+  are now Connector + ECG Machine only (10,231 = 5,728 ECG + 4,503 Connector).
+- **Raw Data page: device_center_mapping source removed** (7 sources now; the BQ
+  table still exists and Geo.js still reads it internally for geocoding).
+- Cache keys bumped: dashcd_v2 / ctr360cd_v2 / mapcd_v2 / topcustcd_v2 / execcd_v2 /
+  numbers_v3 / assets_v2 / dash_v7.
+- NEW: reload added `DeviceID`/`MacSerialID`/`MachineType` to center_details →
+  `deviceCenterMap_()` auto-activates its center_details path (better serial→center
+  coverage; `center_source: 'center_details'` in Numbers).
 
-Branch: `worktree-raw-data-jira-filter` (9 commits). **Not yet deployed** — Task 10 (`clasp push` + new version) is gated on explicit go-ahead.
+**v5.2 (2026-07-08, deployed @21):** Raw Data tab (all-source raw tables + CSV export) ·
+permanent Jira device-type filter (Sheet path) · Overview "Fleet status (Jira)" donut ·
+`swap` keyword in TECH_FALLBACK_REGEX · extended `diagnostics()`.
 
 Read this first when resuming. It captures what the project is, where it's deployed,
 how to change/deploy it, the non-obvious data facts, the current feature set, and the
@@ -114,8 +130,8 @@ Private key lives only in Script Properties `SA_KEY`, never in source.
 
 ## 4. Data model facts (non-obvious — verified against live BQ)
 
-- **Sandbox is a PARTIAL copy of production** with exactly **6 tables** (no `DIM_Centers`). `center_details` has **70 columns** — includes `Current_MRR`, `Device_Rental`, `Status`, `Spoke_Center_Segment` but **NO `DeviceID`/`MacSerialID`/serial column** (those live only in `tricogde-dwh`, which this SA **cannot read** — Access Denied). DE team will load fuller tables INTO the sandbox; row caps already 50–80k.
-- **`center_details` is the SOLE center source** (the device_center_mapping "edition" was removed). Everywhere: centers = `COUNT(DISTINCT CenterID)` from center_details. **F2P_CENTER segment is excluded** via `CD_SEG_FILTER`. Counts: 55,682 → **28,299** (F2P-excluded) → **19,034** (+ `Status='ACTIVE'` when the toggle is on).
+- **Sandbox is a PARTIAL copy of production** with exactly **6 tables** (no `DIM_Centers`). **`center_details` was RELOADED 2026-07-07 12:28 UTC** with a **114-column schema**: now HAS `DeviceID`/`MacSerialID`/`MachineType` (serial→center mapping auto-activated) + `F2P_Customer` flag; REMOVED `pin`→`PinCode`, `Country`→`Spoke_Country`, `latitude`/`longitude` (gone — geocode store is the only coord source), `HubStatus`/`HubSegment` (gone). Contains **exact duplicate rows**: 35,804 rows / 27,410 distinct centers → queries dedupe (`SELECT DISTINCT` / `COUNT(DISTINCT …)`).
+- **`center_details` is the SOLE center source** (the device_center_mapping "edition" was removed; dcm is also no longer a Raw Data source, though Geo.js still reads it internally). Everywhere: centers = `COUNT(DISTINCT CenterID)`. **F2P exclusion** now keys on `IFNULL(F2P_Customer,0)=0` (the old `'F2P_CENTER'` segment value no longer exists; flag is all-0 today so nothing is excluded). Counts: **27,410** centers (→ fewer with `Status='ACTIVE'` toggle). Segment values are now free-text hospital/GP/diagnostic categories, 23,247 blank.
 - **Devices come from the Jira Google Sheet** (`JIRA_SHEET_ID`), ~**43,794** rows (≈1 row/issue, deduped by Key). A device's center is resolved by its **serial** (parsed from Summary, regex `[A-Za-z0-9]{2}-[A-Za-z0-9]{6,}`) bridged via **`cloud_devices.DeviceID`→CenterID** (the only serial↔center source in the sandbox). Coverage: 9,888 of 43,794 map to a center (4,621 distinct centers). `deviceCenterMap_()` is **pre-wired** to prefer `center_details.MacSerialID`/`DeviceID` and auto-activate the moment DE loads those columns. Jira "Customer ID" column is **ignored** (per user).
 - `cloud_devices` — 1 row/device (~11.3k). `LastTimeStamp` is **IST wall-time** (+330 min at load) → recency SQL uses `nowIstSql_()`. `BatteryLevel` can be `"Charging"`. Epoch-1970 = never seen.
 - `zoho_data` — 1 row/ticket (~84.5k). `CreatedAt`/`ClosedAt` are **strings** `"02-Jul-2026 04:59:16 PM"` → `SAFE.PARSE_DATETIME('%d-%b-%Y %I:%M:%S %p', …)`. Has `TicketLink` (drawer links), `priority` often empty. **Does NOT hold** the SLA-quality fields (Resolution/First-Response in Business Hours, thread counts) → blocks FCR/FRT/CHI.
@@ -149,8 +165,8 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 
 1. **Enable the Sheets API** on GCP project **218180702013**:
    https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=218180702013 → Enable → wait ~2 min. Until then **devices fall back to the offline `JiraDump.js` snapshot** and the CS-tracker panels show empty states (both non-blocking). Also share both sheets (Viewer) with the deploying user.
-2. **DE: load fuller data into the sandbox** — hand `docs/DATA_LOADING.md` to the DE team. Priority: reload `center_details` **with `DeviceID`/`MacSerialID`** (auto-activates exact serial→center mapping) + the Zoho quality fields (unlocks M-C2/M-S1/M-S3) + Jira changelog (M-A4). Dashboard auto-scales; then re-run `runGeocodeBatch()` + `clearDashboardCache()`.
-3. **Geocoding** — Map plots only geocoded centers; only 3,428/28,299 center_details rows have lat/long. Run `runGeocodeBatch()` (server/Geo.js) until `geoStats().pending` = 0, then `clearDashboardCache()`.
+2. **DE reload: PARTIALLY DONE (2026-07-07)** — `center_details` arrived with `DeviceID`/`MacSerialID` ✅ (serial→center auto-activated). Still missing: Zoho quality fields (M-C2/M-S1/M-S3) + Jira changelog (M-A4). Ask DE to also **dedupe rows** (exact duplicates) and confirm whether `F2P_Customer` all-0 is correct or the F2P flag isn't populated yet.
+3. **Geocoding — now REQUIRED for the Map** — the reload removed lat/long entirely, so pins come only from the pin-geocode store. Run `runGeocodeBatch()` (server/Geo.js) until `geoStats().pending` = 0, then `clearDashboardCache()`.
 4. **Verify the Jira browse domain** — drawer KEY links use `https://tricog.atlassian.net/browse/` (const `JIRA_BROWSE` in App.html) — confirm this is correct.
 5. **Buildable-today enhancement (deferred by user 2026-07-07):** add per-account MRR to the Top-20 leaderboard (M-C3).
 6. **Downtime display** — cumulative (>100% possible). Open offer: cap at 100% / relabel "Service burden %", or keep with tooltip.

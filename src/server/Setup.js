@@ -103,6 +103,20 @@ function diagnostics() {
     ? 'Numbers: centers ' + nums.data.centers.total + ', hubs ' + nums.data.hubs.total +
       ', devices ' + nums.data.devices.total + ' (' + nums.data.devices.source + ')'
     : 'Numbers FAILED: ' + JSON.stringify(nums.error));
+
+  // Jira device-type filter (Connector + ECG Machine only, permanent).
+  var jiraStats = jiraDeviceStats_();
+  Logger.log('Jira devices (Connector + ECG Machine only): ' + jiraStats.total + ' total, ' +
+    jiraStats.with_center + ' mapped to a center, source=' + jiraStats.source);
+  Logger.log('Jira devices by status: ' + JSON.stringify(jiraStats.by_status));
+
+  // Raw Data page — one row-count check per source.
+  Object.keys(rawSources_()).forEach(function (key) {
+    var raw = apiGetRawPage({ source: key, page: 0, pageSize: 1 });
+    Logger.log(raw.ok
+      ? 'Raw data [' + key + ']: ' + raw.data.totalRows + ' rows'
+      : 'Raw data [' + key + '] FAILED: ' + JSON.stringify(raw.error));
+  });
 }
 
 /**

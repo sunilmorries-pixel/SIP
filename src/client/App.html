@@ -34,6 +34,7 @@
     execData: null,
     numbersLoaded: false,
     cdRaw: { page: 0, pageSize: 25, total: 0 },
+    rawData: { source: 'center_details', page: 0, pageSize: 25, total: 0 },
     theme: 'dark',
     lastDashboard: null
   };
@@ -115,6 +116,43 @@
           devices: ri % 3 === 0 ? 0 : rnd(1, 12) });
       }
       return Promise.resolve({ rows: raws, totalRows: tot, page: pg, pageSize: ps });
+    }
+    if (fn === 'apiGetRawPage' || fn === 'apiGetRawExport') {
+      var mockRaw = {
+        center_details: { columns: ['CenterID', 'Centername', 'Status', 'Spoke_Center_Segment', 'City', 'State'],
+          gen: function (i) { return [10000 + i, 'Demo Center ' + i, 'ACTIVE', 'Diagnostic centre', 'Bengaluru', 'Karnataka']; } },
+        cloud_devices: { columns: ['DeviceID', 'CenterID', 'HubName', 'IMSI', 'BatteryLevel', 'LastTimeStamp'],
+          gen: function (i) { return ['H4-DEMO' + i, 10000 + i, 'Demo Hub 1', '404550000' + i, String(rnd(20, 95)), new Date().toISOString()]; } },
+        zoho_data: { columns: ['ticketNumber', 'CenterID', 'status', 'CreatedAt', 'ClosedAt', 'IssueCategory'],
+          gen: function (i) { return [149000 + i, 10000 + i, 'Closed', '02-Jul-2026 04:59:16 PM', '03-Jul-2026 10:12:00 AM', 'Lead cable']; } },
+        device_metrics: { columns: ['deviceid', 'centerid', 'down_time_percentage', 'total_no_of_tickets', 'mean_time_between_failures_hrs'],
+          gen: function (i) { return ['H4-DEMO' + i, 10000 + i, rnd(0, 140), rnd(0, 12), rnd(100, 900)]; } },
+        device_center_mapping: { columns: ['deviceid', 'centerid', 'startdatetime', 'enddatetime'],
+          gen: function (i) { return ['H4-DEMO' + i, 10000 + i, '2023-04-12', '']; } },
+        jira_data: { columns: ['issue_key', 'summary', 'customerid', 'status_name', 'issuetype_name', 'ticket_created'],
+          gen: function (i) { return ['TA-' + (45000 + i), 'H4-DEMO' + i + ' ECG issue', 10000 + i, 'Deployed', 'ECG Machine', '2024-01-01']; } },
+        jira_sheet: { columns: ['Key', 'Issue Type', 'Summary', 'Status', 'Created', 'Customer ID'],
+          gen: function (i) { return ['TA-' + (45000 + i), 'ECG Machine', 'H4-DEMO' + i + ' swap request', 'Deployed', '2024-01-01', 10000 + i]; } },
+        cs_tracker: { columns: ['T O M', 'Received Date', 'Closed Date', 'Zoho ID', 'Center ID', 'Machine & DeviceType', 'Issue Type', 'TAT (Days)'],
+          gen: function (i) { return ['Demo Owner', '2024-01-01', '2024-01-05', '#' + (149000 + i), 10000 + i, 'MAC600', 'Lead cable', rnd(1, 10)]; } }
+      };
+      var srcKey = (args && args.source) || 'center_details';
+      var srcDef = mockRaw[srcKey] || mockRaw.center_details;
+      var totalMock = 237;
+      function rowAt(idx) {
+        var row = {};
+        srcDef.columns.forEach(function (c, ci) { row[c] = srcDef.gen(idx)[ci]; });
+        return row;
+      }
+      if (fn === 'apiGetRawExport') {
+        var allRows = [];
+        for (var ei = 0; ei < totalMock; ei++) allRows.push(rowAt(ei));
+        return Promise.resolve({ rows: allRows, columns: srcDef.columns, totalRows: totalMock, truncated: false });
+      }
+      var pg2 = (args && args.page) || 0, ps2 = (args && args.pageSize) || 25;
+      var pageRows = [];
+      for (var pi = 0; pi < ps2 && (pg2 * ps2 + pi) < totalMock; pi++) pageRows.push(rowAt(pg2 * ps2 + pi));
+      return Promise.resolve({ rows: pageRows, columns: srcDef.columns, totalRows: totalMock, page: pg2, pageSize: ps2 });
     }
     if (fn === 'apiGetNumbers') {
       var kv = function (arr) { return arr.map(function (x) { return { k: x[0], n: x[1] }; }); };
@@ -1531,7 +1569,7 @@
   }
 
   /* ── tabs ────────────────────────────────────────────────────── */
-  var TAB_IDS = ['tab-overview', 'tab-asset', 'tab-centers', 'tab-support', 'tab-map', 'tab-topcust', 'tab-numbers'];
+  var TAB_IDS = ['tab-overview', 'tab-asset', 'tab-centers', 'tab-support', 'tab-map', 'tab-topcust', 'tab-numbers', 'tab-rawdata'];
 
   /* ── hash routing (#overview, #asset, …) ─────────────────────── */
   function pageOf(tabId) { return tabId.replace('tab-', ''); }
@@ -1583,6 +1621,7 @@
       if (!state.numbersLoaded) loadNumbers();
       if (!state.cdRaw.total) loadCdRaw();
     }
+    if (tabId === 'tab-rawdata' && !state.rawData.total) loadRawTable();
     updateHash();
   }
 
@@ -1639,6 +1678,80 @@
     $('cdRawPage').textContent = (state.cdRaw.page + 1) + ' / ' + (maxPage + 1);
     $('cdRawPrev').disabled = state.cdRaw.page <= 0;
     $('cdRawNext').disabled = state.cdRaw.page >= maxPage;
+  }
+
+  /* ── Raw Data page (all 8 sources, no site filters) ────────────── */
+  function loadRawTable() {
+    $('rawTableInfo').textContent = 'Loading\u2026';
+    gsCall('apiGetRawPage', { source: state.rawData.source, page: state.rawData.page, pageSize: state.rawData.pageSize })
+      .then(renderRawTable)
+      .catch(function (err) {
+        $('rawTableInfo').textContent = 'Failed: ' + err.message;
+      });
+  }
+
+  function renderRawTable(payload) {
+    var rows = payload.rows || [];
+    var columns = payload.columns || [];
+    state.rawData.total = payload.totalRows || 0;
+
+    var table = $('rawTable');
+    table.querySelector('thead tr').innerHTML = columns.map(function (c) {
+      return '<th scope="col">' + escapeHtml(c) + '</th>';
+    }).join('');
+
+    var body = table.querySelector('tbody');
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="' + Math.max(1, columns.length) + '" class="chart-empty">No rows</td></tr>';
+    } else {
+      body.innerHTML = rows.map(function (r) {
+        return '<tr>' + columns.map(function (c) {
+          return '<td>' + escapeHtml(r[c]) + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+    }
+
+    var start = state.rawData.page * state.rawData.pageSize;
+    var end = Math.min(start + state.rawData.pageSize, state.rawData.total);
+    $('rawTableInfo').textContent = state.rawData.total
+      ? (FMT.format(start + 1) + '\u2013' + FMT.format(end) + ' of ' + FMT.format(state.rawData.total) + ' rows')
+      : '0 rows';
+    var maxPage = Math.max(0, Math.ceil(state.rawData.total / state.rawData.pageSize) - 1);
+    $('rawPage').textContent = (state.rawData.page + 1) + ' / ' + (maxPage + 1);
+    $('rawPrev').disabled = state.rawData.page <= 0;
+    $('rawNext').disabled = state.rawData.page >= maxPage;
+  }
+
+  function csvCell(value) {
+    var cell = String(value == null ? '' : value);
+    return /[",\n]/.test(cell) ? '"' + cell.replace(/"/g, '""') + '"' : cell;
+  }
+
+  function exportRawFull() {
+    var btn = $('rawExportBtn');
+    var originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Exporting\u2026';
+    gsCall('apiGetRawExport', { source: state.rawData.source })
+      .then(function (payload) {
+        var columns = payload.columns || [];
+        var rows = payload.rows || [];
+        if (!rows.length) { toast('Nothing to export', 'error'); return; }
+        var lines = [columns.map(csvCell).join(',')].concat(rows.map(function (row) {
+          return columns.map(function (c) { return csvCell(row[c]); }).join(',');
+        }));
+        var blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'sip-raw-' + state.rawData.source + '.csv';
+        link.click();
+        URL.revokeObjectURL(link.href);
+        toast(payload.truncated
+          ? 'Exported first ' + FMT.format(rows.length) + ' of ' + FMT.format(payload.totalRows) + ' rows'
+          : FMT.format(rows.length) + ' rows exported', 'ok');
+      })
+      .catch(function (err) { toast('Export failed: ' + err.message, 'error'); })
+      .then(function () { btn.disabled = false; btn.textContent = originalText; });
   }
 
   function numCompare(items) {
@@ -2060,6 +2173,35 @@
       var maxPage = Math.max(0, Math.ceil(state.cdRaw.total / state.cdRaw.pageSize) - 1);
       if (state.cdRaw.page < maxPage) { state.cdRaw.page += 1; loadCdRaw(); }
     });
+
+    // Raw Data page: source pills, page size, pager, export.
+    Array.prototype.forEach.call($('rawSourcePills').querySelectorAll('.raw-pill'), function (pill) {
+      pill.addEventListener('click', function () {
+        if (pill.classList.contains('is-active')) return;
+        Array.prototype.forEach.call($('rawSourcePills').querySelectorAll('.raw-pill'), function (p) {
+          p.classList.remove('is-active');
+        });
+        pill.classList.add('is-active');
+        state.rawData.source = pill.getAttribute('data-source');
+        state.rawData.page = 0;
+        state.rawData.total = 0;
+        $('rawTableTitle').textContent = pill.textContent + ' \u00b7 raw data';
+        loadRawTable();
+      });
+    });
+    $('rawPageSize').addEventListener('change', function () {
+      state.rawData.pageSize = parseInt($('rawPageSize').value, 10) || 25;
+      state.rawData.page = 0;
+      loadRawTable();
+    });
+    $('rawPrev').addEventListener('click', function () {
+      if (state.rawData.page > 0) { state.rawData.page -= 1; loadRawTable(); }
+    });
+    $('rawNext').addEventListener('click', function () {
+      var maxPage = Math.max(0, Math.ceil(state.rawData.total / state.rawData.pageSize) - 1);
+      if (state.rawData.page < maxPage) { state.rawData.page += 1; loadRawTable(); }
+    });
+    $('rawExportBtn').addEventListener('click', exportRawFull);
 
     updateSearchPlaceholder();
     refreshAll(false);

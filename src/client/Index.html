@@ -101,6 +101,7 @@
   <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" tabindex="-1">Map</button>
   <button class="tab" id="tab-topcust" role="tab" aria-selected="false" aria-controls="panel-topcust" tabindex="-1">Top Customers</button>
   <button class="tab" id="tab-numbers" role="tab" aria-selected="false" aria-controls="panel-numbers" tabindex="-1">Numbers</button>
+  <button class="tab" id="tab-rawdata" role="tab" aria-selected="false" aria-controls="panel-rawdata" tabindex="-1">Raw Data</button>
 </nav>
 
 <main class="page" role="main">
@@ -768,6 +769,62 @@
           </button>
           <span id="cdRawPage" class="page-indicator">–</span>
           <button id="cdRawNext" class="btn btn-ghost btn-icon" type="button" aria-label="Next page" disabled>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <!-- ══════════════ VIEW 7 · RAW DATA (source export/reconciliation) ══════════════ -->
+  <section id="panel-rawdata" class="panel" role="tabpanel" aria-labelledby="tab-rawdata" hidden>
+    <p class="num-lead">Every column, straight from the source — <strong>no site filters apply on this page</strong>
+      (no F2P exclusion, no Active-centers toggle, no hub/segment/search).</p>
+
+    <div class="raw-pills" id="rawSourcePills" role="tablist" aria-label="Raw data source">
+      <button class="raw-pill is-active" type="button" data-source="center_details">Center Details</button>
+      <button class="raw-pill" type="button" data-source="cloud_devices">Cloud Devices</button>
+      <button class="raw-pill" type="button" data-source="zoho_data">Zoho Tickets</button>
+      <button class="raw-pill" type="button" data-source="device_metrics">Device Metrics</button>
+      <button class="raw-pill" type="button" data-source="device_center_mapping">Device-Center Mapping (legacy)</button>
+      <button class="raw-pill" type="button" data-source="jira_data">Jira Issues (legacy BQ)</button>
+      <button class="raw-pill" type="button" data-source="jira_sheet">Jira Devices (Sheet)</button>
+      <button class="raw-pill" type="button" data-source="cs_tracker">CS Tracker (Sheet)</button>
+    </div>
+
+    <article class="card span-12">
+      <header class="card-head">
+        <h2 class="card-title" id="rawTableTitle">Center Details · raw data</h2>
+        <div class="raw-actions">
+          <label class="raw-pagesize">Rows per page
+            <select id="rawPageSize" class="select">
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+          <button id="rawExportBtn" class="btn btn-primary" type="button">Export full CSV</button>
+        </div>
+      </header>
+      <div class="table-scroll">
+        <table class="data-table" id="rawTable">
+          <caption class="sr-only">Raw source rows</caption>
+          <thead><tr></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="table-footer">
+        <span id="rawTableInfo" class="table-info" aria-live="polite">Loading…</span>
+        <div class="pager">
+          <button id="rawPrev" class="btn btn-ghost btn-icon" type="button" aria-label="Previous page" disabled>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <span id="rawPage" class="page-indicator">–</span>
+          <button id="rawNext" class="btn btn-ghost btn-icon" type="button" aria-label="Next page" disabled>
             <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>

@@ -1,6 +1,15 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-07-08 · **Version:** 5.4 · **Status:** LIVE (deployment @23, same URL).
+**Last updated:** 2026-07-08 · **Version:** 5.5 · **Status:** LIVE (deployment @24, same URL).
+
+**v5.5 (2026-07-08, deployed @24):** removed **device_metrics** as a user-facing Raw
+Data source (dropped from `rawSources_` in RawData.js, the source pill in Index.html,
+and the preview mock in App.html). `device_metrics` had no other usage in the app — only
+a doc-comment mention in Queries.js. The BQ table still exists. Raw Data page now exposes
+6 sources: Center Details, Cloud Devices, Zoho Tickets, Jira Issues (legacy BQ), Jira
+Devices (Sheet), CS Tracker (Sheet). Same treatment as device_center_mapping in v5.3.
+NOTE: device_metrics was reloaded down to 191 rows on 2026-07-07 (was near-empty), which
+is why it was pulled from the raw viewer.
 
 **v5.4 (2026-07-08, deployed @23):** geocoding + F2P + segment-filter fixes.
 - **Geocoding fixed + active-first**: `distinctLocations_()` (Geo.js) was still

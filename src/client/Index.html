@@ -130,7 +130,7 @@
     <div class="card-grid">
       <article class="card span-4">
         <header class="card-head">
-          <h2 class="card-title">Fleet status (Jira)</h2>
+          <h2 class="card-title">Device status (Jira)</h2>
           <p class="card-sub">Jira devices by lifecycle status</p>
         </header>
         <div id="execFleet" class="chart chart-tall" role="img" aria-label="Donut of Jira devices by lifecycle status"></div>
@@ -189,7 +189,7 @@
 
       <article class="card span-4">
         <header class="card-head">
-          <h2 class="card-title">Where the fleet lives</h2>
+          <h2 class="card-title">Where devices live</h2>
           <p class="card-sub">Top states by devices</p>
         </header>
         <div id="execGeo" class="chart chart-tall" role="img" aria-label="Devices per state"></div>
@@ -204,7 +204,7 @@
     <div class="card-grid">
       <article class="card span-4">
         <header class="card-head">
-          <h2 class="card-title">Fleet status</h2>
+          <h2 class="card-title">Device status</h2>
           <p class="card-sub">By last heartbeat · click a slice to inspect devices</p>
         </header>
         <div id="chartFleetStatus" class="chart chart-tall" role="img"
@@ -327,10 +327,10 @@
       <article class="card span-12" id="deviceExplorerCard">
         <header class="card-head">
           <h2 class="card-title">Device explorer</h2>
-          <p class="card-sub">Search, filter and sort the full fleet</p>
+          <p class="card-sub">Search, filter and sort all devices</p>
         </header>
         <div class="explorer-toolbar">
-          <div class="chip-row" id="statusChips" role="group" aria-label="Filter by fleet status"></div>
+          <div class="chip-row" id="statusChips" role="group" aria-label="Filter by device status"></div>
           <button id="exportCsvBtn" class="btn btn-ghost" type="button">
             <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
@@ -342,7 +342,7 @@
 
         <div class="table-scroll">
           <table class="data-table" id="deviceTable" aria-describedby="deviceTableInfo">
-            <caption class="sr-only">Device explorer — filterable, sortable list of fleet devices</caption>
+            <caption class="sr-only">Device explorer — filterable, sortable list of devices</caption>
             <thead><tr id="deviceTableHead"></tr></thead>
             <tbody></tbody>
           </table>
@@ -412,7 +412,7 @@
       <article class="card span-12">
         <header class="card-head">
           <h2 class="card-title">Center 360</h2>
-          <p class="card-sub">One row per center — fleet ⋈ location ⋈ open tickets · click a row for details</p>
+          <p class="card-sub">One row per center — devices ⋈ location ⋈ open tickets · click a row for details</p>
         </header>
         <div class="table-scroll">
           <table class="data-table" id="centerTable" aria-describedby="centerTableInfo">

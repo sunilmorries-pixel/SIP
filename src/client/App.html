@@ -412,8 +412,8 @@
 
   function buildKpiSkeletons() {
     $('execKpiGrid').innerHTML =
-      kpiTile('exUptime', 'online', 'var(--ok)', 'Fleet uptime', 'North-Star ≥ 99%') +
-      kpiTile('exActive', 'fleet', 'var(--secondary)', 'Fleet devices', 'in the fleet') +
+      kpiTile('exUptime', 'online', 'var(--ok)', 'Center uptime', 'North-Star ≥ 99%') +
+      kpiTile('exActive', 'fleet', 'var(--secondary)', 'Total devices', 'Connector + ECG') +
       kpiTile('exCenters', 'building', 'var(--info)', 'Centers', 'with devices') +
       kpiTile('exTickets', 'inbox', 'var(--accent)', 'Open tickets', 'active backlog') +
       kpiTile('exTopLe', 'layers', 'var(--primary)', 'Top LE devices', 'key accounts') +
@@ -421,9 +421,9 @@
       kpiTile('exTicketCount', 'ticket', 'var(--info)', 'Ticket count', 'all tickets') +
       kpiTile('exSlaBreach', 'clock', 'var(--danger)', 'SLA breach', 'open past target');
     $('kpiGrid').innerHTML =
-      kpiTile('kpiUptime', 'online', 'var(--ok)', 'Fleet uptime', 'avg center uptime') +
-      kpiTile('kpiHealth', 'health', 'var(--primary)', 'Fleet health', 'avg score / 100') +
-      kpiTile('kpiTotal', 'fleet', 'var(--secondary)', 'Total fleet', 'registered devices') +
+      kpiTile('kpiUptime', 'online', 'var(--ok)', 'Center uptime', 'avg per-center uptime') +
+      kpiTile('kpiHealth', 'health', 'var(--primary)', 'Center health', 'avg score / 100') +
+      kpiTile('kpiTotal', 'fleet', 'var(--secondary)', 'Total devices', 'Connector + ECG') +
       kpiTile('kpiSignal', 'signal', 'var(--info)', 'Poor signal', 'CSQ < 10') +
       kpiTile('kpiUnsynced', 'sync', 'var(--violet)', 'Unsynced ECGs', 'waiting to upload');
     $('centersKpiGrid').innerHTML =
@@ -546,7 +546,7 @@
     var ck = (data.centerKpis && data.centerKpis[0]) || {};
     setKpi('kpiCenters', ck.centers, 'with mapped devices');
     setKpi('kpiMapped', ck.devices, 'latest placements');
-    setKpi('kpiActiveDep', ck.active_deployments, pct(ck.active_deployments, ck.devices) + ' of mapped fleet');
+    setKpi('kpiActiveDep', ck.active_deployments, pct(ck.active_deployments, ck.devices) + ' of mapped devices');
     setKpi('kpiStates', ck.states, 'geographic reach');
     setKpi('kpiCities', ck.cities, 'geographic reach');
 
@@ -1788,7 +1788,7 @@
     var devSrc = { 'google-sheet': 'live Google Sheet', 'dump-snapshot': 'offline dump (Sheets API pending)', 'sheet-unavailable': 'unavailable' }[d.devices.source] || '';
     var mapSrc = { 'center_details': 'center_details serial', 'cloud_devices': 'serial→cloud_devices' }[d.devices.center_source] || 'serial';
     $('numDevicesKpi').innerHTML = numCompare([
-      { label: 'Devices (fleet)', value: d.devices.total, hi: true },
+      { label: 'Devices', value: d.devices.total, hi: true },
       { label: 'Devices mapped', value: d.devices.with_center },
       { label: 'Centers mapped', value: d.devices.jira_centers },
       { label: 'In center_details', value: d.devices.in_cd }
@@ -1861,7 +1861,7 @@
   var METRIC_INFO = {
     // ── Pillar 1 · Asset ──
     uptime: { code: 'M-A1', name: 'Machine Uptime %',
-      formula: '(life − downtime) ÷ life × 100, per center, clamped 0–100. Downtime = the union of merged device-failure ticket intervals [created → closed/now]; overlaps are counted once. The fleet figure is the average across centers.',
+      formula: '(life − downtime) ÷ life × 100, per center, clamped 0–100. Downtime = the union of merged device-failure ticket intervals [created → closed/now]; overlaps are counted once. The headline figure is the average across centers.',
       source: 'zoho_data failure tickets + center_details.deploymentdate (birth). North-Star target ≥ 99%.' },
     mtbf: { code: 'M-A2', name: 'Mean Time Between Failures',
       formula: 'uptime hours ÷ failure count, shown in days. Null when a center has fewer than 2 failures.',
@@ -1924,15 +1924,15 @@
     ticketsCount: { name: 'Ticket count', formula: 'All tickets ever recorded (COUNT).', source: 'zoho_data.' },
 
     // ── Fleet / device ──
-    fleetStatus: { name: 'Fleet status (heartbeat)',
+    fleetStatus: { name: 'Device status (heartbeat)',
       formula: 'Devices bucketed by last heartbeat vs IST-now: Live <1h, Online <24h, … Never seen (epoch-1970).',
       source: 'cloud_devices.LastTimeStamp (stored as IST wall-time).' },
-    jiraFleetStatus: { name: 'Fleet status (Jira)',
+    jiraFleetStatus: { name: 'Device status (Jira)',
       formula: 'Jira devices grouped by lifecycle status (Deployed, Store, Hardware, Decommissioned, …). Restricted to Issue Type = Connector or ECG Machine.',
       source: 'Jira devices Google Sheet (issuetype_name filtered to CONFIG.JIRA_DEVICE_TYPES).' },
-    devicesCount: { name: 'Devices / fleet',
-      formula: 'Distinct devices in the Jira export (deduped by Key). “Mapped” = those whose serial resolves to a center.',
-      source: 'Jira devices Google Sheet; serial (from Summary) → center via cloud_devices.' },
+    devicesCount: { name: 'Devices',
+      formula: 'Count of Jira-sheet devices (deduped by Key), restricted to Connector + ECG Machine. “Mapped” = those whose serial resolves to a center.',
+      source: 'Jira devices Google Sheet; serial (from Summary) → center via cloud_devices then center_details.' },
     devicesMapped: { name: 'Devices mapped', formula: 'Devices whose serial resolves to a CenterID.', source: 'Jira-sheet serial ⋈ cloud_devices.DeviceID → CenterID.' },
     activePlacements: { name: 'Active placements', formula: 'Device-center deployments currently open (no end date).', source: 'legacy device_center_mapping (enddatetime IS NULL).' },
     poorSignal: { name: 'Poor signal', formula: 'Devices reporting signal quality CSQ < 10.', source: 'cloud_devices.CSQ.' },
@@ -1979,10 +1979,10 @@
 
   // normalized card-title text → metric key
   var TITLE_METRIC = {
-    'fleet health': 'jiraFleetStatus', 'fleet status': 'fleetStatus',
+    'device status (jira)': 'jiraFleetStatus', 'device status': 'fleetStatus',
     'support ticket flow': 'ticketFlow', 'ticket flow': 'ticketFlow',
     'centers needing attention': 'attention', 'reliability watchlist': 'reliability',
-    'top le customers': 'topLe', 'where the fleet lives': 'geo', 'firmware spread': 'firmware',
+    'top le customers': 'topLe', 'where devices live': 'geo', 'firmware spread': 'firmware',
     'asset lifecycle': 'assetLifecycle', 'asset types': 'assetLifecycle',
     'asset health score': 'health', 'first-time-failure by production batch': 'ftf',
     'batch signal': 'batch', 'batch cohort detail': 'ftf',

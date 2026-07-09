@@ -94,12 +94,13 @@
 </div>
 
 <nav class="tabs" role="tablist" aria-label="Dashboard views">
-  <button class="tab is-active" id="tab-overview" role="tab" aria-selected="true" aria-controls="panel-overview">Overview</button>
-  <button class="tab" id="tab-asset"   role="tab" aria-selected="false" aria-controls="panel-asset" tabindex="-1">Asset</button>
   <button class="tab" id="tab-centers" role="tab" aria-selected="false" aria-controls="panel-centers" tabindex="-1">Centers / Customers</button>
   <button class="tab" id="tab-support" role="tab" aria-selected="false" aria-controls="panel-support" tabindex="-1">Support / CS</button>
+  <button class="tab" id="tab-asset"   role="tab" aria-selected="false" aria-controls="panel-asset" tabindex="-1">Asset</button>
   <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" tabindex="-1">Map</button>
   <button class="tab" id="tab-topcust" role="tab" aria-selected="false" aria-controls="panel-topcust" tabindex="-1">Top Customers</button>
+  <!-- Overview stays the default landing page (is-active) but sits after Top Customers in the bar. -->
+  <button class="tab is-active" id="tab-overview" role="tab" aria-selected="true" aria-controls="panel-overview">Overview</button>
   <button class="tab" id="tab-numbers" role="tab" aria-selected="false" aria-controls="panel-numbers" tabindex="-1">Numbers</button>
   <button class="tab" id="tab-rawdata" role="tab" aria-selected="false" aria-controls="panel-rawdata" tabindex="-1">Raw Data</button>
 </nav>
@@ -199,6 +200,11 @@
 
   <!-- ══════════════ VIEW 1 · ASSET ══════════════ -->
   <section id="panel-asset" class="panel" role="tabpanel" aria-labelledby="tab-asset" hidden>
+    <div class="page-summary card">
+      <span class="exec-eyebrow">Executive summary</span>
+      <p id="assetSummary" class="exec-narrative">Loading the story from live data…</p>
+      <div id="assetSummaryFlags" class="exec-flags"></div>
+    </div>
     <div id="kpiGrid" class="kpi-grid kpi-grid-5"><!-- KPI tiles rendered by App.html --></div>
 
     <div class="card-grid">
@@ -211,6 +217,14 @@
              aria-label="Donut chart of devices grouped by heartbeat recency"></div>
       </article>
 
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Device age</h2>
+          <p class="card-sub">Connector + ECG devices by age (today − Created); 5y+ past expected life</p>
+        </header>
+        <div id="chartDeviceAges" class="chart" role="img"
+             aria-label="Bar chart of devices grouped by age band"></div>
+      </article>
 
       <article class="card span-4">
         <header class="card-head">
@@ -370,6 +384,11 @@
 
   <!-- ══════════════ VIEW 2 · CENTERS / CUSTOMERS ══════════════ -->
   <section id="panel-centers" class="panel" role="tabpanel" aria-labelledby="tab-centers" hidden>
+    <div class="page-summary card">
+      <span class="exec-eyebrow">Executive summary</span>
+      <p id="centersSummary" class="exec-narrative">Loading the story from live data…</p>
+      <div id="centersSummaryFlags" class="exec-flags"></div>
+    </div>
     <div id="centersKpiGrid" class="kpi-grid kpi-grid-5"></div>
 
     <div class="card-grid">
@@ -393,8 +412,8 @@
 
       <article class="card span-4">
         <header class="card-head">
-          <h2 class="card-title">Deployment status</h2>
-          <p class="card-sub">Devices with active vs ended placements</p>
+          <h2 class="card-title">Centers by segment</h2>
+          <p class="card-sub">Distinct centers grouped by hub master segment</p>
         </header>
         <div id="chartActiveEnded" class="chart chart-tall" role="img"
              aria-label="Donut chart of active versus ended deployments"></div>
@@ -403,7 +422,7 @@
       <article class="card span-12">
         <header class="card-head">
           <h2 class="card-title">Top hubs</h2>
-          <p class="card-sub">Largest hubs, split by online status (last 24h)</p>
+          <p class="card-sub">Largest hubs by number of spokes (centers)</p>
         </header>
         <div id="chartHubs" class="chart chart-tall" role="img"
              aria-label="Stacked horizontal bar chart of online and offline devices per hub"></div>
@@ -412,7 +431,7 @@
       <article class="card span-12">
         <header class="card-head">
           <h2 class="card-title">Center 360</h2>
-          <p class="card-sub">One row per center — devices ⋈ location ⋈ open tickets · click a row for details</p>
+          <p class="card-sub">One row per center — devices, lifecycle, downtime, uptime, tickets · click a row for details</p>
         </header>
         <div class="table-scroll">
           <table class="data-table" id="centerTable" aria-describedby="centerTableInfo">

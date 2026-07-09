@@ -110,15 +110,25 @@ function buildDashboardQuerySpecsCD(hub, activeOnly) {
     geo:
       "SELECT IFNULL(NULLIF(TRIM(State), ''), 'Unknown') AS state, COUNT(*) AS devices " +
       "FROM " + CD + " WHERE " + F + " GROUP BY state ORDER BY devices DESC LIMIT 12",
+    // One row per center (MIN deploymentdate); counts DISTINCT centers so the
+    // bands sum to the center count (was active-only rows → didn't match).
     deploymentAge:
-      "WITH active AS (SELECT DATE_DIFF(CURRENT_DATE(), DATE(deploymentdate), DAY) AS age_days " +
-      " FROM " + CD + " WHERE deactivationdate IS NULL AND deploymentdate IS NOT NULL AND " + F + ") " +
+      "WITH dep AS (SELECT CenterID, DATE_DIFF(CURRENT_DATE(), DATE(MIN(deploymentdate)), DAY) AS age_days " +
+      " FROM " + CD + " WHERE deploymentdate IS NOT NULL AND " + F + " GROUP BY CenterID) " +
       "SELECT CASE WHEN age_days < 90 THEN '<3 mo' WHEN age_days < 180 THEN '3-6 mo' " +
       " WHEN age_days < 365 THEN '6-12 mo' WHEN age_days < 730 THEN '1-2 yr' ELSE '2+ yr' END AS band, " +
-      " COUNT(*) AS devices FROM active GROUP BY band",
+      " COUNT(*) AS devices FROM dep GROUP BY band",
+    // "Deployment status" card repurposed to a segment breakdown (hub_master_segment, per user).
     activeVsEnded:
-      "SELECT IF(deactivationdate IS NULL, 'Active', 'Ended') AS status, " +
-      " COUNT(DISTINCT CenterID) AS devices FROM " + CD + " WHERE " + F + " GROUP BY status",
+      "SELECT IFNULL(NULLIF(TRIM(hub_master_segment), ''), '(blank)') AS status, " +
+      " COUNT(DISTINCT CenterID) AS devices FROM " + CD + " WHERE " + F +
+      " GROUP BY status ORDER BY devices DESC LIMIT 12",
+    // "Top hubs" ranked by SPOKE COUNT (distinct centers per hub), not device
+    // online/offline (the legacy spec read cloud_devices, unrelated to hubs here).
+    hubs:
+      "SELECT IFNULL(NULLIF(TRIM(HubName), ''), 'Unassigned') AS hub, " +
+      " COUNT(DISTINCT CenterID) AS spokes FROM " + CD + " WHERE " + F +
+      " GROUP BY hub ORDER BY spokes DESC LIMIT 12",
     reliability: centerUptimeSqlCD_(
       "SELECT center_id AS centerid, uptime_pct, ROUND(100 - uptime_pct, 1) AS downtime_pct, " +
       " failures, ROUND(life_hrs / 24.0, 0) AS life_days FROM scored ORDER BY uptime_pct ASC LIMIT 12", activeOnly),
@@ -126,7 +136,10 @@ function buildDashboardQuerySpecsCD(hub, activeOnly) {
       "SELECT COUNT(*) AS scored, ROUND(AVG(uptime_pct), 1) AS avg_uptime, " +
       " ROUND(COUNTIF(uptime_pct >= 99) / NULLIF(COUNT(*), 0) * 100, 1) AS pct99, " +
       " ROUND(AVG(mtbf_hrs) / 24, 1) AS avg_mtbf_days, ROUND(AVG(health_score), 1) AS avg_health, " +
-      " ROUND(COUNTIF(health_score >= 80) / NULLIF(COUNT(*), 0) * 100, 1) AS pct_healthy FROM scored", activeOnly),
+      " ROUND(COUNTIF(health_score >= 80) / NULLIF(COUNT(*), 0) * 100, 1) AS pct_healthy, " +
+      // Center lifecycle (today − deploymentdate) + downtime, for the Centers summary.
+      " ROUND(AVG(life_hrs) / 24 / 365, 1) AS avg_life_years, " +
+      " ROUND(AVG(downtime_hrs) / 24, 1) AS avg_downtime_days FROM scored", activeOnly),
     assetHealth: centerUptimeSqlCD_(
       "SELECT center_id AS centerid, uptime_pct, mtbf_hrs, failures, health_score " +
       "FROM scored ORDER BY health_score ASC LIMIT 12", activeOnly)
@@ -137,11 +150,11 @@ function buildDashboardQuerySpecsCD(hub, activeOnly) {
   // now computed in JS from the Jira SHEET asset index (see apiGetDashboardCD).
   }).filter(function (s) { return s.key !== 'assets' && s.key !== 'cohortReliability'; });
 
-  // Distinct real segment values (center_details), for the topbar segment filter.
+  // Distinct real segment values (hub_master_segment), for the topbar segment filter.
   specs.push({
     key: 'segmentOptions', maxRows: 200,
-    sql: "SELECT DISTINCT TRIM(Spoke_Center_Segment) AS segment FROM " + CD +
-      " WHERE " + F + " AND NULLIF(TRIM(Spoke_Center_Segment), '') IS NOT NULL ORDER BY segment"
+    sql: "SELECT DISTINCT TRIM(hub_master_segment) AS segment FROM " + CD +
+      " WHERE " + F + " AND NULLIF(TRIM(hub_master_segment), '') IS NOT NULL ORDER BY segment"
   });
   // Per-center Zoho failure aggregate (Zoho only — no jira) feeding the JS cohort.
   var P = "SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', ";
@@ -240,7 +253,7 @@ function cohortFromIndex_(assets, zohoFail) {
 
 /** center_details center dimension ⟕ live telemetry ⟕ open tickets (by CenterID). */
 function getCenter360RowsCD_(activeOnly) {
-  var ckey = 'ctr360cd_v3' + (activeOnly ? '_a' : '');
+  var ckey = 'ctr360cd_v4' + (activeOnly ? '_a' : '');
   var cached = cacheGetLarge(ckey);
   if (cached) return cached;
 
@@ -255,7 +268,7 @@ function getCenter360RowsCD_(activeOnly) {
         // come from the pin-geocode store fallback (coordsForCD_).
         "SELECT DISTINCT CenterID AS center_id, Centername AS center, HubID AS hub_id, HubName AS hub, " +
         " City AS city, State AS state, PinCode AS pin, Spoke_Country AS country, " +
-        " IFNULL(TRIM(Spoke_Center_Segment), '') AS segment, " +   // segment from the center itself
+        " IFNULL(TRIM(hub_master_segment), '') AS segment, " +   // segment = hub_master_segment (per user)
         " CAST(NULL AS FLOAT64) AS lat, CAST(NULL AS FLOAT64) AS lng, " +
         " CAST(deploymentdate AS STRING) AS deployment_date " +
         "FROM " + T('center_details') + " WHERE " + cdFilter_(activeOnly)
@@ -278,14 +291,41 @@ function getCenter360RowsCD_(activeOnly) {
     }
   });
 
-  var joined = leftJoin(withTelemetry, sources.centerTickets || [], {
+  var withTickets = leftJoin(withTelemetry, sources.centerTickets || [], {
     leftKey: 'center_id', rightKey: 'center_id',
     select: function (row, tickets) {
       row.open_tickets = tickets ? tickets.open_tickets : 0;
+      row.tickets_total = tickets ? tickets.tickets_total : 0;
       // segment already set from center_details (centerBase) — a center's own
       // attribute, so centers with no tickets still carry their segment.
       return row;
     }
+  });
+
+  // Per-center lifecycle/downtime/uptime — same "scored" engine as the North-Star
+  // KPI and the reliability/health watchlists, but for EVERY scored center (no
+  // LIMIT), for the Center-360 table columns.
+  var uptimeRows = runQuery(centerUptimeSqlCD_(
+    "SELECT center_id, " +
+    " ROUND(life_hrs / 24 / 365, 2) AS lifecycle_years, " +
+    " ROUND(downtime_hrs / 24, 1) AS downtime_days, " +
+    " uptime_pct FROM scored", activeOnly));
+  var uptimeByCenter = {};
+  uptimeRows.forEach(function (r) { uptimeByCenter[r.center_id] = r; });
+
+  // Jira device count per center (Connector + ECG, from the Sheet — see getAssetIndex_).
+  var jiraCountByCenter = {};
+  getAssetIndex_().forEach(function (a) {
+    if (a.center_id != null) jiraCountByCenter[a.center_id] = (jiraCountByCenter[a.center_id] || 0) + 1;
+  });
+
+  var joined = withTickets.map(function (row) {
+    var u = uptimeByCenter[row.center_id];
+    row.lifecycle_years = u ? u.lifecycle_years : null;
+    row.downtime_days = u ? u.downtime_days : null;
+    row.uptime_pct = u ? u.uptime_pct : null;
+    row.jira_devices = jiraCountByCenter[row.center_id] || 0;
+    return row;
   });
 
   cachePutLarge(ckey, joined, 600);
@@ -563,7 +603,7 @@ function apiGetCenterDetailCD(options) {
   var centerId = parseInt(options && options.centerId, 10);
   return respond_(function () {
     if (!isFinite(centerId)) throw new Error('centerId is required');
-    return withCache('ctrdetcd_v1_' + centerId, function () {
+    return withCache('ctrdetcd_v2_' + centerId, function () {
       // Reuse the original detail specs (devices/tickets/openTickets are keyed by
       // CenterID, center-table-agnostic); swap only the `info` query.
       var specs = buildCenterDetailSpecs(centerId).map(function (s) {
@@ -589,6 +629,7 @@ function apiGetCenterDetailCD(options) {
         info: (detail.info && detail.info[0]) || null,
         tickets: (detail.tickets && detail.tickets[0]) || null,
         openTickets: detail.openTickets || [],
+        allTickets: detail.allTickets || [],
         devices: detail.devices || [],
         assets: assets,
         edition: 'center_details', flags: FLAGS_CD

@@ -89,12 +89,15 @@
       var crows = [];
       for (var c = 0; c < 15; c++) {
         var n = rnd(1, 14);
+        var up = rnd(88, 100);
         crows.push({
           center_id: rnd(1000, 60000), center: 'Demo Center ' + rnd(1, 4000),
           hub: 'Demo Hub ' + rnd(1, 30),
           city: ['Bengaluru', 'Mumbai', 'Chennai', 'Hisar', 'Delhi'][rnd(0, 5)],
           state: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Haryana', 'Delhi'][rnd(0, 5)],
-          devices: n, online: rnd(0, n + 1),
+          devices: n, jira_devices: rnd(0, n + 3), online: rnd(0, n + 1),
+          lifecycle_years: (rnd(3, 90) / 10), downtime_days: (rnd(0, 200) / 10),
+          uptime_pct: up, tickets_total: rnd(0, 40),
           last_seen: new Date(Date.now() - rnd(0, 96) * 36e5).toISOString().replace('T', ' ').slice(0, 19),
           open_tickets: rnd(0, 6)
         });
@@ -208,8 +211,10 @@
         worstCenters: Array.from({ length: 8 }, function (_, i) { return { center_id: 1000 + i, center: 'Demo Center ' + rnd(1, 400), state: ['Karnataka', 'Delhi', 'Maharashtra'][i % 3], devices: rnd(2, 14), online: rnd(0, 8), open_tickets: rnd(4, 9) }; }),
         topCustomers: ['VIJAYA DIAGNOSTIC', 'Aarthi Scans', 'Apollo Hospital', 'Metropolis', 'Fortis Hospital', 'Suburban Diagnostics'].map(function (n) { return { hub: n, devices: rnd(15, 160) }; }),
         topTotals: { customers: 27, devices: 665, centers: 720 },
-        uptimeFleet: { scored: 11344, avg_uptime: 98.9, pct99: 80.6, avg_mtbf_days: 572.9, avg_health: 95.0, pct_healthy: 98.6 },
-        fleet: { total: 43794, with_center: 9888, jira_centers: 4621, in_cd: 9888,
+        uptimeFleet: { scored: 11344, avg_uptime: 98.9, pct99: 80.6, avg_mtbf_days: 572.9, avg_health: 95.0, pct_healthy: 98.6, avg_life_years: 2.6, avg_downtime_days: 4.1 },
+        fleet: { total: 28444, with_center: 17323, jira_centers: 12028, in_cd: 12028,
+          avg_age_days: 1411, aged_devices: 28444, past_life: 8105,
+          age_bands: [{ k: '<1y', n: 3566 }, { k: '1-2y', n: 3343 }, { k: '2-3y', n: 7072 }, { k: '3-5y', n: 6358 }, { k: '5y+', n: 8105 }],
           by_status: [{ k: 'Deployed', n: 5210 }, { k: 'Store', n: 1180 }, { k: 'Hardware', n: 640 },
             { k: 'Decommissioned', n: 410 }, { k: 'Field', n: 260 }, { k: 'Exported', n: 90 }] },
         cs: { total_cases: 1284, avg_tat_days: 3.4 }
@@ -248,6 +253,13 @@
           { ticket: '149081', status: 'Pending on Customer', priority: 'Medium', subject: 'Lead cable replacement request', category: 'Hardware', link: 'https://desk.zoho.com/support/demo#Cases/dv/2' },
           { ticket: '148990', status: 'On Hold', priority: 'Low', subject: 'Network connectivity intermittent', category: 'Network', link: 'https://desk.zoho.com/support/demo#Cases/dv/3' }
         ],
+        allTickets: [
+          { ticket: '149127', status: 'In Progress', priority: 'High', subject: 'ECG showing error on MAC600', category: 'Device Issue', link: 'https://desk.zoho.com/support/demo#Cases/dv/1', created: '2026-07-01 10:22:00' },
+          { ticket: '149081', status: 'Pending on Customer', priority: 'Medium', subject: 'Lead cable replacement request', category: 'Hardware', link: 'https://desk.zoho.com/support/demo#Cases/dv/2', created: '2026-06-28 15:05:00' },
+          { ticket: '148990', status: 'On Hold', priority: 'Low', subject: 'Network connectivity intermittent', category: 'Network', link: 'https://desk.zoho.com/support/demo#Cases/dv/3', created: '2026-06-20 09:41:00' },
+          { ticket: '148711', status: 'Closed', priority: 'Medium', subject: 'Battery replacement completed', category: 'Hardware', link: 'https://desk.zoho.com/support/demo#Cases/dv/4', created: '2026-05-11 08:12:00' },
+          { ticket: '148502', status: 'Closed', priority: 'Low', subject: 'Prepaid recharge request', category: 'Billing', link: '', created: '2026-04-02 14:30:00' }
+        ],
         devices: Array.from({ length: 3 }, function (_, i) {
           return { device: 'H4-DEMO' + i, imsi: '', battery: String(rnd(20, 95)), csq: rnd(8, 30),
                    status: Charts.FLEET_ORDER[rnd(0, 4)], last_seen: new Date().toISOString() };
@@ -280,8 +292,10 @@
         var up = rnd(20, 94);
         return { centerid: rnd(1000, 50000), center: 'Demo Center ' + rnd(1, 400), devices: rnd(1, 12), uptime_pct: up, downtime_pct: Math.round((100 - up) * 10) / 10, failures: rnd(1, 9) };
       }),
-      uptimeFleet: [{ scored: 11344, avg_uptime: 98.9, pct99: 80.6, avg_mtbf_days: 572.9, avg_health: 95.0, pct_healthy: 98.6 }],
-      fleet: { total: 43794, with_center: 9888, jira_centers: 4621, in_cd: 9888 },
+      uptimeFleet: [{ scored: 11344, avg_uptime: 98.9, pct99: 80.6, avg_mtbf_days: 572.9, avg_health: 95.0, pct_healthy: 98.6, avg_life_years: 2.6, avg_downtime_days: 4.1 }],
+      fleet: { total: 28444, with_center: 17323, jira_centers: 12028, in_cd: 12028,
+        avg_age_days: 1411, aged_devices: 28444, past_life: 8105,
+        age_bands: [{ k: '<1y', n: 3566 }, { k: '1-2y', n: 3343 }, { k: '2-3y', n: 7072 }, { k: '3-5y', n: 6358 }, { k: '5y+', n: 8105 }] },
       assetHealth: Array.from({ length: 12 }, function (_, i) {
         var h = rnd(28, 78), up = rnd(20, 90);
         return { centerid: rnd(1000, 50000), center: 'Demo Center ' + rnd(1, 400), uptime_pct: up, mtbf_hrs: rnd(120, 4000), failures: rnd(1, 9), health_score: h };
@@ -298,9 +312,9 @@
       ],
       centerKpis: [{ centers: (args && args.activeOnly) ? 19034 : 28299, devices: (args && args.activeOnly) ? 19034 : 28299, states: 466, cities: 4028, active_deployments: 19034 }],
       geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
-      hubs: Array.from({ length: 10 }, function (_, i) { var n = rnd(150, 900); return { hub: 'Demo Hub ' + (i + 1), devices: n, online: rnd(40, n) }; }),
+      hubs: Array.from({ length: 10 }, function (_, i) { return { hub: 'Demo Hub ' + (i + 1), spokes: rnd(20, 400) }; }),
       deploymentAge: ['<3 mo', '3-6 mo', '6-12 mo', '1-2 yr', '2+ yr'].map(function (b) { return { band: b, devices: rnd(400, 3200) }; }),
-      activeVsEnded: [{ status: 'Active', devices: 9120 }, { status: 'Ended', devices: 4210 }],
+      activeVsEnded: [{ status: 'Private - SME', devices: 14316 }, { status: 'Government', devices: 4754 }, { status: 'LE - Cath Lab', devices: 2822 }, { status: 'LE - Diagnostic Chain', devices: 1740 }, { status: 'ECHO', devices: 788 }, { status: 'LE - Large Hospital', devices: 545 }],
       zohoKpis: [{ open_tickets: 211, created_7d: 340, closed_7d: 361, avg_open_age_days: 6.2, total_tickets: 84545 }],
       slaKpis: [{ resolved_n: 77678, within_pct: 65.5, within_tech: 51.0, within_nontech: 74.6, breached_open: 484, atrisk_open: 25, avg_res_days: 16.7 }],
       slaByType: [
@@ -319,7 +333,7 @@
       zohoPriority: [{ priority: 'High', cnt: 320 }, { priority: 'Medium', cnt: 610 }, { priority: 'Low', cnt: 120 }, { priority: 'Unset', cnt: 410 }],
       zohoChannel: ['Email', 'Phone', 'Web', 'Chat', 'Forums'].map(function (ch) { return { channel: ch, cnt: rnd(80, 2400) }; }),
       zohoSegment: ['Enterprise', 'SMB', 'Government', 'Distributor', 'Direct'].map(function (sg) { return { segment: sg, cnt: rnd(120, 1900) }; }),
-      segmentOptions: ['General Practitioner(GP) Clinic', 'Hospital less than 100 beds without cath lab', 'Diagnostic Centre/Diagnostic Chain', 'Hospital more than 100 beds with cath lab', 'Cath Lab'].map(function (sg) { return { segment: sg }; }),
+      segmentOptions: ['Private - SME', 'Government', 'LE - Cath Lab', 'LE - Diagnostic Chain', 'ECHO', 'LE - Large Hospital', 'Project'].map(function (sg) { return { segment: sg }; }),
       csTracker: {
         kpis: { total_cases: 1284, avg_tat_days: 3.4, owners: 9 },
         tatByMonth: months.map(function (mo) { return { month: mo, cases: rnd(40, 160), avg_tat: rnd(2, 7) }; }),
@@ -493,7 +507,7 @@
   }
 
   /* ── dashboard load ──────────────────────────────────────────── */
-  var CHART_IDS = ['chartFleetStatus', 'chartFirmware',
+  var CHART_IDS = ['chartFleetStatus', 'chartFirmware', 'chartDeviceAges',
     'chartAssetStatus', 'chartAssetTypes', 'chartGeo', 'chartDeploymentAge', 'chartActiveEnded',
     'chartHubs', 'chartZohoTrend', 'chartZohoPriority', 'chartZohoStatus', 'chartZohoCategories',
     'chartZohoChannel', 'chartZohoSegment', 'chartTatTrend', 'chartCsMachine', 'chartCsIssueType',
@@ -568,14 +582,17 @@
       $('deviceExplorerCard').scrollIntoView({ behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
     });
     Charts.firmware(data.firmware);
+    Charts.deviceAges((data.fleet && data.fleet.age_bands) || []);
     var assets = data.assets || [];
     Charts.assetStatus(assets.filter(function (r) { return r.dim === 'status'; }).slice(0, 8));
     Charts.assetTypes(assets.filter(function (r) { return r.dim === 'type'; }).slice(0, 8));
     renderReliability(data.reliability || []);
     renderAssetHealth(data.assetHealth || []);
     renderCohort(data.cohortReliability || []);
+    renderAssetSummary(data);
 
     /* Centers charts */
+    renderCentersSummary(data);
     Charts.geo(data.geo);
     Charts.deploymentAge(data.deploymentAge);
     Charts.activeVsEnded(data.activeVsEnded);
@@ -613,6 +630,80 @@
     $('statusStrip').classList.remove('is-stale');
     $('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString() +
       (state.hub ? ' · hub: ' + state.hub : '');
+  }
+
+  /** Builds .exec-flag chip HTML from [{cls, icon, text}] (icon optional). */
+  function flagChips_(flags) {
+    return flags.map(function (f) {
+      var svg = f.icon ? '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' + f.icon + '</svg>' : '';
+      return '<span class="exec-flag ' + (f.cls || '') + '">' + svg + f.text + '</span>';
+    }).join('');
+  }
+
+  /** Per-page executive summary for the ASSET page — built metric by metric.
+   *  Metric 1: device age. age = today − Created (per device), averaged over the
+   *  Connector + ECG fleet; 5y+ devices are flagged as past their expected life. */
+  function renderAssetSummary(data) {
+    var el = $('assetSummary');
+    if (!el) return;
+    var f = data.fleet || {};
+    var avgYears = f.avg_age_days != null ? (f.avg_age_days / 365) : null;
+
+    var s;
+    if (avgYears != null) {
+      s = 'Average device age is <b>' + avgYears.toFixed(1) + ' years</b> across <b>' +
+        FMT.format(f.total || 0) + '</b> devices (Connector + ECG)';
+      if (f.past_life) {
+        s += ' — <b class="down">' + FMT.format(f.past_life) + '</b> are past their 5-year expected life';
+      }
+      s += '.';
+    } else {
+      s = '<b>' + FMT.format(f.total || 0) + '</b> devices (Connector + ECG).';
+    }
+    el.innerHTML = s;
+
+    var flags = [];
+    if (f.past_life != null && f.total) {
+      var pastPct = Math.round(f.past_life / f.total * 100);
+      flags.push({ cls: pastPct >= 25 ? 'is-alert' : '', icon: ICONS.clock,
+        text: FMT.format(f.past_life) + ' devices 5y+ (' + pastPct + '% past expected life)' });
+    }
+    $('assetSummaryFlags').innerHTML = flagChips_(flags);
+  }
+
+  /** Per-page executive summary for the CENTERS page — built metric by metric.
+   *  Metric 1: center uptime over lifecycle. lifecycle = today − deploymentdate;
+   *  uptime% = (lifecycle − merged technical downtime) / lifecycle; + health. */
+  function renderCentersSummary(data) {
+    var el = $('centersSummary');
+    if (!el) return;
+    var up = (data.uptimeFleet && data.uptimeFleet[0]) || {};
+    var roll = (data.centerKpis && data.centerKpis[0]) || {};
+    var s;
+    if (up.scored != null) {
+      s = 'Average <b>center uptime</b> is <b class="' + (up.avg_uptime >= 99 ? 'up' : 'down') + '">' +
+        (up.avg_uptime != null ? up.avg_uptime + '%' : '–') + '</b> across <b>' + FMT.format(up.scored) +
+        '</b> scored centers';
+      if (up.avg_life_years != null) {
+        s += ' over an average lifecycle of <b>' + up.avg_life_years + ' years</b>';
+      }
+      if (up.avg_downtime_days != null) {
+        s += ' (avg downtime <b>' + up.avg_downtime_days + ' days</b> per center)';
+      }
+      if (up.avg_health != null) {
+        s += ' — <b>' + (up.pct_healthy || 0) + '%</b> score health ≥ 80';
+      }
+      s += '.';
+    } else {
+      s = '<b>' + FMT.format(roll.centers || 0) + '</b> centers.';
+    }
+    el.innerHTML = s;
+
+    var flags = [];
+    flags.push({ cls: up.avg_uptime >= 99 ? 'is-good' : 'is-alert', icon: ICONS.online,
+      text: (up.avg_uptime != null ? up.avg_uptime + '% center uptime' : 'uptime unavailable') +
+        (up.pct99 != null ? ' · ' + up.pct99 + '% ≥ 99%' : '') });
+    $('centersSummaryFlags').innerHTML = flagChips_(flags);
   }
 
   function renderReliability(rows) {
@@ -938,7 +1029,12 @@
     { key: 'city', label: 'City', sortable: false },
     { key: 'state', label: 'State', sortable: true },
     { key: 'devices', label: 'Devices', sortable: true, num: true },
+    { key: 'jira_devices', label: 'Jira devices', sortable: true, num: true },
     { key: 'online', label: 'Online', sortable: true, num: true },
+    { key: 'lifecycle_years', label: 'Lifecycle', sortable: true, num: true },
+    { key: 'downtime_days', label: 'Downtime', sortable: true, num: true },
+    { key: 'uptime_pct', label: 'Uptime', sortable: true, num: true },
+    { key: 'tickets_total', label: 'Tickets', sortable: true, num: true },
     { key: 'open_tickets', label: 'Open tickets', sortable: true, num: true },
     { key: 'last_seen', label: 'Last heartbeat', sortable: true, num: true }
   ];
@@ -992,6 +1088,7 @@
     } else {
       body.innerHTML = state.centerRows.map(function (r, i) {
         var ticketBadge = r.open_tickets > 3 ? 'danger' : (r.open_tickets > 0 ? 'warn' : 'ok');
+        var upBadge = r.uptime_pct == null ? 'muted' : (r.uptime_pct >= 99 ? 'ok' : (r.uptime_pct >= 95 ? 'warn' : 'danger'));
         return '<tr class="is-clickable" data-row="' + i + '" tabindex="0" role="button" aria-label="Open details for ' + escapeHtml(r.center || ('center ' + r.center_id)) + '">' +
           '<td><strong>' + escapeHtml(r.center || '—') + '</strong></td>' +
           '<td class="num">' + escapeHtml(r.center_id) + '</td>' +
@@ -999,7 +1096,12 @@
           '<td>' + escapeHtml(r.city || '—') + '</td>' +
           '<td>' + escapeHtml(r.state || '—') + '</td>' +
           '<td class="num">' + FMT.format(r.devices || 0) + '</td>' +
+          '<td class="num">' + FMT.format(r.jira_devices || 0) + '</td>' +
           '<td class="num">' + FMT.format(r.online || 0) + '</td>' +
+          '<td class="num">' + (r.lifecycle_years != null ? r.lifecycle_years + 'y' : '—') + '</td>' +
+          '<td class="num">' + (r.downtime_days != null ? r.downtime_days + 'd' : '—') + '</td>' +
+          '<td class="num"><span class="badge badge-' + upBadge + '">' + (r.uptime_pct != null ? r.uptime_pct + '%' : '—') + '</span></td>' +
+          '<td class="num">' + FMT.format(r.tickets_total || 0) + '</td>' +
           '<td class="num"><span class="badge badge-' + ticketBadge + '">' + FMT.format(r.open_tickets || 0) + '</span></td>' +
           '<td class="num" title="' + escapeHtml(r.last_seen || '') + '">' + relTime(r.last_seen) + '</td>' +
           '</tr>';
@@ -1186,6 +1288,35 @@
     return '<dt>' + label + '</dt><dd>' + value + '</dd>';
   }
 
+  var ZOHO_TERMINAL_RE = /closed|duplicate|junk/i;
+
+  /** Renders a .ticket-row list. badgeBy: 'priority' (Open list) or 'status' (All list). */
+  function ticketRowsHtml_(tickets, badgeBy) {
+    if (!tickets.length) return '<p class="card-sub">No tickets.</p>';
+    return tickets.map(function (t) {
+      var cls, badgeText;
+      if (badgeBy === 'status') {
+        cls = ZOHO_TERMINAL_RE.test(t.status || '') ? 'ok' : 'warn';
+        badgeText = t.status;
+      } else {
+        cls = /high/i.test(t.priority) ? 'danger' : (/medium/i.test(t.priority) ? 'warn' : (/low/i.test(t.priority) ? 'ok' : 'muted'));
+        badgeText = t.priority;
+      }
+      var safe = /^https:\/\//i.test(t.link) ? t.link : '';
+      var inner =
+        '<div class="ticket-row-top"><span class="ticket-id">#' + escapeHtml(t.ticket) +
+        ' · ' + escapeHtml(t.status) + '</span>' +
+        '<span class="badge badge-' + cls + '">' + escapeHtml(badgeText) + '</span></div>' +
+        '<div class="ticket-subj">' + escapeHtml(t.subject) +
+        (t.created ? ' <span class="ticket-date">· ' + escapeHtml(t.created) + '</span>' : '') + '</div>';
+      return safe
+        ? '<a class="ticket-row" href="' + escapeHtml(safe) + '" target="_blank" rel="noopener noreferrer" title="Open ticket #' + escapeHtml(t.ticket) + ' in Zoho Desk">' +
+          inner +
+          '<svg class="ticket-ext" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>'
+        : '<div class="ticket-row">' + inner + '</div>';
+    }).join('');
+  }
+
   /**
    * The single app-level center-detail drawer, opened from map markers and
    * Center 360 rows. `c` is a compact array [id, name, ?, ?, devices, online,
@@ -1239,24 +1370,17 @@
           .filter(Boolean).map(escapeHtml).join(', ') || '—') +
         '</dl>';
 
-      if (d.openTickets && d.openTickets.length) {
-        html += '<div class="panel-section-title">Open tickets (' + d.openTickets.length + ')</div>' +
-          '<div class="ticket-list">' +
-          d.openTickets.map(function (t) {
-            var pc = /high/i.test(t.priority) ? 'danger' : (/medium/i.test(t.priority) ? 'warn' : (/low/i.test(t.priority) ? 'ok' : 'muted'));
-            var safe = /^https:\/\//i.test(t.link) ? t.link : '';
-            var inner =
-              '<div class="ticket-row-top"><span class="ticket-id">#' + escapeHtml(t.ticket) +
-              ' · ' + escapeHtml(t.status) + '</span>' +
-              '<span class="badge badge-' + pc + '">' + escapeHtml(t.priority) + '</span></div>' +
-              '<div class="ticket-subj">' + escapeHtml(t.subject) + '</div>';
-            return safe
-              ? '<a class="ticket-row" href="' + escapeHtml(safe) + '" target="_blank" rel="noopener noreferrer" title="Open ticket #' + escapeHtml(t.ticket) + ' in Zoho Desk">' +
-                inner +
-                '<svg class="ticket-ext" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>'
-              : '<div class="ticket-row">' + inner + '</div>';
-          }).join('') +
-          '</div>';
+      // Ticket list: toggle between Open (default) and All (every ticket the
+      // center has ever raised) — per user request to see full ticket history.
+      if ((d.openTickets && d.openTickets.length) || (d.allTickets && d.allTickets.length)) {
+        html += '<div class="panel-section-title-row">' +
+          '<span class="panel-section-title">Tickets</span>' +
+          '<div class="ticket-toggle" role="group" aria-label="Ticket list filter">' +
+          '<button type="button" class="ticket-toggle-btn is-active" data-tix="open">Open (' + (d.openTickets ? d.openTickets.length : 0) + ')</button>' +
+          '<button type="button" class="ticket-toggle-btn" data-tix="all">All (' + (d.allTickets ? d.allTickets.length : 0) + (d.allTickets && d.allTickets.length >= 50 ? '+' : '') + ')</button>' +
+          '</div></div>' +
+          '<div class="ticket-list" data-tix-panel="open">' + ticketRowsHtml_(d.openTickets || [], 'priority') + '</div>' +
+          '<div class="ticket-list" data-tix-panel="all" hidden>' + ticketRowsHtml_(d.allTickets || [], 'status') + '</div>';
       }
 
       if (d.assets && d.assets.length) {
@@ -1283,6 +1407,17 @@
       }
 
       $(ids.body).innerHTML = html;
+      Array.prototype.forEach.call($(ids.body).querySelectorAll('.ticket-toggle-btn'), function (btn) {
+        btn.addEventListener('click', function () {
+          var mode = btn.getAttribute('data-tix');
+          Array.prototype.forEach.call($(ids.body).querySelectorAll('.ticket-toggle-btn'), function (b) {
+            b.classList.toggle('is-active', b === btn);
+          });
+          Array.prototype.forEach.call($(ids.body).querySelectorAll('[data-tix-panel]'), function (p) {
+            p.hidden = p.getAttribute('data-tix-panel') !== mode;
+          });
+        });
+      });
     }
 
     /** Opens the same drawer for a customer (hub): rollup + its centers. */
@@ -1949,11 +2084,11 @@
     statesReach: { name: 'States', formula: 'Distinct states with at least one center.', source: 'center_details.state.' },
     citiesReach: { name: 'Cities', formula: 'Distinct cities with at least one center.', source: 'center_details.city.' },
     deployStatus: { name: 'Deployment / lifecycle status', formula: 'Centers (or assets) grouped by status — active vs ended / lifecycle stage.', source: 'center_details.Status / jira_data.status_name.' },
-    center360: { name: 'Center 360', formula: 'One row per center: devices, online, open tickets, uptime and age — joined from every source in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data (hash-joined).' },
+    center360: { name: 'Center 360', formula: 'One row per center: devices (cloud_devices + Jira sheet), online, lifecycle (today − deploymentdate), downtime (merged technical-ticket hours), uptime %, tickets (total + open) — joined in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data ⋈ Jira sheet asset index (hash-joined).' },
     centersRaw: { name: 'center_details · raw data', formula: 'Raw center_details rows (F2P-excluded), paginated, with a per-center device count and mapped flag.', source: 'center_details + LEFT JOIN cloud_devices.' },
 
     // ── Customers ──
-    topHubs: { name: 'Top hubs', formula: 'Hubs ranked by device count.', source: 'center_details / device mapping grouped by hub.' },
+    topHubs: { name: 'Top hubs', formula: 'Hubs ranked by number of spokes — COUNT(DISTINCT CenterID) per hub.', source: 'center_details grouped by HubName.' },
     topLe: { name: 'Top LE customers', formula: 'The curated 27 large-enterprise accounts, ranked by devices.', source: 'TopCustomers.js hub list.' },
     topLeDevices: { name: 'Top LE devices', formula: 'Devices run by the 27 curated “Top LE” hub accounts.', source: 'TopCustomers hub list ⋈ device mapping.' },
     centersPerCust: { name: 'Centers per customer', formula: 'Distinct centers per top account.', source: 'center_details grouped by hub.' },

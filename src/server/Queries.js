@@ -550,7 +550,7 @@ function buildCenterSourceSpecs() {
       sql:
         // Segment comes from ALL tickets (open filter would drop centers whose
         // tickets are all closed), open_tickets counts only active ones.
-        "SELECT CenterID AS center_id, " +
+        "SELECT CenterID AS center_id, COUNT(*) AS tickets_total, " +
         " COUNTIF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS open_tickets, " +
         " ANY_VALUE(NULLIF(TRIM(hub_master_segment), '')) AS segment " +
         "FROM " + T('zoho_data') + " WHERE CenterID IS NOT NULL " +
@@ -663,6 +663,23 @@ function buildCenterDetailSpecs(centerId) {
         "WHERE CenterID = @cid AND status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + " " +
         "ORDER BY SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) DESC " +
         "LIMIT 25"
+    },
+    {
+      // ALL tickets ever raised by the center (any status), newest first — per
+      // user request: the drawer should show the center's full ticket history,
+      // not just the open ones.
+      key: 'allTickets',
+      params: p,
+      sql:
+        "SELECT ticketNumber AS ticket, status, IFNULL(NULLIF(TRIM(priority),''),'—') AS priority, " +
+        " IFNULL(NULLIF(TRIM(subject),''),'(no subject)') AS subject, " +
+        " IFNULL(NULLIF(TRIM(IssueCategory),''),'') AS category, " +
+        " IFNULL(TicketLink,'') AS link, " +
+        " CAST(SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS STRING) AS created " +
+        "FROM " + T('zoho_data') + " " +
+        "WHERE CenterID = @cid " +
+        "ORDER BY SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) DESC " +
+        "LIMIT 50"
     }
   ];
 }

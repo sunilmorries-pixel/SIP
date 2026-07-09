@@ -54,7 +54,7 @@ function isTrackedJiraDeviceType_(issueTypeName) {
  * @return {{total,with_center,jira_centers,in_cd,by_status,source,center_source}}
  */
 function jiraDeviceStats_() {
-  return withCache('jiradev_v3', function () {
+  return withCache('jiradev_v4', function () {
     var jiraRows = readJiraSheet();
     if (jiraRows) {
       jiraRows = jiraRows.filter(function (row) { return isTrackedJiraDeviceType_(row.issuetype_name); });
@@ -72,21 +72,37 @@ function jiraDeviceStats_() {
         if (!byIssue[ik]) {
           var m = SERIAL_RE.exec(String(row.summary || '').toUpperCase());
           var cid = m ? dev2ctr[m[1]] : undefined;
-          byIssue[ik] = { status: String(row.status_name || '').trim(), cid: (cid == null ? NaN : cid) };
+          // Device age = today − Created (assetAgeDays_ in Api.js).
+          byIssue[ik] = { status: String(row.status_name || '').trim(),
+            cid: (cid == null ? NaN : cid), age: assetAgeDays_(row.ticket_created) };
         }
       });
       var dTotal = 0, dWith = 0, dCenters = {}, dInCd = {}, dStatus = {};
+      var ageSum = 0, ageN = 0;
+      // Age bands (days): <1y / 1-2y / 2-3y / 3-5y / 5y+ (5-yr expected device life).
+      var ageBands = { '<1y': 0, '1-2y': 0, '2-3y': 0, '3-5y': 0, '5y+': 0 };
       Object.keys(byIssue).forEach(function (ik) {
         var o = byIssue[ik]; dTotal++;
         if (isFinite(o.cid)) { dWith++; dCenters[o.cid] = true; if (cdIds[o.cid]) dInCd[o.cid] = true; }
         var st = o.status || '(blank)';
         dStatus[st] = (dStatus[st] || 0) + 1;
+        if (o.age != null) {
+          ageSum += o.age; ageN++;
+          var y = o.age / 365;
+          if (y < 1) ageBands['<1y']++; else if (y < 2) ageBands['1-2y']++;
+          else if (y < 3) ageBands['2-3y']++; else if (y < 5) ageBands['3-5y']++;
+          else ageBands['5y+']++;
+        }
       });
       return {
         total: dTotal, with_center: dWith,
         jira_centers: Object.keys(dCenters).length, in_cd: Object.keys(dInCd).length,
         by_status: Object.keys(dStatus).map(function (k) { return { k: k, n: dStatus[k] }; })
           .sort(function (a, b) { return b.n - a.n; }),
+        avg_age_days: ageN ? Math.round(ageSum / ageN) : null,
+        aged_devices: ageN,
+        past_life: ageBands['5y+'],          // devices older than the 5-yr expected life
+        age_bands: Object.keys(ageBands).map(function (k) { return { k: k, n: ageBands[k] }; }),
         source: 'google-sheet', center_source: dcm.source
       };
     }
@@ -117,7 +133,7 @@ function apiGetNumbers(options) {
           "SELECT IFNULL(NULLIF(TRIM(Status), ''), '(blank)') AS k, COUNT(DISTINCT CenterID) AS n " +
           "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC" },
         { key: 'centersSegment', maxRows: 50, sql:
-          "SELECT IFNULL(NULLIF(TRIM(Spoke_Center_Segment), ''), '(blank)') AS k, COUNT(DISTINCT CenterID) AS n " +
+          "SELECT IFNULL(NULLIF(TRIM(hub_master_segment), ''), '(blank)') AS k, COUNT(DISTINCT CenterID) AS n " +
           "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC LIMIT 15" },
 
         { key: 'hubsTot', sql:

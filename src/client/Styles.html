@@ -564,6 +564,15 @@ body[data-theme="light"] .bg-decor {
 .exec-flag.is-alert { color: var(--danger); border-color: rgba(255,98,98,.4); background: rgba(255,98,98,.08); }
 .exec-flag.is-good { color: var(--ok); border-color: rgba(47,211,155,.4); background: rgba(47,211,155,.08); }
 
+/* per-page executive summary band — lighter than the Overview hero (no ring) */
+.page-summary {
+  margin-bottom: var(--gap);
+  background:
+    radial-gradient(28rem 14rem at 100% 0%, rgba(229, 52, 79, 0.07), transparent 60%),
+    var(--surface);
+}
+.page-summary .exec-narrative { font-size: clamp(16px, 1.5vw, 19px); max-width: 82ch; }
+
 /* Metric code chip (e.g. M-A1) — reusable next to card titles */
 .metric-tag {
   font-size: 10px; font-weight: 700; letter-spacing: .06em;
@@ -816,6 +825,18 @@ button.ticket-row:hover { border-color: var(--border-strong); background: var(--
   width: 14px; height: 14px; color: var(--text-3);
 }
 a.ticket-row:hover .ticket-ext { color: var(--primary); }
+.ticket-date { color: var(--text-3); }
+
+.panel-section-title-row { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 8px; }
+.panel-section-title-row .panel-section-title { margin: 0; }
+.ticket-toggle { display: inline-flex; gap: 4px; padding: 3px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; }
+.ticket-toggle-btn {
+  padding: 4px 10px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--text-3); background: transparent; border: 0; border-radius: 999px;
+  cursor: pointer; transition: background var(--dur-fast), color var(--dur-fast);
+}
+.ticket-toggle-btn:hover { color: var(--text-1); }
+.ticket-toggle-btn.is-active { background: var(--primary); color: #fff; }
 
 /* ── toasts ─────────────────────────────────────────────────────── */
 .toast-region {

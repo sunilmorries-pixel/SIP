@@ -73,7 +73,9 @@ function apiGetDevices(options) {
 /** Whitelisted sort columns for the joined Center-360 rows. */
 var CENTER_SORT_KEYS = {
   center: 'center', state: 'state', devices: 'devices',
-  online: 'online', open_tickets: 'open_tickets', last_seen: 'last_seen'
+  online: 'online', open_tickets: 'open_tickets', last_seen: 'last_seen',
+  lifecycle_years: 'lifecycle_years', downtime_days: 'downtime_days',
+  uptime_pct: 'uptime_pct', tickets_total: 'tickets_total', jira_devices: 'jira_devices'
 };
 
 /**
@@ -349,7 +351,7 @@ function apiGetCenterDetail(options) {
   var centerId = parseInt(options && options.centerId, 10);
   return respond_(function () {
     if (!isFinite(centerId)) throw new Error('centerId is required');
-    return withCache('ctrdet_v1_' + centerId, function () {
+    return withCache('ctrdet_v2_' + centerId, function () {
       var detail = runQueriesParallel(buildCenterDetailSpecs(centerId));
       var assets = getAssetIndex_()
         .filter(function (asset) { return asset.center_id === centerId; })
@@ -359,6 +361,7 @@ function apiGetCenterDetail(options) {
         info: (detail.info && detail.info[0]) || null,
         tickets: (detail.tickets && detail.tickets[0]) || null,
         openTickets: detail.openTickets || [],
+        allTickets: detail.allTickets || [],
         devices: detail.devices || [],
         assets: assets
       };

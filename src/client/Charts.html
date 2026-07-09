@@ -207,28 +207,30 @@ var Charts = (function () {
   }
 
 
+  /** Top hubs ranked by SPOKE COUNT (distinct centers per hub). rows = [{hub, spokes}]. */
   function hubs(rows) {
     if (!rows || !rows.length) return showEmpty('chartHubs');
     var sorted = rows.slice().reverse(); // largest at top of horizontal chart
     render('chartHubs', base({
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      legend: { top: 0, textStyle: { color: C.text, fontSize: 12 }, icon: 'circle', itemWidth: 9, itemHeight: 9 },
-      grid: { left: 8, right: 24, top: 32, bottom: 8, containLabel: true },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' },
+        valueFormatter: function (v) { return (+v).toLocaleString() + ' spokes'; } },
+      grid: { left: 8, right: 24, top: 8, bottom: 8, containLabel: true },
       xAxis: valAxis(),
       yAxis: catAxis({ data: sorted.map(function (r) { return r.hub; }),
         axisLabel: { color: C.text, fontSize: 11, width: 150, overflow: 'truncate' } }),
-      series: [
-        {
-          name: 'Online (24h)', type: 'bar', stack: 'fleet', barMaxWidth: 16,
-          itemStyle: { color: C.ok },
-          data: sorted.map(function (r) { return r.online; })
+      series: [{
+        name: 'Spokes', type: 'bar', barMaxWidth: 16,
+        label: { show: true, position: 'right', color: C.textDim, fontSize: 11,
+          formatter: function (p) { return (+p.value).toLocaleString(); } },
+        itemStyle: {
+          borderRadius: [0, 6, 6, 0],
+          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+            { offset: 0, color: 'rgba(46,155,214,0.45)' },
+            { offset: 1, color: C.primary }
+          ])
         },
-        {
-          name: 'Offline', type: 'bar', stack: 'fleet', barMaxWidth: 16,
-          itemStyle: { color: 'rgba(134,154,178,0.3)', borderRadius: [0, 6, 6, 0] },
-          data: sorted.map(function (r) { return r.devices - r.online; })
-        }
-      ]
+        data: sorted.map(function (r) { return r.spokes; })
+      }]
     }));
   }
 
@@ -310,6 +312,33 @@ var Charts = (function () {
     }));
   }
 
+  /** Device-age distribution (Jira fleet, Connector + ECG). rows = [{k,n}] in
+   *  band order; the 5y+ band (past the 5-yr expected life) is coloured danger. */
+  function deviceAges(rows) {
+    if (!rows || !rows.length) return showEmpty('chartDeviceAges');
+    var cats = rows.map(function (r) { return r.k; });
+    render('chartDeviceAges', base({
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' },
+        valueFormatter: function (v) { return (+v).toLocaleString() + ' devices'; } },
+      xAxis: catAxis({ data: cats }),
+      yAxis: valAxis(),
+      series: [{
+        type: 'bar', barMaxWidth: 36,
+        label: { show: true, position: 'top', color: C.textDim, fontSize: 11,
+          formatter: function (p) { return (+p.value).toLocaleString(); } },
+        data: rows.map(function (r) {
+          return { value: r.n, itemStyle: {
+            borderRadius: [6, 6, 0, 0],
+            color: r.k === '5y+' ? C.danger : new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: C.primary },
+              { offset: 1, color: 'rgba(46,155,214,0.45)' }
+            ])
+          } };
+        })
+      }]
+    }));
+  }
+
   function activeVsEnded(rows) {
     if (!rows || !rows.length) return showEmpty('chartActiveEnded');
     var colors = { Active: C.ok, Ended: C.muted };
@@ -325,8 +354,9 @@ var Charts = (function () {
             formatter: function (p) { return p.name + '\n' + FMT.format(p.value); }
           }
         },
-        data: rows.map(function (r) {
-          return { name: r.status, value: r.devices, itemStyle: { color: colors[r.status] || C.info } };
+        data: rows.map(function (r, i) {
+          return { name: r.status, value: r.devices,
+            itemStyle: { color: colors[r.status] || STATUS_PALETTE[i % STATUS_PALETTE.length] } };
         })
       }]
     }));
@@ -593,6 +623,7 @@ var Charts = (function () {
     geo: geo,
     firmware: firmware,
     deploymentAge: deploymentAge,
+    deviceAges: deviceAges,
     activeVsEnded: activeVsEnded,
     assetStatus: assetStatus,
     assetTypes: assetTypes,

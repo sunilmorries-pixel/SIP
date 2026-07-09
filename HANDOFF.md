@@ -1,6 +1,44 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-07-08 · **Version:** 5.6 · **Status:** LIVE (deployment @25, same URL).
+**Last updated:** 2026-07-08 · **Version:** 5.7 · **Status:** LIVE (deployment @31, same URL).
+
+**v5.7 (2026-07-08, deployed @31):** dropped "Fleet" terminology app-wide; rebuilt the
+Asset and Centers pages **page by page, metric by metric** with the user (each formula
+confirmed before coding, each change verified live on BigQuery + in preview before commit).
+
+- **Terminology**: "Fleet uptime/health" was always center-grain — relabeled **Center
+  uptime / Center health** everywhere (KPI tiles, tooltips, card titles). "Total fleet" →
+  **Total devices**. No new metric was introduced by the rename.
+- **Tab order**: Overview moved after Top Customers (still lands first); Asset moved
+  after Support/CS. Full order: Centers · Support · Asset · Map · Top Customers ·
+  Overview · Numbers · Raw Data.
+- **Asset page redefined** — Center uptime/health MOVED to Centers (see below); Asset's
+  own executive summary is now **average device age**: today − Jira `Created`, Connector +
+  ECG only. Live: avg **3.9 years**, **8,105 of 28,444 (28%)** past the 5-year expected
+  life. New **"Device age" bar chart** (age bands, 5y+ bar highlighted red). Poor
+  signal / Unsynced ECG KPI tiles removed (deferred, not required). **Device
+  uptime/health is explicitly DEFERRED** — no per-device downtime source exists yet;
+  do not build it without a fresh formula confirmation.
+- **Centers page rebuilt**:
+  - New executive summary: center uptime + **lifecycle** (today − `deploymentdate`) +
+    **downtime** (merged technical-ticket hours, days) + % healthy. Live: **27,370**
+    scored centers, avg lifecycle **3.74y**, avg downtime **7.37d**, avg uptime **99.68%**.
+  - **Segment source = `hub_master_segment`** everywhere (topbar dropdown, Numbers page,
+    Center-360, "Deployment status" donut → repurposed to a segment breakdown). Replaces
+    `Spoke_Center_Segment`'s 3-spelling mess.
+  - **Deployment-age fixed**: was active-only rows (18,460) vs total centers (27,410) —
+    didn't add up. Now counts ALL centers with a `deploymentdate` (27,370, matches).
+  - **Top hubs** re-ranked by **spoke count** (`COUNT DISTINCT CenterID`) — the old spec
+    read `cloud_devices` online/offline, unrelated to a hub ranking.
+  - **Center-360 table**: +5 sortable columns — Jira devices, Lifecycle, Downtime,
+    Uptime, Tickets (total) — computed from the same `centerUptimeSqlCD_` "scored" engine
+    as the North-Star KPI (verified live, no LIMIT so every scored center gets a row).
+  - **Drawer**: ticket list now has an **Open/All toggle** (defaults to Open) — new
+    `allTickets` query (up to 50, any status, newest first) + `ticketRowsHtml_` helper.
+- Cache keys bumped: `jiradev_v4`, `ctr360cd_v4`, `ctrdetcd_v2_*`/`ctrdet_v2_*` (drawer).
+  `clearDashboardCache()` synced.
+- All new SQL verified live on BigQuery before commit; client verified in local preview
+  (0 console errors across Asset, Centers, drawer toggle).
 
 **v5.6 (2026-07-08, deployed @25):** Jira is now sourced **solely from the Google Sheet**;
 the `jira_data` BQ table is **ignored app-wide** (still exists, just unused). Everything Jira
@@ -51,6 +89,8 @@ is why it was pulled from the raw viewer.
   with no tickets were wrongly dropped by any segment selection). Topbar dropdown
   is populated from a new `segmentOptions` spec (distinct real segment values).
   All centers kept as-is (no normalization / no blank-segment exclusion).
+  **Superseded in v5.7**: segment source switched again, from `Spoke_Center_Segment`
+  to `hub_master_segment` (cleaner values, no spelling variants) — see the v5.7 note.
 - Cache keys bumped for the changed CD payload shape: `dashcd_v3` / `ctr360cd_v3` /
   `mapcd_v3` / `topcustcd_v3` / `execcd_v3` (clearDashboardCache synced).
 - **Deliberately NOT changed**: `Age_In_Months` — verified it matches neither
@@ -103,9 +143,9 @@ insights from the `magnaquest-sand-box.abi_team_sip_devtest_poc` BigQuery datase
 fleet / service operations.
 
 **Eight views (tabs), Overview is the landing page:**
-1. **Overview** — executive rollup: narrative hero band, avg-device-age ring, KPI strip, **Fleet status (Jira)** lifecycle donut, ticket-flow, "centers needing attention" + "reliability watchlist" tables, top-customer + geo charts.
-2. **Asset** — fleet health KPIs (uptime/MTBF/health), fleet-status donut, firmware, Jira asset lifecycle/types, **asset health-score table (M-A6)**, **failure-analysis cohort (M-A3/M-A5)**, center-level reliability watchlist, device explorer (search/sort/paginate/CSV).
-3. **Centers / Customers** — geo, deployment age, active-vs-ended, top hubs, **Center 360** table (clickable rows).
+1. **Overview** — executive rollup: narrative hero band, avg-device-age ring, KPI strip, **Device status (Jira)** lifecycle donut, ticket-flow, "centers needing attention" + "reliability watchlist" tables, top-customer + geo charts. (Tab order note: Overview sits after Top Customers in the bar, but is still the landing page.)
+2. **Asset** (device-focused; tab sits after Support/CS) — device-age executive summary + **"Device age" chart**, device-status donut, firmware, Jira asset lifecycle/types, **asset health-score table (M-A6)**, **failure-analysis cohort (M-A3/M-A5)**, device explorer (search/sort/paginate/CSV). Center uptime/health moved to Centers (below); Device uptime/health is a deferred redefinition — no per-device downtime source yet.
+3. **Centers / Customers** (center-focused) — executive summary (center uptime/lifecycle/downtime/health), geo, deployment age (fixed to count all centers), segment breakdown (`hub_master_segment`), top hubs (by spoke count), **Center 360** table (+Jira devices/Lifecycle/Downtime/Uptime/Tickets columns, clickable rows → drawer with Open/All ticket toggle).
 4. **Support / CS** — Zoho KPIs, ticket flow, **SLA-compliance suite (within% + Tech/Non-Tech + breach-by-type)**, backlog, categories, priority, channel, segment; CS-sheet TAT/machines/issue-types/owners.
 5. **Map** — Leaflet map of all located centers, clustered, colored by open tickets, clickable legend ticket-bucket filter, click a marker → center drawer.
 6. **Top Customers** — curated 27 "Top LE" hubs: KPIs, map, ranked bars, leaderboard (clickable → customer drawer).
@@ -157,9 +197,9 @@ PowerShell backtick-escaping collision). Auth via
 - `Auth.js` — service-account OAuth for BigQuery (OAuth2 lib, key in Script Properties `SA_KEY`).
 - `BigQuery.js` — parallel query runner (`runQueriesParallel`, `runQuery`), pagination, `withCache` + chunked-gzip `cachePutLarge/cacheGetLarge`, `shortHash`.
 - `Queries.js` — base SQL statements (single-table reads); `buildDashboardQuerySpecs`, device/center explorer, `centerUptimeSql_` (M-A1/A2/A6, uses `techBoolSql_`), `cohortReliabilitySql_` (M-A3/A5), SLA specs. Lazy `nowIstSql_`/`fleetBucketSql_`.
-- **`EditionCD.js`** — **the center_details data layer (SOLE edition).** `CD_SEG_FILTER` (F2P exclusion), `cdFilter_(activeOnly)`, `centerUptimeSqlCD_`, `buildDashboardQuerySpecsCD`, `getCenter360RowsCD_`, and all client endpoints `apiGet{Dashboard,Centers,MapData,TopCustomers,ExecOverview,CenterDetail}CD`. These are what the client actually calls.
+- **`EditionCD.js`** — **the center_details data layer (SOLE edition).** `CD_SEG_FILTER` (F2P exclusion), `cdFilter_(activeOnly)`, `centerUptimeSqlCD_` (also feeds the Center-360 lifecycle/downtime/uptime columns, no LIMIT), `buildDashboardQuerySpecsCD`, `getCenter360RowsCD_` (+`jira_devices` from `getAssetIndex_`), `assetsDonutFromIndex_`/`cohortFromIndex_` (Jira-sheet-based, replaced the old jira_data BQ specs), and all client endpoints `apiGet{Dashboard,Centers,MapData,TopCustomers,ExecOverview,CenterDetail}CD`. These are what the client actually calls.
 - **`SlaCatalog.js`** — `SLA_CATALOG` (117 issue types → {days, tech}), `slaFor`, `techBoolSql_(col)`, `slaDaysCaseSql_(col)`, CD-safe emitters. Tech/Non-Tech classification + per-ticket SLA days.
-- **`Numbers.js`** — `apiGetNumbers(options)` (center_details-only counts, F2P/active filtered), `jiraDeviceStats_()` (cached fleet totals from the Jira sheet/dump, **filtered to Connector + ECG Machine only** via `isTrackedJiraDeviceType_()`), `deviceCenterMap_()` (serial→center bridge), `apiGetCenterDetailsRaw(options)` (paginated raw center_details + per-center device count + Mapped flag).
+- **`Numbers.js`** — `apiGetNumbers(options)` (center_details-only counts, F2P/active filtered, segment = `hub_master_segment`), `jiraDeviceStats_()` (cached device totals + `avg_age_days`/`age_bands`/`past_life` from the Jira sheet/dump, **filtered to Connector + ECG Machine only** via `isTrackedJiraDeviceType_()`), `deviceCenterMap_()` (serial→center bridge, **cloud_devices FIRST, center_details fallback**), `apiGetCenterDetailsRaw(options)` (paginated raw center_details + per-center device count + Mapped flag).
 - **`SheetSource.js`** — reads BOTH Google Sheets via the **Sheets REST API**: `readJiraSheet()` (devices; tolerant header map Key/Issue Type/Summary/Status/Created/Customer ID), `readCsTracker()` (CS field cases), and `readRawSheetRows_(sheetId, sheetName)` (generic full-fidelity reader for Raw Data page).
 - **`RawData.js`** — `rawSources_()` registry (6 BQ tables + 2 Sheets), `apiGetRawPage(options)` (paginated), `apiGetRawExport(options)` (full-table CSV, capped at 100k rows). No site filters.
 - **`JiraDump.js`** — `JIRA_DUMP` offline snapshot (43,794 devices, pre-aggregated) used when the Sheets API is disabled; auto-swaps to live once enabled.
@@ -176,7 +216,7 @@ PowerShell backtick-escaping collision). Auth via
 - `Styles.html` — Tricog design tokens (dark + light), component CSS, motion tokens + entrance/hover animations, `.info-dot`/`.info-pop` (metric tooltips), `.sla-*`, `.num-*`, `.raw-*` (pill selector + actions), `.batch-signal`, responsive breakpoints (320px+).
 - `Charts.html` — all ECharts configs (`Charts` module), theme-aware palette, `fleetStatus`/`zohoTrend`/`geo`/`cohort`/`rankBar`/**`jiraStatus`**, lazy render/flush.
 - `MapView.html` — **factory** `MapView(containerId)` → Leaflet instance (CARTO tiles, markercluster).
-- `App.html` — state (`activeOnly`, `cdRaw`, `rawData`, …), `ep(name)`→`name+'CD'`, data loading, `countUp/countUpText`, `setKpi/setKpiText`, `renderExec`, `renderDashboard`, `renderNumbers/renderCdRaw`, **`loadRawTable/renderRawTable/exportRawFull`**, center drawer, global filters, theme, tabs, **metric-explanation tooltips** (`METRIC_INFO`, `KPI_METRIC`, `TITLE_METRIC`, `setupMetricInfo`), mocks (incl. all 8 raw-data sources).
+- `App.html` — state (`activeOnly`, `cdRaw`, `rawData`, …), `ep(name)`→`name+'CD'`, data loading, `countUp/countUpText`, `setKpi/setKpiText`, `renderExec`, `renderDashboard`, `renderAssetSummary`/`renderCentersSummary` (per-page executive summaries, built metric-by-metric with the user), `renderNumbers/renderCdRaw`, **`loadRawTable/renderRawTable/exportRawFull`**, center drawer (`makeCenterDetail`, `ticketRowsHtml_` — Open/All ticket toggle), global filters, theme, tabs, **metric-explanation tooltips** (`METRIC_INFO`, `KPI_METRIC`, `TITLE_METRIC`, `setupMetricInfo`), mocks (incl. all 6 raw-data sources post device_metrics/jira_data-BQ removal).
 
 **Docs / data:** `docs/SOURCES.md`, `docs/DATA_LOADING.md`, `docs/ARCHITECTURE.md`, `docs/DEPLOYMENT.md`,
 `docs/AppsScript_BigQuery_Setup.md`, `sql/*.lineage.sql` (upstream DWH queries — reference only),
@@ -229,6 +269,9 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 4. **Verify the Jira browse domain** — drawer KEY links use `https://tricog.atlassian.net/browse/` (const `JIRA_BROWSE` in App.html) — confirm this is correct.
 5. **Buildable-today enhancement (deferred by user 2026-07-07):** add per-account MRR to the Top-20 leaderboard (M-C3).
 6. **Downtime display** — cumulative (>100% possible). Open offer: cap at 100% / relabel "Service burden %", or keep with tooltip.
+7. **Device uptime / Device health (deferred, 2026-07-08)** — Asset page currently has no device-grain uptime metric (moved Center uptime/health to Centers page instead). Needs a fresh formula from the user before building — do not guess; the sandbox has no per-device downtime source today (candidate proxy: cloud_devices heartbeat recency, but that's a different definition and would only cover the ~11k devices with telemetry).
+8. **Asset KPI tiles still show the OLD tiles** (device-status donut, firmware, asset lifecycle/types, health-score table, cohort) — only the executive summary + a new "Device age" chart were added/changed on this page so far; the KPI strip itself (Poor signal / Unsynced ECG removal was applied, but no full KPI redesign) is not yet revisited metric-by-metric with the user.
+9. **Remaining pages not yet worked**: Support/CS, Map, Top Customers, Numbers, Raw Data, Overview — the page-by-page/metric-by-metric pass (started 2026-07-08 with Asset then Centers) has not reached these yet.
 
 ---
 

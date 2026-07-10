@@ -15,8 +15,9 @@
 
   var state = {
     // Global filters live in the top bar and apply across every page.
-    search: '', hub: '', segment: '',
-    activeOnly: false, // topbar toggle: only center_details Status='ACTIVE'
+    search: '',
+    pageSegment: { asset: '', centers: '', support: '' },
+    dashSegment: '',      // segment the current dashboard payload was fetched with
     ticketBucket: '', // '' | none | low | high — clickable map legend
     activeTab: 'tab-overview',
     devices: { status: '', sortBy: 'last_seen', sortDir: 'desc', page: 0, pageSize: 15 },
@@ -51,6 +52,17 @@
    * Map still uses device_center_mapping internally (center_details has no
    * serial) — the only remaining internal use of that table. */
   function ep(name) { return name + 'CD'; }
+
+  /** Which pageSegment drives the shared dashboard payload for this tab.
+   *  Returns '' for Overview (always unsegmented), null for tabs that don't
+   *  read the dashboard payload (map, top customers, numbers, raw data). */
+  function dashSegmentFor(tabId) {
+    if (tabId === 'tab-asset') return state.pageSegment.asset;
+    if (tabId === 'tab-centers') return state.pageSegment.centers;
+    if (tabId === 'tab-support') return state.pageSegment.support;
+    if (tabId === 'tab-overview') return '';
+    return null;
+  }
 
   /* ── server bridge (with local-preview mock) ─────────────────── */
   function gsCall(fn, args) {
@@ -105,7 +117,7 @@
       return Promise.resolve({ rows: crows, totalRows: 4719, page: (args && args.page) || 0, pageSize: 15 });
     }
     if (fn === 'apiGetCenterDetailsRaw') {
-      var pg = (args && args.page) || 0, ps = (args && args.pageSize) || 25, tot = (args && args.activeOnly) ? 19034 : 28299;
+      var pg = (args && args.page) || 0, ps = (args && args.pageSize) || 25, tot = 18370;
       var segs = ['', 'Hospital <100 beds', 'Diagnostic centre', 'GP clinic'];
       var sts = ['ACTIVE', 'DEACTIVATED', ''];
       var typs = ['Center', 'Spoke', 'Hub'];
@@ -154,7 +166,7 @@
     if (fn === 'apiGetNumbers') {
       var kv = function (arr) { return arr.map(function (x) { return { k: x[0], n: x[1] }; }); };
       return Promise.resolve({
-        centers: { total: (args && args.activeOnly) ? 19034 : 28299,
+        centers: { total: 18370,
           by_status: kv([['ACTIVE', 22140], ['DEACTIVATED', 6118], ['(blank)', 41]]),
           by_segment: kv([['(blank)', 19660], ['Hospital <100 beds', 2721], ['Diagnostic centre', 2133], ['GP clinic', 1771]]) },
         hubs: { total: 14577,
@@ -207,7 +219,7 @@
         geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi', 'Gujarat', 'Haryana'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
         reliability: Array.from({ length: 8 }, function (_, i) { var up = rnd(20, 94); return { centerid: rnd(1000, 50000), center: 'Demo Center ' + rnd(1, 400), devices: rnd(1, 12), uptime_pct: up, downtime_pct: Math.round((100 - up) * 10) / 10, failures: rnd(1, 9) }; }),
         avgAgeDays: 840,
-        rollup: { centers: (args && args.activeOnly) ? 19034 : 28299, devices: 11331, online: 6120, open_tickets: 1180, attention_centers: 34 },
+        rollup: { centers: 18370, devices: 11331, online: 6120, open_tickets: 1180, attention_centers: 34 },
         worstCenters: Array.from({ length: 8 }, function (_, i) { return { center_id: 1000 + i, center: 'Demo Center ' + rnd(1, 400), state: ['Karnataka', 'Delhi', 'Maharashtra'][i % 3], devices: rnd(2, 14), online: rnd(0, 8), open_tickets: rnd(4, 9) }; }),
         topCustomers: ['VIJAYA DIAGNOSTIC', 'Aarthi Scans', 'Apollo Hospital', 'Metropolis', 'Fortis Hospital', 'Suburban Diagnostics'].map(function (n) { return { hub: n, devices: rnd(15, 160) }; }),
         topTotals: { customers: 27, devices: 665, centers: 720 },
@@ -310,7 +322,8 @@
         { batch_year: 2025, devices: 2428, ftf_rate_pct: 22.7, median_ttff_days: 153, early_fails: 4, avg_failures: 0.72, top_issue: 'Network -Sim Card Issue' },
         { batch_year: 2026, devices: 2241, ftf_rate_pct: 12.0, median_ttff_days: 66, early_fails: 5, avg_failures: 0.46, top_issue: 'Network -Sim Card Issue' }
       ],
-      centerKpis: [{ centers: (args && args.activeOnly) ? 19034 : 28299, devices: (args && args.activeOnly) ? 19034 : 28299, states: 466, cities: 4028, active_deployments: 19034 }],
+      centerKpis: [{ centers: 18370, devices: 18370, states: 357, cities: 1901, active_deployments: 25648 }],
+      segment: (args && args.segment) || '',
       geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
       hubs: Array.from({ length: 10 }, function (_, i) { return { hub: 'Demo Hub ' + (i + 1), spokes: rnd(20, 400) }; }),
       deploymentAge: ['<3 mo', '3-6 mo', '6-12 mo', '1-2 yr', '2+ yr'].map(function (b) { return { band: b, devices: rnd(400, 3200) }; }),
@@ -340,8 +353,7 @@
         byMachine: ['MAC600', 'V-Cardia', 'MAC400', 'Tab', 'Printer'].map(function (mc) { return { label: mc, cnt: rnd(40, 620) }; }),
         byIssueType: ['Machine', 'lead cable', 'SIM', 'Battery', 'Network'].map(function (it) { return { label: it, cnt: rnd(30, 520) }; }),
         byOwner: ['Saidha', 'Prashanth', 'Inayath', 'Ashu', 'Ravi'].map(function (o) { return { owner: o, cases: rnd(60, 320), avg_tat: rnd(2, 6) }; })
-      },
-      hubOptions: Array.from({ length: 30 }, function (_, i) { return { hub: 'Demo Hub ' + (i + 1), devices: rnd(50, 900) }; })
+      }
     });
   }
 
@@ -435,14 +447,15 @@
       kpiTile('exTicketCount', 'ticket', 'var(--info)', 'Ticket count', 'all tickets') +
       kpiTile('exSlaBreach', 'clock', 'var(--danger)', 'SLA breach', 'open past target');
     $('kpiGrid').innerHTML =
-      kpiTile('kpiUptime', 'online', 'var(--ok)', 'Center uptime', 'avg per-center uptime') +
-      kpiTile('kpiHealth', 'health', 'var(--primary)', 'Center health', 'avg score / 100') +
       kpiTile('kpiTotal', 'fleet', 'var(--secondary)', 'Total devices', 'Connector + ECG') +
+      kpiTile('kpiAvgAge', 'clock', 'var(--info)', 'Avg device age', 'today − Created') +
+      kpiTile('kpiPastLife', 'clock', 'var(--danger)', 'Past 5-yr life', 'devices 5y+') +
       kpiTile('kpiSignal', 'signal', 'var(--info)', 'Poor signal', 'CSQ < 10') +
       kpiTile('kpiUnsynced', 'sync', 'var(--violet)', 'Unsynced ECGs', 'waiting to upload');
     $('centersKpiGrid').innerHTML =
-      kpiTile('kpiCenters', 'building', 'var(--secondary)', 'Centers', 'with mapped devices') +
-      kpiTile('kpiMapped', 'fleet', 'var(--info)', 'Devices mapped', 'latest placements') +
+      kpiTile('kpiCenters', 'building', 'var(--secondary)', 'Centers', 'active · paid') +
+      kpiTile('kpiUptime', 'online', 'var(--ok)', 'Center uptime', 'avg per-center uptime') +
+      kpiTile('kpiHealth', 'health', 'var(--primary)', 'Center health', 'avg score / 100') +
       kpiTile('kpiActiveDep', 'layers', 'var(--ok)', 'Active placements', 'deployment open') +
       kpiTile('kpiStates', 'map', 'var(--accent)', 'States', 'geographic reach') +
       kpiTile('kpiCities', 'map', 'var(--violet)', 'Cities', 'geographic reach');
@@ -521,7 +534,7 @@
     $('errorBanner').hidden = true;
     Charts.setLoading(CHART_IDS);
 
-    gsCall(ep('apiGetDashboard'), { hub: state.hub, bypassCache: !!bypassCache, activeOnly: state.activeOnly })
+    gsCall(ep('apiGetDashboard'), { segment: dashSegmentFor(state.activeTab) || '', bypassCache: !!bypassCache })
       .then(renderDashboard)
       .catch(function (err) {
         $('errorBanner').hidden = false;
@@ -544,23 +557,28 @@
 
   function renderDashboard(data) {
     state.lastDashboard = data; // kept so theme changes can re-render charts offline
-    /* Asset KPIs */
+    state.dashSegment = data.segment || '';
+    /* Asset KPIs (device grain) */
     var kpi = (data.kpis && data.kpis[0]) || {};
-    var up = (data.uptimeFleet && data.uptimeFleet[0]) || null;
-    uptimeKpi('kpiUptime', up);
-    setKpi('kpiHealth', up ? up.avg_health : null,
-      up && up.avg_mtbf_days != null ? 'avg MTBF ' + up.avg_mtbf_days + 'd · ' + (up.pct_healthy || 0) + '% healthy' : 'composite 0–100');
     var fleet = data.fleet || {};
     setKpi('kpiTotal', fleet.total != null ? fleet.total : kpi.total_devices,
       FMT.format(fleet.with_center || 0) + ' mapped to a center');
+    setKpiText('kpiAvgAge',
+      fleet.avg_age_days != null ? (fleet.avg_age_days / 365).toFixed(1) + 'y' : '—',
+      'across ' + FMT.format(fleet.aged_devices || 0) + ' dated devices');
+    setKpi('kpiPastLife', fleet.past_life,
+      fleet.total ? Math.round((fleet.past_life || 0) / fleet.total * 100) + '% of devices' : 'devices 5y+');
     setKpi('kpiSignal', kpi.poor_signal, 'avg CSQ ' + (kpi.avg_csq == null ? '—' : kpi.avg_csq));
     setKpi('kpiUnsynced', kpi.unsynced_total, 'records waiting to upload');
 
-    /* Centers KPIs */
+    /* Centers KPIs (center grain) */
+    var up = (data.uptimeFleet && data.uptimeFleet[0]) || null;
     var ck = (data.centerKpis && data.centerKpis[0]) || {};
-    setKpi('kpiCenters', ck.centers, 'with mapped devices');
-    setKpi('kpiMapped', ck.devices, 'latest placements');
-    setKpi('kpiActiveDep', ck.active_deployments, pct(ck.active_deployments, ck.devices) + ' of mapped devices');
+    setKpi('kpiCenters', ck.centers, 'active · paid');
+    uptimeKpi('kpiUptime', up);
+    setKpi('kpiHealth', up ? up.avg_health : null,
+      up && up.avg_mtbf_days != null ? 'avg MTBF ' + up.avg_mtbf_days + 'd · ' + (up.pct_healthy || 0) + '% healthy' : 'composite 0–100');
+    setKpi('kpiActiveDep', ck.active_deployments, pct(ck.active_deployments, ck.centers) + ' of centers');
     setKpi('kpiStates', ck.states, 'geographic reach');
     setKpi('kpiCities', ck.cities, 'geographic reach');
 
@@ -618,18 +636,19 @@
       renderCsOwners([]);
     }
 
-    renderHubOptions(data.hubOptions || []);
-    // Real center_details segment values (data.segmentOptions); fall back to the
-    // Zoho ticket segments only if the CD endpoint didn't supply them.
-    var segOpts = (data.segmentOptions && data.segmentOptions.length)
-      ? data.segmentOptions.map(function (s) { return s.segment; })
-      : (data.zohoSegment || []).map(function (s) { return s.segment; });
-    fillSelect('globalSegment', segOpts
-      .filter(function (x) { return x && x !== 'Unknown'; }), 'All segments');
+    var segOpts = (data.segmentOptions || []).map(function (s) { return s.segment; })
+      .filter(function (x) { return x && x !== 'Unknown'; });
+    ['assetSegment', 'centersSegment', 'supportSegment'].forEach(function (id) {
+      var sel = $(id);
+      if (!sel) return;
+      var keep = sel.value;
+      fillSelect(id, segOpts, 'All segments');
+      sel.value = keep; // preserve the user's selection across refreshes
+    });
 
     $('statusStrip').classList.remove('is-stale');
     $('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString() +
-      (state.hub ? ' · hub: ' + state.hub : '');
+      (state.dashSegment ? ' · segment: ' + state.dashSegment : '');
   }
 
   /** Builds .exec-flag chip HTML from [{cls, icon, text}] (icon optional). */
@@ -894,14 +913,6 @@
     }).join('');
   }
 
-  function renderHubOptions(rows) {
-    $('hubOptions').innerHTML = rows
-      .slice()
-      .sort(function (a, b) { return a.hub.localeCompare(b.hub); })
-      .map(function (r) { return '<option value="' + escapeHtml(r.hub) + '"></option>'; })
-      .join('');
-  }
-
   /* ── device explorer (Asset view) ────────────────────────────── */
   var DEVICE_COLUMNS = [
     { key: 'device', label: 'Device', sortable: true },
@@ -978,7 +989,7 @@
   function loadDevices() {
     var requestId = ++devicesRequestId;
     $('deviceTableInfo').textContent = 'Loading…';
-    var query = Object.assign({}, state.devices, { hub: state.hub, search: state.search });
+    var query = Object.assign({}, state.devices, { search: state.search });
     gsCall('apiGetDevices', query)
       .then(function (result) {
         if (requestId !== devicesRequestId) return;
@@ -1063,7 +1074,7 @@
   function loadCenters() {
     var requestId = ++centersRequestId;
     $('centerTableInfo').textContent = 'Loading…';
-    var query = Object.assign({}, state.centers, { hub: state.hub, search: state.search, segment: state.segment, activeOnly: state.activeOnly });
+    var query = Object.assign({}, state.centers, { search: state.search, segment: state.pageSegment.centers });
     gsCall(ep('apiGetCenters'), query)
       .then(function (result) {
         if (requestId !== centersRequestId) return;
@@ -1168,7 +1179,7 @@
 
   function loadMapData() {
     $('geoProgress').textContent = 'Loading map data…';
-    gsCall(ep('apiGetMapData'), { activeOnly: state.activeOnly })
+    gsCall(ep('apiGetMapData'), {})
       .then(function (payload) {
         state.mapLoaded = true;
         state.mapBundle = payload;
@@ -1210,8 +1221,6 @@
     }
 
     var centers = state.mapBundle.centers.filter(function (c) {
-      if (state.hub && c[CI.hub] !== state.hub) return false;
-      if (state.segment && c[CI.segment] !== state.segment) return false;
       var ot = c[CI.tickets] || 0;
       if (state.ticketBucket === 'none' && ot !== 0) return false;
       if (state.ticketBucket === 'low' && !(ot >= 1 && ot <= 3)) return false;
@@ -1499,7 +1508,7 @@
   /* ── Executive Overview (landing) ────────────────────────────── */
   function loadExec() {
     Charts.setLoading(['execFleet', 'execTrend', 'execTopCust', 'execGeo']);
-    gsCall(ep('apiGetExecOverview'), { activeOnly: state.activeOnly })
+    gsCall(ep('apiGetExecOverview'), {})
       .then(function (data) { state.execLoaded = true; state.execData = data; renderExec(data); })
       .catch(function (err) {
         $('execNarrative').textContent = 'Could not load the overview: ' + err.message;
@@ -1596,7 +1605,7 @@
 
   /* ── Top Customers page ──────────────────────────────────────── */
   function loadTopCustomers() {
-    gsCall(ep('apiGetTopCustomers'), { activeOnly: state.activeOnly })
+    gsCall(ep('apiGetTopCustomers'), {})
       .then(function (payload) {
         state.topLoaded = true;
         state.topBundle = payload;
@@ -1756,12 +1765,19 @@
       if (!state.cdRaw.total) loadCdRaw();
     }
     if (tabId === 'tab-rawdata' && !state.rawData.total) loadRawTable();
+
+    // Shared-payload rule: the dashboard payload is always fetched with the
+    // ACTIVE page's segment; refetch when switching to a tab whose stored
+    // segment differs from what's rendered.
+    var dsg = dashSegmentFor(tabId);
+    if (dsg !== null && state.lastDashboard && dsg !== state.dashSegment) loadDashboard(false);
+
     updateHash();
   }
 
   /* ── Numbers page (center_details counts + raw data) ───────────── */
   function loadNumbers(bypass) {
-    gsCall('apiGetNumbers', { bypassCache: !!bypass, activeOnly: state.activeOnly })
+    gsCall('apiGetNumbers', { bypassCache: !!bypass })
       .then(function (d) { state.numbersLoaded = true; renderNumbers(d); })
       .catch(function (err) {
         $('numCentersKpi').innerHTML = '<div class="num-empty">Failed: ' + escapeHtml(err.message) + '</div>';
@@ -1770,7 +1786,7 @@
 
   function loadCdRaw() {
     $('cdRawInfo').textContent = 'Loading…';
-    gsCall('apiGetCenterDetailsRaw', { page: state.cdRaw.page, pageSize: state.cdRaw.pageSize, activeOnly: state.activeOnly })
+    gsCall('apiGetCenterDetailsRaw', { page: state.cdRaw.page, pageSize: state.cdRaw.pageSize })
       .then(renderCdRaw)
       .catch(function (err) {
         $('cdRawInfo').textContent = 'Failed: ' + err.message;
@@ -2005,7 +2021,7 @@
       formula: '0–100 = 0.5 × uptime% + MTBF-tier score + failure-count-tier score (TRD tiers). Higher is healthier.',
       source: 'Composed from M-A1 uptime, M-A2 MTBF and failure counts per center.' },
     ftf: { code: 'M-A3', name: 'First-Time-Failure by batch',
-      formula: 'Per production-year cohort: the share of the cohort whose center has ever logged a device-failure ticket, plus median time-to-first-failure and early fails (<7 days).',
+      formula: 'Per production-year cohort: the share of the cohort whose center has ever logged a device-failure ticket, plus median time-to-first-failure and early fails (<7 days). Failures/device is a CENTER-grain proxy (a device inherits its whole center’s ticket count) — no per-device failure source exists yet.',
       source: 'Batch = year of a device’s first Jira appearance (serial parsed from summary); failures from zoho_data at that center.' },
     batch: { code: 'M-A5', name: 'Batch Failure signal',
       formula: 'The production-year cohort with the worst first-time-failure rate (minimum 30 devices), flagging a likely batch defect; the top failure category is its signature.',
@@ -2015,15 +2031,15 @@
       source: 'center_details.deploymentdate. True TRD dwell needs the Jira changelog — not yet in the sandbox.' },
     assetLifecycle: { name: 'Asset lifecycle / types',
       formula: 'Distinct Jira assets grouped by lifecycle status or hardware type — COUNT(DISTINCT issue_key).',
-      source: 'jira_data (asset changelog).' },
+      source: 'Jira devices Google Sheet (Connector + ECG only, deduped by Key).' },
     assetAge: { name: 'Asset lifecycle age',
-      formula: 'Asset age measured from its first Jira appearance.',
-      source: 'jira_data MIN(ticket_created).' },
+      formula: 'Device age = today − Created (per sheet row), averaged; 5y+ devices are past the expected life.',
+      source: 'Jira devices Google Sheet (Created column).' },
 
     // ── Pillar 3 · Service ──
     sla: { code: 'SLA', name: 'SLA compliance',
       formula: 'within% = resolved-within-SLA ÷ resolved. A ticket is resolved when Closed with both dates; “within” means resolution days ≤ the SLA days for its ticket type. Split into Tech / Non-Tech.',
-      source: 'zoho_data (Closed tickets) vs the SLA catalog (117 ticket types → days + Tech flag).' },
+      source: 'zoho_data (Closed tickets) vs the SLA catalog (117 ticket types → days + Tech flag). Uncatalogued types default to 5 days + a keyword-based Tech guess.' },
     slaType: { code: 'SLA', name: 'SLA breach by issue type',
       formula: 'Per ticket type (≥ 20 resolved): the share of resolved tickets that missed the catalog SLA, worst first.',
       source: 'zoho_data resolution time vs SLA-catalog days.' },
@@ -2044,7 +2060,7 @@
     reliability: { name: 'Reliability watchlist',
       formula: 'Centers with the lowest Machine Uptime % (M-A1), lowest first.',
       source: 'The uptime engine (see M-A1).' },
-    backlog: { name: 'Active backlog', formula: 'Open (non-terminal) tickets grouped by status.', source: 'zoho_data (status not Closed / Duplicate / Junk).' },
+    backlog: { name: 'Active backlog', formula: 'Open (non-terminal) tickets grouped by status. No date window — the whole current backlog.', source: 'zoho_data (status not Closed / Duplicate / Junk).' },
     priority: { name: 'Priority mix', formula: 'Open tickets grouped by priority (blank = “Unset”).', source: 'zoho_data.priority.' },
     categories: { name: 'Issue categories', formula: 'Ticket counts grouped by issue category / type.', source: 'zoho_data.IssueCategory (or CS-sheet issue type).' },
     channels: { name: 'Intake channels', formula: 'Tickets grouped by the channel they arrived through.', source: 'zoho_data.Channel.' },
@@ -2054,7 +2070,7 @@
     fieldCases: { name: 'Field cases', formula: 'Count of field-service cases logged.', source: 'CS-tracker sheet.' },
     created7d: { name: 'Created · 7d', formula: 'Tickets created in the last 7 days.', source: 'zoho_data.CreatedAt.' },
     closed7d: { name: 'Closed · 7d', formula: 'Tickets closed in the last 7 days.', source: 'zoho_data.ClosedAt.' },
-    openAge: { name: 'Avg open age', formula: 'Average age (days) of currently-open tickets.', source: 'zoho_data (now − CreatedAt).' },
+    openAge: { name: 'Avg open age', formula: 'Average age in days of currently-open tickets — now − CreatedAt, computed in SQL.', source: 'zoho_data (now − CreatedAt).' },
     openTickets: { name: 'Open tickets', formula: 'Tickets not in a terminal status (Closed / Duplicate / Junk).', source: 'zoho_data.' },
     ticketsCount: { name: 'Ticket count', formula: 'All tickets ever recorded (COUNT).', source: 'zoho_data.' },
 
@@ -2069,16 +2085,15 @@
       formula: 'Count of Jira-sheet devices (deduped by Key), restricted to Connector + ECG Machine. “Mapped” = those whose serial resolves to a center.',
       source: 'Jira devices Google Sheet; serial (from Summary) → center via cloud_devices then center_details.' },
     devicesMapped: { name: 'Devices mapped', formula: 'Devices whose serial resolves to a CenterID.', source: 'Jira-sheet serial ⋈ cloud_devices.DeviceID → CenterID.' },
-    activePlacements: { name: 'Active placements', formula: 'Device-center deployments currently open (no end date).', source: 'legacy device_center_mapping (enddatetime IS NULL).' },
+    activePlacements: { name: 'Active placements', formula: 'Device-center deployments currently open (no end date).', source: 'center_details (deactivationdate IS NULL).' },
     poorSignal: { name: 'Poor signal', formula: 'Devices reporting signal quality CSQ < 10.', source: 'cloud_devices.CSQ.' },
     unsynced: { name: 'Unsynced ECGs', formula: 'Devices with data still waiting to upload.', source: 'cloud_devices.UnsyncedData > 0.' },
     firmware: { name: 'Firmware spread', formula: 'Devices grouped by firmware version.', source: 'cloud_devices.FirmwareName.' },
 
     // ── Centers ──
     centersCount: { name: 'Centers',
-      formula: 'COUNT(DISTINCT CenterID). F2P_CENTER segment excluded; the Active-centers toggle adds Status = ACTIVE.',
+      formula: 'COUNT(DISTINCT CenterID) under the fixed page baseline: Status = ACTIVE and F2P_Customer = 0.',
       source: 'center_details (sole center source).' },
-    centersMapped: { name: 'Centers (mapped)', formula: 'Distinct centers that have at least one mapped device.', source: 'center_details ⋈ mapped devices.' },
     hubs: { name: 'Hubs', formula: 'COUNT(DISTINCT HubID) from center_details.', source: 'center_details.' },
     geo: { name: 'Geographic spread', formula: 'Centers / devices grouped by state (or city).', source: 'center_details.state / city.' },
     statesReach: { name: 'States', formula: 'Distinct states with at least one center.', source: 'center_details.state.' },
@@ -2099,14 +2114,14 @@
   var KPI_METRIC = {
     exUptime: 'uptime', kpiUptime: 'uptime',
     exActive: 'devicesCount', kpiTotal: 'devicesCount', mapDevices: 'devicesCount', tcDevices: 'devicesCount',
-    exCenters: 'centersCount', kpiCenters: 'centersMapped', mapCenters: 'centersCount', tcCenters: 'centersCount',
+    exCenters: 'centersCount', kpiCenters: 'centersCount', mapCenters: 'centersCount', tcCenters: 'centersCount',
     exTickets: 'openTickets', kpiZOpen: 'openTickets', mapTickets: 'openTickets',
     exTopLe: 'topLeDevices', tcCustomers: 'topLe',
     exTat: 'tat', kpiCsTat: 'tat',
     exTicketCount: 'ticketsCount', tcTicketCount: 'ticketsCount',
     exSlaBreach: 'slaBreach', tcSlaBreach: 'slaBreach',
     kpiHealth: 'health', kpiSignal: 'poorSignal', kpiUnsynced: 'unsynced',
-    kpiMapped: 'devicesMapped', kpiActiveDep: 'activePlacements',
+    kpiAvgAge: 'assetAge', kpiPastLife: 'assetAge', kpiActiveDep: 'activePlacements',
     kpiStates: 'statesReach', kpiCities: 'citiesReach',
     kpiZIn: 'created7d', kpiZOut: 'closed7d', kpiZAge: 'openAge', kpiCsCases: 'fieldCases',
     mapAssets: 'assetLifecycle', tcAssets: 'assetLifecycle'
@@ -2232,34 +2247,16 @@
       reloadActiveList();
     }, 350));
 
-    // Global hub filter — re-queries the server-side lists + aggregates.
-    $('hubFilter').addEventListener('change', function (event) {
-      state.hub = event.target.value.trim();
-      state.devices.page = 0; state.centers.page = 0;
-      refreshAll(false);
-    });
-
-    // Global segment filter — applies to centers (server) + map (client).
-    $('globalSegment').addEventListener('change', function (event) {
-      state.segment = event.target.value;
-      state.centers.page = 0;
-      if (state.mapLoaded) applyMapFilters();
-      loadCenters();
-    });
-
-    // "Active centers" toggle — filters center_details to Status = 'ACTIVE' across all pages.
-    $('activeOnlyBtn').addEventListener('click', function () {
-      state.activeOnly = !state.activeOnly;
-      var b = $('activeOnlyBtn');
-      b.classList.toggle('is-active', state.activeOnly);
-      b.setAttribute('aria-pressed', String(state.activeOnly));
-      // Invalidate per-view caches so every page refetches with the new filter.
-      state.execLoaded = false; state.mapLoaded = false; state.topLoaded = false;
-      state.numbersLoaded = false; state.lastDashboard = null; state.cdRaw.total = 0;
-      state.centers.page = 0;
-      refreshAll(false);
-      if (state.activeTab === 'tab-map') { mainMap.ensureMap(); loadMapData(); }
-      if (state.activeTab === 'tab-topcust') { tcMap.ensureMap(); loadTopCustomers(); }
+    // Per-page Segment dropdowns — each drives every KPI/chart/table on its page.
+    ['assetSegment', 'centersSegment', 'supportSegment'].forEach(function (id) {
+      var sel = $(id);
+      if (!sel) return;
+      sel.addEventListener('change', function (event) {
+        var page = sel.getAttribute('data-page');
+        state.pageSegment[page] = event.target.value;
+        if (page === 'centers') { state.centers.page = 0; loadCenters(); }
+        loadDashboard(false); // shared payload refetches with the active page's segment
+      });
     });
 
     $('prevPageBtn').addEventListener('click', function () {

@@ -33,9 +33,11 @@
  */
 var CD_SEG_FILTER = "IFNULL(F2P_Customer, 0) = 0";
 
-/** center_details WHERE fragment: F2P always excluded, + optional Status='ACTIVE'. */
-function cdFilter_(activeOnly) {
-  return CD_SEG_FILTER + (activeOnly ? " AND Status = 'ACTIVE'" : "");
+/** center_details WHERE fragment — the FIXED page baseline (2026-07-10 design):
+ *  F2P excluded AND Status = 'ACTIVE', always on, no user toggle.
+ *  (F2P half is dormant until DE populates the flag; Status half is live.) */
+function cdFilter_() {
+  return CD_SEG_FILTER + " AND Status = 'ACTIVE'";
 }
 
 /** Machine-readable flags describing the device→center remap (shown in the UI banner). */
@@ -55,7 +57,7 @@ var FLAGS_CD = [
  * else — Zoho device-failure downtime, MTBF, health tiers — is identical.
  * @param {string} tailSelect a SELECT over the final `scored` CTE
  */
-function centerUptimeSqlCD_(tailSelect, activeOnly) {
+function centerUptimeSqlCD_(tailSelect) {
   var f = CONFIG.ZOHO_DT_FORMAT;
   var P = "SAFE.PARSE_DATETIME('" + f + "', ";
   return "WITH tix AS (" +
@@ -65,7 +67,7 @@ function centerUptimeSqlCD_(tailSelect, activeOnly) {
     "  AND " + techBoolSql_("IFNULL(IssueCategory,'')") + " " +
     "  AND " + P + "CreatedAt) IS NOT NULL), " +
     "birth AS (SELECT CenterID AS center_id, MIN(DATETIME(deploymentdate)) AS b " +
-    "  FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_(activeOnly) + " GROUP BY CenterID), " +
+    "  FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_() + " GROUP BY CenterID), " +
     "flagged AS (SELECT center_id, s, e, " +
     "  MAX(e) OVER (PARTITION BY center_id ORDER BY s ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS pe FROM tix), " +
     "islands AS (SELECT center_id, s, e, " +
@@ -98,9 +100,9 @@ function centerUptimeSqlCD_(tailSelect, activeOnly) {
  * cohort) are reused verbatim from the original builder.
  * @param {string} hub
  */
-function buildDashboardQuerySpecsCD(hub, activeOnly) {
+function buildDashboardQuerySpecsCD(hub) {
   var CD = T('center_details');
-  var F = cdFilter_(activeOnly);
+  var F = cdFilter_();
   var cd = {
     centerKpis:
       "SELECT COUNT(DISTINCT CenterID) AS centers, COUNT(DISTINCT CenterID) AS devices, " +
@@ -131,7 +133,7 @@ function buildDashboardQuerySpecsCD(hub, activeOnly) {
       " GROUP BY hub ORDER BY spokes DESC LIMIT 12",
     reliability: centerUptimeSqlCD_(
       "SELECT center_id AS centerid, uptime_pct, ROUND(100 - uptime_pct, 1) AS downtime_pct, " +
-      " failures, ROUND(life_hrs / 24.0, 0) AS life_days FROM scored ORDER BY uptime_pct ASC LIMIT 12", activeOnly),
+      " failures, ROUND(life_hrs / 24.0, 0) AS life_days FROM scored ORDER BY uptime_pct ASC LIMIT 12"),
     uptimeFleet: centerUptimeSqlCD_(
       "SELECT COUNT(*) AS scored, ROUND(AVG(uptime_pct), 1) AS avg_uptime, " +
       " ROUND(COUNTIF(uptime_pct >= 99) / NULLIF(COUNT(*), 0) * 100, 1) AS pct99, " +
@@ -139,10 +141,10 @@ function buildDashboardQuerySpecsCD(hub, activeOnly) {
       " ROUND(COUNTIF(health_score >= 80) / NULLIF(COUNT(*), 0) * 100, 1) AS pct_healthy, " +
       // Center lifecycle (today − deploymentdate) + downtime, for the Centers summary.
       " ROUND(AVG(life_hrs) / 24 / 365, 1) AS avg_life_years, " +
-      " ROUND(AVG(downtime_hrs) / 24, 1) AS avg_downtime_days FROM scored", activeOnly),
+      " ROUND(AVG(downtime_hrs) / 24, 1) AS avg_downtime_days FROM scored"),
     assetHealth: centerUptimeSqlCD_(
       "SELECT center_id AS centerid, uptime_pct, mtbf_hrs, failures, health_score " +
-      "FROM scored ORDER BY health_score ASC LIMIT 12", activeOnly)
+      "FROM scored ORDER BY health_score ASC LIMIT 12")
   };
   var specs = buildDashboardQuerySpecs(hub).map(function (s) {
     return cd[s.key] ? { key: s.key, params: s.params, sql: cd[s.key], maxRows: s.maxRows } : s;
@@ -252,8 +254,8 @@ function cohortFromIndex_(assets, zohoFail) {
 /* ═══════════════ Center-360 rows from center_details ═════════════════════ */
 
 /** center_details center dimension ⟕ live telemetry ⟕ open tickets (by CenterID). */
-function getCenter360RowsCD_(activeOnly) {
-  var ckey = 'ctr360cd_v4' + (activeOnly ? '_a' : '');
+function getCenter360RowsCD_() {
+  var ckey = 'ctr360cd_v5';
   var cached = cacheGetLarge(ckey);
   if (cached) return cached;
 
@@ -271,7 +273,7 @@ function getCenter360RowsCD_(activeOnly) {
         " IFNULL(TRIM(hub_master_segment), '') AS segment, " +   // segment = hub_master_segment (per user)
         " CAST(NULL AS FLOAT64) AS lat, CAST(NULL AS FLOAT64) AS lng, " +
         " CAST(deploymentdate AS STRING) AS deployment_date " +
-        "FROM " + T('center_details') + " WHERE " + cdFilter_(activeOnly)
+        "FROM " + T('center_details') + " WHERE " + cdFilter_()
     };
   });
   var sources = runQueriesParallel(specs);
@@ -309,7 +311,7 @@ function getCenter360RowsCD_(activeOnly) {
     "SELECT center_id, " +
     " ROUND(life_hrs / 24 / 365, 2) AS lifecycle_years, " +
     " ROUND(downtime_hrs / 24, 1) AS downtime_days, " +
-    " uptime_pct FROM scored", activeOnly));
+    " uptime_pct FROM scored"));
   var uptimeByCenter = {};
   uptimeRows.forEach(function (r) { uptimeByCenter[r.center_id] = r; });
 
@@ -333,10 +335,10 @@ function getCenter360RowsCD_(activeOnly) {
 }
 
 /** enrichCenterNames_ using the center_details rows. */
-function enrichCenterNamesCD_(rows, activeOnly) {
+function enrichCenterNamesCD_(rows) {
   if (!rows || !rows.length) return rows;
   var byId = {};
-  getCenter360RowsCD_(activeOnly).forEach(function (r) { byId[r.center_id] = r; });
+  getCenter360RowsCD_().forEach(function (r) { byId[r.center_id] = r; });
   rows.forEach(function (r) {
     var c = byId[r.centerid];
     r.center = (c && c.center) || ('Center #' + r.centerid);
@@ -363,19 +365,17 @@ function coordsForCD_(row, geoStore) {
 function apiGetDashboardCD(options) {
   options = options || {};
   var hub = String(options.hub || '').slice(0, 120);
-  var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('dashcd_v4_' + (activeOnly ? 'a' : '') + shortHash(hub), function () {
-      var results = runQueriesParallel(buildDashboardQuerySpecsCD(hub, activeOnly));
-      enrichCenterNamesCD_(results.reliability, activeOnly);
-      enrichCenterNamesCD_(results.assetHealth, activeOnly);
+    return withCache('dashcd_v5_' + shortHash(hub), function () {
+      var results = runQueriesParallel(buildDashboardQuerySpecsCD(hub));
+      enrichCenterNamesCD_(results.reliability);
+      enrichCenterNamesCD_(results.assetHealth);
       // Jira status/type donut + batch cohort — computed in JS from the Jira SHEET
       // asset index (jira_data BQ is ignored). Same payload shapes as before.
       var assetIdx = getAssetIndex_();
       results.assets = assetsDonutFromIndex_(assetIdx);
       results.cohortReliability = cohortFromIndex_(assetIdx, results.zohoFailByCenter);
       delete results.zohoFailByCenter;   // internal — not shipped to the client
-      results.activeOnly = activeOnly;
       results.csTracker = readCsTracker();
       results.appName = CONFIG.APP_NAME;
       results.appVersion = CONFIG.APP_VERSION;
@@ -399,9 +399,8 @@ function apiGetCentersCD(options) {
     page: Math.max(0, parseInt(options.page, 10) || 0),
     pageSize: Math.min(100, Math.max(5, parseInt(options.pageSize, 10) || 15))
   };
-  var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    var joined = getCenter360RowsCD_(activeOnly);
+    var joined = getCenter360RowsCD_();
     var filtered = joined.filter(function (row) {
       if (clean.hub && row.hub !== clean.hub) return false;
       if (clean.segment && row.segment !== clean.segment) return false;
@@ -423,12 +422,11 @@ function apiGetCentersCD(options) {
 
 function apiGetMapDataCD(options) {
   options = options || {};
-  var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    var cached = cacheGetLarge('mapcd_v4' + (activeOnly ? '_a' : ''));
+    var cached = cacheGetLarge('mapcd_v5');
     if (cached) return cached;
 
-    var centers = getCenter360RowsCD_(activeOnly);
+    var centers = getCenter360RowsCD_();
     var assets = getAssetIndex_();               // from the Jira SHEET (Connector + ECG only)
     var geoStore = loadGeoStore();
 
@@ -471,17 +469,17 @@ function apiGetMapDataCD(options) {
       matchedAssets: Object.keys(assetCount).length,
       edition: 'center_details', flags: FLAGS_CD
     };
-    cachePutLarge('mapcd_v4' + (activeOnly ? '_a' : ''), payload, 600);
+    cachePutLarge('mapcd_v5', payload, 600);
     return payload;
   });
 }
 
 /** Top-customers rollup over the center_details center universe. */
-function computeTopCustomersCD_(activeOnly) {
+function computeTopCustomersCD_() {
   var meta = {};
   TOP_CUSTOMERS.forEach(function (c) { meta[c.hub_id] = c; });
 
-  var centers = getCenter360RowsCD_(activeOnly);
+  var centers = getCenter360RowsCD_();
   var assets = getAssetIndex_();
   var geoStore = loadGeoStore();
 
@@ -539,30 +537,28 @@ function computeTopCustomersCD_(activeOnly) {
 
 function apiGetTopCustomersCD(options) {
   options = options || {};
-  var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('topcustcd_v4' + (activeOnly ? '_a' : ''), function () { return computeTopCustomersCD_(activeOnly); });
+    return withCache('topcustcd_v5', function () { return computeTopCustomersCD_(); });
   });
 }
 
 function apiGetExecOverviewCD(options) {
   options = options || {};
-  var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('execcd_v4' + (activeOnly ? '_a' : ''), function () {
-      var centers = getCenter360RowsCD_(activeOnly);
-      var top = computeTopCustomersCD_(activeOnly);
+    return withCache('execcd_v5', function () {
+      var centers = getCenter360RowsCD_();
+      var top = computeTopCustomersCD_();
       var want = { kpis: 1, fleetStatus: 1, zohoKpis: 1, zohoTrend: 1, geo: 1, reliability: 1, uptimeFleet: 1, slaKpis: 1 };
-      var specs = buildDashboardQuerySpecsCD('', activeOnly).filter(function (s) { return want[s.key]; });
+      var specs = buildDashboardQuerySpecsCD('').filter(function (s) { return want[s.key]; });
       specs.push({
         key: 'deviceAge', maxRows: 1,
         // Center age = days since the center's deploymentdate (center-grain).
         sql: "SELECT ROUND(AVG(age_days), 0) AS avg_age_days, MAX(age_days) AS max_age_days FROM (" +
              " SELECT DATE_DIFF(CURRENT_DATE(), DATE(deploymentdate), DAY) AS age_days" +
-             " FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_(activeOnly) + ")"
+             " FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_() + ")"
       });
       var r = runQueriesParallel(specs);
-      enrichCenterNamesCD_(r.reliability, activeOnly);
+      enrichCenterNamesCD_(r.reliability);
       var age = (r.deviceAge && r.deviceAge[0]) || {};
 
       var rollup = { centers: centers.length, devices: 0, online: 0, open_tickets: 0, attention_centers: 0 };

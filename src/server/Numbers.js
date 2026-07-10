@@ -116,15 +116,14 @@ function jiraDeviceStats_() {
 
 function apiGetNumbers(options) {
   options = options || {};
-  var activeOnly = options.activeOnly === true;
   return respond_(function () {
-    return withCache('numbers_v3' + (activeOnly ? '_a' : ''), function () {
+    return withCache('numbers_v4', function () {
       var CD = T('center_details');
       // Devices source swapped from BigQuery jira_data to a Google Sheet — see below.
       // var JIRA = T('jira_data');   // commented out per request (use JIRA_SHEET_ID)
       var ZOHO = T('zoho_data');
       var techBool = techBoolSql_("IFNULL(IssueCategory,'')");
-      var F = cdFilter_(activeOnly); // exclude F2P_CENTER (+ Status='ACTIVE' when active-only)
+      var F = cdFilter_(); // fixed baseline: F2P excluded + Status='ACTIVE'
 
       var specs = [
         { key: 'centersTot', sql:
@@ -193,7 +192,6 @@ function apiGetCenterDetailsRaw(options) {
   options = options || {};
   var page = Math.max(0, parseInt(options.page, 10) || 0);
   var pageSize = Math.min(100, Math.max(5, parseInt(options.pageSize, 10) || 25));
-  var activeOnly = options.activeOnly === true;
   return respond_(function () {
     var sql =
       "WITH dev AS (SELECT CenterID, COUNT(*) AS devices FROM " + T('cloud_devices') +
@@ -202,7 +200,7 @@ function apiGetCenterDetailsRaw(options) {
       // dedupe BEFORE the COUNT(*) OVER() so the pager total is centers, not rows.
       "c AS (SELECT DISTINCT CenterID, Centername, Status, Type, Spoke_Center_Segment, " +
       " HubID, HubName, City, State, PinCode, deploymentdate, deactivationdate " +
-      " FROM " + T('center_details') + " WHERE " + cdFilter_(activeOnly) + ") " +
+      " FROM " + T('center_details') + " WHERE " + cdFilter_() + ") " +
       "SELECT c.CenterID AS center_id, c.Centername AS center, c.Status AS status, c.Type AS type, " +
       " c.Spoke_Center_Segment AS segment, c.HubID AS hub_id, c.HubName AS hub, c.City AS city, " +
       " c.State AS state, c.PinCode AS pin, CAST(c.deploymentdate AS STRING) AS deployed, " +

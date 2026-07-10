@@ -127,10 +127,10 @@ function diagnostics() {
 function clearDashboardCache() {
   var cache = CacheService.getScriptCache();
   var h = shortHash('');
-  cache.removeAll(['dash_v7_' + h, 'dashcd_v4_' + h, 'dashcd_v4_a' + h, 'exec_v4', 'execcd_v4', 'execcd_v4_a',
-    'topcust_v1', 'topcustcd_v4', 'topcustcd_v4_a', 'numbers_v3', 'numbers_v3_a', 'jiradev_v4']);
+  cache.removeAll(['dash_v7_' + h, 'dashcd_v5_' + h, 'exec_v4', 'execcd_v5',
+    'topcust_v1', 'topcustcd_v5', 'numbers_v4', 'jiradev_v4']);
   // Large (gzip-chunked) caches: remove #meta + each chunk.
-  ['ctr360_v3', 'ctr360cd_v4', 'ctr360cd_v4_a', 'map_v3', 'mapcd_v4', 'mapcd_v4_a', 'assets_v3',
+  ['ctr360_v3', 'ctr360cd_v5', 'map_v3', 'mapcd_v5', 'assets_v3',
     'rawsheet_v1_' + CONFIG.JIRA_SHEET_ID, 'rawsheet_v1_' + CONFIG.CS_SHEET_ID].forEach(function (base) {
     var meta = cache.get(base + '#meta');
     var n = meta ? parseInt(meta, 10) : 40;

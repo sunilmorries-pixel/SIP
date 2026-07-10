@@ -1,6 +1,61 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-07-08 · **Version:** 5.7 · **Status:** LIVE (deployment @31, same URL).
+**Last updated:** 2026-07-10 · **Version:** 5.8 · **Status:** LIVE (deployment @33, same URL).
+
+**v5.8 (2026-07-10, deployed @33):** page-level filters + 13 KPI corrections, built via
+subagent-driven development from spec `docs/superpowers/specs/2026-07-10-page-filters-and-kpi-corrections-design.md`
+and plan `docs/superpowers/plans/2026-07-10-page-filters-and-kpi-corrections.md`
+(9 commits `3e9c049..c53293e`, every task independently reviewed + a final whole-branch
+review; every SQL verified live on BQ; full preview pass 0 console errors).
+
+- **FIXED BASELINE, all pages**: every `center_details` read is now permanently scoped to
+  `IFNULL(F2P_Customer,0)=0 AND Status='ACTIVE'` (`cdFilter_()`, zero-arg). The topbar
+  "Active only" toggle is GONE — the rule shows as a static "Active · Paid centers" chip
+  in each page's filter bar. Live: scored/centers universe **27,410 → 18,370**.
+  (F2P half still dormant — flag is all-0 until DE populates it.)
+- **PER-PAGE SEGMENT FILTER**: topbar Hub dropdown + Segment select REMOVED; Asset,
+  Centers and Support/CS each have a filter bar with their own Segment dropdown
+  (`assetSegment`/`centersSegment`/`supportSegment`, per-page state
+  `state.pageSegment`). Threads server-side through ALL grains: center_details +
+  zoho_data (`hub_master_segment = literal`), cloud_devices (`CenterID IN` baseline
+  subquery — includes the device explorer table), Jira-sheet JS metrics (center→segment
+  map; unmapped devices drop out when a segment is selected). CS-tracker cards are
+  exempt (no segment lineage; noted on the page). Shared dashboard payload is fetched
+  with the ACTIVE page's segment; tab switch refetches on mismatch
+  (`dashSegmentFor`/`state.dashSegment`). Segment values must go to the server
+  VERBATIM (server `segClean_` strips quotes but does NOT trim).
+- **Page ownership corrected**: Asset is now pure device-grain — Center uptime/health
+  KPI tiles + Reliability watchlist + health-score table MOVED to Centers ("Asset
+  health score" retitled **"Center health score"**). Asset strip: Total devices ·
+  Avg device age · Past 5-yr life · Poor signal · Unsynced ECGs. Centers strip (6):
+  Centers · Center uptime · Center health · Active placements · States · Cities
+  ("Devices mapped" tile deleted — it was a duplicate center count).
+- **Corrections shipped**: geo chart deduped (`COUNT(DISTINCT CenterID)`, card now
+  "Centers by state"; Overview geo card relabelled too); `avg_open_age_days` recomputed
+  from `NOW − CreatedAt` (was trusting `TicketActiveDays`; live value now ~668d);
+  Top-hubs aria-label fixed; segment donut got a deliberate `SEGMENT_COLORS` palette;
+  FTF cohort labelled "center-grain proxy"; all Support/CS cards state their window
+  (`· last 90 days` / `· all-time` / `· last 12 months`); stale tooltips fixed
+  (Jira = Sheet, not jira_data BQ; center_details, not device_center_mapping).
+- **Dead code deleted** (grep-gated): legacy `apiGetDashboard` (non-CD), `assets` +
+  `cohortReliability` + `hubOptions` spec entries, `cohortReliabilitySql_`,
+  `buildAssetSourceSpecs`, `jiraTypeFilterSql_`, client `renderHubOptions`.
+- **Caches**: `dashcd_v5_<segslug>_<hubhash>`, `jiradev_v5_<segslug>`, `ctr360cd_v5`,
+  `mapcd_v5`, `topcustcd_v5`, `execcd_v5`, `numbers_v4`; all `_a` active-suffix variants
+  gone; `clearDashboardCache()` enumerates segment slices via a live segment query.
+  Post-deploy cache clear NOT required — v5 keys are new names, so stale v4 entries
+  are never read.
+- **Verified per-segment on live BQ**: `Private - SME` 10,743 centers / Government
+  4,xxx; segment sum + blank == 18,370; Government devices 2,643 vs 11,331 unfiltered;
+  exact segment strings (with spaces): `Private - SME`, `Government`, `LE - Cath Lab`,
+  `LE - Diagnostic Chain`, `ECHO`, `LE - Large Hospital`, `Project`.
+- **Open items**: SLA catalog entries for uncatalogued categories (needs CS input —
+  they silently default to 5 days, now disclosed in the tooltip); device-grain
+  uptime/health still deferred; Overview/Map/TopCustomers/Numbers have no filter bar
+  (Overview alignment = future pass); `segSlug_` would collide if two segment names
+  slugify identically (safe with current 7 values); LIVE SMOKE TEST still to be done
+  by the user (open the stable URL, pick a segment on Centers, expect ~10,743 for
+  Private - SME).
 
 **v5.7 (2026-07-08, deployed @31):** dropped "Fleet" terminology app-wide; rebuilt the
 Asset and Centers pages **page by page, metric by metric** with the user (each formula

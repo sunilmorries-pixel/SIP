@@ -404,19 +404,21 @@ var DEVICE_SORT_COLUMNS = {
 
 /**
  * Paginated, filterable device explorer query.
- * @param {{search:string, hub:string, status:string, sortBy:string,
- *          sortDir:string, page:number, pageSize:number}} opts sanitised by Api.js
+ * @param {{search:string, hub:string, status:string, segment:string,
+ *          sortBy:string, sortDir:string, page:number, pageSize:number}} opts
+ *          sanitised by Api.js
  * @return {{sql:string, params:Object}}
  */
 function buildDeviceExplorerQuery(opts) {
   var FLEET_BUCKET_SQL = fleetBucketSql_();
   var sortCol = DEVICE_SORT_COLUMNS[opts.sortBy] || 'LastTimeStamp';
   var sortDir = opts.sortDir === 'asc' ? 'ASC' : 'DESC';
+  var segD = devSegCond_(opts.segment);
   var sql =
     "WITH d AS (SELECT DeviceID, Centername, HubName, LastTimeStamp, " +
     " BatteryLevel, CSQ, UnsyncedData, SpaceAvailable, FirmwareName, ServiceProvider, " +
     " " + FLEET_BUCKET_SQL + " AS status_bucket " +
-    " FROM " + T('cloud_devices') + ") " +
+    " FROM " + T('cloud_devices') + " WHERE TRUE" + segD + ") " +
     "SELECT DeviceID AS device, IFNULL(Centername,'') AS center, IFNULL(HubName,'') AS hub, " +
     " CAST(LastTimeStamp AS STRING) AS last_seen, " +
     " IFNULL(BatteryLevel,'') AS battery, SAFE_CAST(CSQ AS INT64) AS csq, " +

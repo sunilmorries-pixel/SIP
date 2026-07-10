@@ -19,8 +19,8 @@ function respond_(producer) {
 
 /**
  * Paginated device explorer.
- * @param {{search:string, hub:string, status:string, sortBy:string,
- *          sortDir:string, page:number, pageSize:number}=} options
+ * @param {{search:string, hub:string, status:string, segment:string,
+ *          sortBy:string, sortDir:string, page:number, pageSize:number}=} options
  * @return {Object} envelope with { rows, totalRows, page, pageSize }
  */
 function apiGetDevices(options) {
@@ -29,6 +29,7 @@ function apiGetDevices(options) {
     search: String(options.search || '').toLowerCase().slice(0, 80),
     hub: String(options.hub || '').slice(0, 120),
     status: String(options.status || '').slice(0, 40),
+    segment: segClean_(options.segment),
     sortBy: String(options.sortBy || 'last_seen'),
     sortDir: options.sortDir === 'asc' ? 'asc' : 'desc',
     page: Math.max(0, parseInt(options.page, 10) || 0),

@@ -989,7 +989,7 @@
   function loadDevices() {
     var requestId = ++devicesRequestId;
     $('deviceTableInfo').textContent = 'Loading…';
-    var query = Object.assign({}, state.devices, { search: state.search });
+    var query = Object.assign({}, state.devices, { search: state.search, segment: state.pageSegment.asset });
     gsCall('apiGetDevices', query)
       .then(function (result) {
         if (requestId !== devicesRequestId) return;
@@ -2255,6 +2255,7 @@
         var page = sel.getAttribute('data-page');
         state.pageSegment[page] = event.target.value;
         if (page === 'centers') { state.centers.page = 0; loadCenters(); }
+        if (page === 'asset') { state.devices.page = 0; loadDevices(); }
         loadDashboard(false); // shared payload refetches with the active page's segment
       });
     });

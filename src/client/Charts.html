@@ -245,6 +245,7 @@ var Charts = (function () {
       yAxis: catAxis({ data: sorted.map(function (r) { return r.state; }),
         axisLabel: { color: C.text, fontSize: 11, width: 110, overflow: 'truncate' } }),
       series: [{
+        name: 'Centers',
         type: 'bar', barMaxWidth: 14,
         itemStyle: {
           borderRadius: [0, 6, 6, 0],
@@ -341,7 +342,16 @@ var Charts = (function () {
 
   function activeVsEnded(rows) {
     if (!rows || !rows.length) return showEmpty('chartActiveEnded');
-    var colors = { Active: C.ok, Ended: C.muted };
+    // Card was repurposed to a hub_master_segment breakdown — color each known
+    // segment deliberately; unknown values take the rotating palette.
+    var SEGMENT_COLORS = {
+      'private - sme': C.primary, 'government': C.info, 'le - cath lab': C.violet,
+      'le - diagnostic chain': C.accent, 'echo': C.warn, 'le - large hospital': C.ok,
+      'project': C.muted
+    };
+    function segColor(name, i) {
+      return SEGMENT_COLORS[String(name || '').trim().toLowerCase()] || STATUS_PALETTE[i % STATUS_PALETTE.length];
+    }
     render('chartActiveEnded', base({
       legend: { bottom: 0, icon: 'circle', textStyle: { color: C.text, fontSize: 12 }, itemWidth: 9, itemHeight: 9 },
       series: [{
@@ -356,7 +366,7 @@ var Charts = (function () {
         },
         data: rows.map(function (r, i) {
           return { name: r.status, value: r.devices,
-            itemStyle: { color: colors[r.status] || STATUS_PALETTE[i % STATUS_PALETTE.length] } };
+            itemStyle: { color: segColor(r.status, i) } };
         })
       }]
     }));

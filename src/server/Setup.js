@@ -127,8 +127,19 @@ function diagnostics() {
 function clearDashboardCache() {
   var cache = CacheService.getScriptCache();
   var h = shortHash('');
-  cache.removeAll(['dash_v7_' + h, 'dashcd_v5_' + h, 'exec_v4', 'execcd_v5',
-    'topcust_v1', 'topcustcd_v5', 'numbers_v4', 'jiradev_v4']);
+  // Segment-sliced keys: one per real segment value + 'all'.
+  var slugs = ['all'];
+  try {
+    runQuery("SELECT DISTINCT TRIM(hub_master_segment) AS s FROM " + T('center_details') +
+      " WHERE NULLIF(TRIM(hub_master_segment), '') IS NOT NULL")
+      .forEach(function (r) { slugs.push(segSlug_(r.s)); });
+  } catch (e) { /* BQ unavailable → clear the 'all' slice at least */ }
+  var small = ['dash_v7_' + h, 'exec_v4', 'execcd_v5', 'topcust_v1', 'topcustcd_v5', 'numbers_v4'];
+  slugs.forEach(function (sg) {
+    small.push('dashcd_v5_' + sg + '_' + h);
+    small.push('jiradev_v5_' + sg);
+  });
+  cache.removeAll(small);
   // Large (gzip-chunked) caches: remove #meta + each chunk.
   ['ctr360_v3', 'ctr360cd_v5', 'map_v3', 'mapcd_v5', 'assets_v3',
     'rawsheet_v1_' + CONFIG.JIRA_SHEET_ID, 'rawsheet_v1_' + CONFIG.CS_SHEET_ID].forEach(function (base) {
@@ -138,5 +149,5 @@ function clearDashboardCache() {
     for (var i = 0; i < n; i++) keys.push(base + '#' + i);
     cache.removeAll(keys);
   });
-  Logger.log('Caches cleared — next load recomputes (device count re-reads the sheet).');
+  Logger.log('Caches cleared (' + slugs.length + ' segment slices) — next load recomputes.');
 }

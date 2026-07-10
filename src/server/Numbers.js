@@ -53,8 +53,9 @@ function isTrackedJiraDeviceType_(issueTypeName) {
  * "mapped" when its serial resolves to a center via deviceCenterMap_. Cached.
  * @return {{total,with_center,jira_centers,in_cd,by_status,source,center_source}}
  */
-function jiraDeviceStats_() {
-  return withCache('jiradev_v4', function () {
+function jiraDeviceStats_(segment) {
+  segment = segClean_(segment);
+  return withCache('jiradev_v5_' + segSlug_(segment), function () {
     var jiraRows = readJiraSheet();
     if (jiraRows) {
       jiraRows = jiraRows.filter(function (row) { return isTrackedJiraDeviceType_(row.issuetype_name); });
@@ -77,6 +78,16 @@ function jiraDeviceStats_() {
             cid: (cid == null ? NaN : cid), age: assetAgeDays_(row.ticket_created) };
         }
       });
+      // Segment filter: keep only devices mapped to a center in the selected
+      // segment (center lookup via the cached Center-360 rows). Unmapped
+      // devices drop out when a segment is selected — by design.
+      if (segment) {
+        var segMap = centerSegmentMap_();
+        Object.keys(byIssue).forEach(function (ik) {
+          var o = byIssue[ik];
+          if (!isFinite(o.cid) || segMap[o.cid] !== segment) delete byIssue[ik];
+        });
+      }
       var dTotal = 0, dWith = 0, dCenters = {}, dInCd = {}, dStatus = {};
       var ageSum = 0, ageN = 0;
       // Age bands (days): <1y / 1-2y / 2-3y / 3-5y / 5y+ (5-yr expected device life).

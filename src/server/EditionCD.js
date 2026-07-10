@@ -57,7 +57,7 @@ var FLAGS_CD = [
  * else — Zoho device-failure downtime, MTBF, health tiers — is identical.
  * @param {string} tailSelect a SELECT over the final `scored` CTE
  */
-function centerUptimeSqlCD_(tailSelect) {
+function centerUptimeSqlCD_(tailSelect, segment) {
   var f = CONFIG.ZOHO_DT_FORMAT;
   var P = "SAFE.PARSE_DATETIME('" + f + "', ";
   return "WITH tix AS (" +
@@ -67,7 +67,7 @@ function centerUptimeSqlCD_(tailSelect) {
     "  AND " + techBoolSql_("IFNULL(IssueCategory,'')") + " " +
     "  AND " + P + "CreatedAt) IS NOT NULL), " +
     "birth AS (SELECT CenterID AS center_id, MIN(DATETIME(deploymentdate)) AS b " +
-    "  FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_() + " GROUP BY CenterID), " +
+    "  FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_() + cdSegCond_(segment) + " GROUP BY CenterID), " +
     "flagged AS (SELECT center_id, s, e, " +
     "  MAX(e) OVER (PARTITION BY center_id ORDER BY s ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS pe FROM tix), " +
     "islands AS (SELECT center_id, s, e, " +
@@ -100,40 +100,41 @@ function centerUptimeSqlCD_(tailSelect) {
  * cohort) are reused verbatim from the original builder.
  * @param {string} hub
  */
-function buildDashboardQuerySpecsCD(hub) {
+function buildDashboardQuerySpecsCD(hub, segment) {
   var CD = T('center_details');
   var F = cdFilter_();
+  var SC = cdSegCond_(segment);
   var cd = {
     centerKpis:
       "SELECT COUNT(DISTINCT CenterID) AS centers, COUNT(DISTINCT CenterID) AS devices, " +
       " COUNT(DISTINCT NULLIF(TRIM(State), '')) AS states, " +
       " COUNT(DISTINCT NULLIF(TRIM(City), '')) AS cities, " +
-      " COUNTIF(deactivationdate IS NULL) AS active_deployments FROM " + CD + " WHERE " + F,
+      " COUNTIF(deactivationdate IS NULL) AS active_deployments FROM " + CD + " WHERE " + F + SC,
     geo:
       "SELECT IFNULL(NULLIF(TRIM(State), ''), 'Unknown') AS state, COUNT(*) AS devices " +
-      "FROM " + CD + " WHERE " + F + " GROUP BY state ORDER BY devices DESC LIMIT 12",
+      "FROM " + CD + " WHERE " + F + SC + " GROUP BY state ORDER BY devices DESC LIMIT 12",
     // One row per center (MIN deploymentdate); counts DISTINCT centers so the
     // bands sum to the center count (was active-only rows → didn't match).
     deploymentAge:
       "WITH dep AS (SELECT CenterID, DATE_DIFF(CURRENT_DATE(), DATE(MIN(deploymentdate)), DAY) AS age_days " +
-      " FROM " + CD + " WHERE deploymentdate IS NOT NULL AND " + F + " GROUP BY CenterID) " +
+      " FROM " + CD + " WHERE deploymentdate IS NOT NULL AND " + F + SC + " GROUP BY CenterID) " +
       "SELECT CASE WHEN age_days < 90 THEN '<3 mo' WHEN age_days < 180 THEN '3-6 mo' " +
       " WHEN age_days < 365 THEN '6-12 mo' WHEN age_days < 730 THEN '1-2 yr' ELSE '2+ yr' END AS band, " +
       " COUNT(*) AS devices FROM dep GROUP BY band",
     // "Deployment status" card repurposed to a segment breakdown (hub_master_segment, per user).
     activeVsEnded:
       "SELECT IFNULL(NULLIF(TRIM(hub_master_segment), ''), '(blank)') AS status, " +
-      " COUNT(DISTINCT CenterID) AS devices FROM " + CD + " WHERE " + F +
+      " COUNT(DISTINCT CenterID) AS devices FROM " + CD + " WHERE " + F + SC +
       " GROUP BY status ORDER BY devices DESC LIMIT 12",
     // "Top hubs" ranked by SPOKE COUNT (distinct centers per hub), not device
     // online/offline (the legacy spec read cloud_devices, unrelated to hubs here).
     hubs:
       "SELECT IFNULL(NULLIF(TRIM(HubName), ''), 'Unassigned') AS hub, " +
-      " COUNT(DISTINCT CenterID) AS spokes FROM " + CD + " WHERE " + F +
+      " COUNT(DISTINCT CenterID) AS spokes FROM " + CD + " WHERE " + F + SC +
       " GROUP BY hub ORDER BY spokes DESC LIMIT 12",
     reliability: centerUptimeSqlCD_(
       "SELECT center_id AS centerid, uptime_pct, ROUND(100 - uptime_pct, 1) AS downtime_pct, " +
-      " failures, ROUND(life_hrs / 24.0, 0) AS life_days FROM scored ORDER BY uptime_pct ASC LIMIT 12"),
+      " failures, ROUND(life_hrs / 24.0, 0) AS life_days FROM scored ORDER BY uptime_pct ASC LIMIT 12", segment),
     uptimeFleet: centerUptimeSqlCD_(
       "SELECT COUNT(*) AS scored, ROUND(AVG(uptime_pct), 1) AS avg_uptime, " +
       " ROUND(COUNTIF(uptime_pct >= 99) / NULLIF(COUNT(*), 0) * 100, 1) AS pct99, " +
@@ -141,12 +142,12 @@ function buildDashboardQuerySpecsCD(hub) {
       " ROUND(COUNTIF(health_score >= 80) / NULLIF(COUNT(*), 0) * 100, 1) AS pct_healthy, " +
       // Center lifecycle (today − deploymentdate) + downtime, for the Centers summary.
       " ROUND(AVG(life_hrs) / 24 / 365, 1) AS avg_life_years, " +
-      " ROUND(AVG(downtime_hrs) / 24, 1) AS avg_downtime_days FROM scored"),
+      " ROUND(AVG(downtime_hrs) / 24, 1) AS avg_downtime_days FROM scored", segment),
     assetHealth: centerUptimeSqlCD_(
       "SELECT center_id AS centerid, uptime_pct, mtbf_hrs, failures, health_score " +
-      "FROM scored ORDER BY health_score ASC LIMIT 12")
+      "FROM scored ORDER BY health_score ASC LIMIT 12", segment)
   };
-  var specs = buildDashboardQuerySpecs(hub).map(function (s) {
+  var specs = buildDashboardQuerySpecs(hub, segment).map(function (s) {
     return cd[s.key] ? { key: s.key, params: s.params, sql: cd[s.key], maxRows: s.maxRows } : s;
   // Drop the jira_data BQ specs — the status/type donut and the batch cohort are
   // now computed in JS from the Jira SHEET asset index (see apiGetDashboardCD).
@@ -347,6 +348,13 @@ function enrichCenterNamesCD_(rows) {
   return rows;
 }
 
+/** center_id → segment lookup from the cached Center-360 rows (baseline-filtered). */
+function centerSegmentMap_() {
+  var m = {};
+  getCenter360RowsCD_().forEach(function (r) { m[r.center_id] = r.segment || ''; });
+  return m;
+}
+
 /** Resolve [lat,lng] for a center_details row: direct coords, else pin-geostore. */
 function coordsForCD_(row, geoStore) {
   var lat = typeof row.lat === 'number' ? row.lat : parseFloat(row.lat);
@@ -365,21 +373,29 @@ function coordsForCD_(row, geoStore) {
 function apiGetDashboardCD(options) {
   options = options || {};
   var hub = String(options.hub || '').slice(0, 120);
+  var segment = segClean_(options.segment);
   return respond_(function () {
-    return withCache('dashcd_v5_' + shortHash(hub), function () {
-      var results = runQueriesParallel(buildDashboardQuerySpecsCD(hub));
+    return withCache('dashcd_v5_' + segSlug_(segment) + '_' + shortHash(hub), function () {
+      var results = runQueriesParallel(buildDashboardQuerySpecsCD(hub, segment));
       enrichCenterNamesCD_(results.reliability);
       enrichCenterNamesCD_(results.assetHealth);
-      // Jira status/type donut + batch cohort — computed in JS from the Jira SHEET
-      // asset index (jira_data BQ is ignored). Same payload shapes as before.
+      // Jira metrics from the Sheet index; when a segment is selected, keep only
+      // assets whose center belongs to it (unmapped devices drop out — by design).
       var assetIdx = getAssetIndex_();
+      if (segment) {
+        var segMap = centerSegmentMap_();
+        assetIdx = assetIdx.filter(function (a) {
+          return a.center_id != null && segMap[a.center_id] === segment;
+        });
+      }
       results.assets = assetsDonutFromIndex_(assetIdx);
       results.cohortReliability = cohortFromIndex_(assetIdx, results.zohoFailByCenter);
-      delete results.zohoFailByCenter;   // internal — not shipped to the client
+      delete results.zohoFailByCenter;
       results.csTracker = readCsTracker();
       results.appName = CONFIG.APP_NAME;
       results.appVersion = CONFIG.APP_VERSION;
-      results.fleet = jiraDeviceStats_();   // fleet total + mapped (from Jira sheet/dump)
+      results.fleet = jiraDeviceStats_(segment);
+      results.segment = segment;
       results.edition = 'center_details';
       results.flags = FLAGS_CD;
       results.hub = hub;

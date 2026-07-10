@@ -18,30 +18,6 @@ function respond_(producer) {
 }
 
 /**
- * Main dashboard payload — all panels in one parallel batch.
- * @param {{hub:(string|undefined), bypassCache:(boolean|undefined)}=} options
- * @return {Object} envelope with every panel dataset keyed by name
- */
-function apiGetDashboard(options) {
-  options = options || {};
-  var hub = String(options.hub || '').slice(0, 120);
-  return respond_(function () {
-    var cacheKey = 'dash_v7_' + shortHash(hub);
-    return withCache(cacheKey, function () {
-      var specs = buildDashboardQuerySpecs(hub);
-      var results = runQueriesParallel(specs);
-      enrichCenterNames_(results.reliability);
-      enrichCenterNames_(results.assetHealth);
-      results.csTracker = readCsTracker(); // Google Sheet source (null-safe)
-      results.appName = CONFIG.APP_NAME;
-      results.appVersion = CONFIG.APP_VERSION;
-      results.hub = hub;
-      return results;
-    }, options.bypassCache === true);
-  });
-}
-
-/**
  * Paginated device explorer.
  * @param {{search:string, hub:string, status:string, sortBy:string,
  *          sortDir:string, page:number, pageSize:number}=} options

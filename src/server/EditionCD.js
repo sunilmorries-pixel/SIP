@@ -111,7 +111,11 @@ function buildDashboardQuerySpecsCD(hub, segment) {
       " COUNT(DISTINCT NULLIF(TRIM(City), '')) AS cities, " +
       " COUNTIF(deactivationdate IS NULL) AS active_deployments FROM " + CD + " WHERE " + F + SC,
     geo:
-      "SELECT IFNULL(NULLIF(TRIM(State), ''), 'Unknown') AS state, COUNT(*) AS devices " +
+      // Distinct CENTERS per state (the reload duplicated rows; every other
+      // Centers metric dedupes — this one was still COUNT(*)). Field name stays
+      // `devices` for client-payload compatibility; the card is retitled
+      // "Centers by state" client-side.
+      "SELECT IFNULL(NULLIF(TRIM(State), ''), 'Unknown') AS state, COUNT(DISTINCT CenterID) AS devices " +
       "FROM " + CD + " WHERE " + F + SC + " GROUP BY state ORDER BY devices DESC LIMIT 12",
     // One row per center (MIN deploymentdate); counts DISTINCT centers so the
     // bands sum to the center count (was active-only rows → didn't match).
@@ -147,11 +151,12 @@ function buildDashboardQuerySpecsCD(hub, segment) {
       "SELECT center_id AS centerid, uptime_pct, mtbf_hrs, failures, health_score " +
       "FROM scored ORDER BY health_score ASC LIMIT 12", segment)
   };
+  // The jira_data BQ specs (assets/cohortReliability) were removed from
+  // buildDashboardQuerySpecs — the status/type donut and the batch cohort are
+  // now computed in JS from the Jira SHEET asset index (see apiGetDashboardCD).
   var specs = buildDashboardQuerySpecs(hub, segment).map(function (s) {
     return cd[s.key] ? { key: s.key, params: s.params, sql: cd[s.key], maxRows: s.maxRows } : s;
-  // Drop the jira_data BQ specs — the status/type donut and the batch cohort are
-  // now computed in JS from the Jira SHEET asset index (see apiGetDashboardCD).
-  }).filter(function (s) { return s.key !== 'assets' && s.key !== 'cohortReliability'; });
+  });
 
   // Distinct real segment values (hub_master_segment), for the topbar segment filter.
   specs.push({

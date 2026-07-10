@@ -22,19 +22,6 @@ function T(table) {
 }
 
 /**
- * WHERE fragment restricting jira_data rows to real fleet devices
- * (CONFIG.JIRA_DEVICE_TYPES: Connector + ECG Machine) — the same permanent
- * filter jiraDeviceStats_ applies to the Jira Sheet. Lazy for load order.
- * @return {string}
- */
-function jiraTypeFilterSql_() {
-  var list = CONFIG.JIRA_DEVICE_TYPES.map(function (t) {
-    return "'" + String(t).toLowerCase().replace(/'/g, "\\'") + "'";
-  }).join(', ');
-  return "LOWER(TRIM(IFNULL(issuetype_name, ''))) IN (" + list + ")";
-}
-
-/**
  * LastTimeStamp is IST wall-time (see CONFIG.IST_OFFSET_MINUTES), so "now"
  * for heartbeat-recency comparisons must also be IST.
  * Functions (not top-level consts) because Apps Script executes files
@@ -130,56 +117,6 @@ function centerUptimeSql_(tailSelect) {
     tailSelect;
 }
 
-/**
- * Batch-cohort failure analysis — First-Time-Failure (M-A3) + Batch Failure
- * Detection (M-A5), keyed on device production "batch" = YEAR of first Jira
- * appearance. One device = one distinct serial parsed from jira_data.summary;
- * birth = MIN(ticket_created); its center = jira_data.customerid (= CenterID).
- * Failure signal = device-failure Zoho tickets at that center (CENTER grain,
- * cohort-approximate — the TRD's ServiceWRK device-grain source is not in the
- * sandbox). Per batch year we return:
- *   devices          — cohort size (distinct serials born that year)
- *   ftf_rate_pct     — % of cohort whose center ever had a failure (M-A3)
- *   median_ttff_days — median time from birth to first failure (M-A3)
- *   early_fails      — count with first failure < 7 days (early-life / DOA)
- *   avg_failures     — mean device-failure tickets per device (M-A5 intensity)
- *   top_issue        — most frequent failure IssueCategory for the cohort (M-A5)
- * @return {string} full SQL, ordered oldest→newest batch
- */
-function cohortReliabilitySql_() {
-  var f = CONFIG.ZOHO_DT_FORMAT;
-  var P = "SAFE.PARSE_DATETIME('" + f + "', ";
-  var SERIAL = "UPPER(REGEXP_EXTRACT(summary, r'([A-Za-z0-9]{2}-[A-Za-z0-9]{6,})'))";
-  return "WITH dev AS (" +
-    " SELECT " + SERIAL + " AS serial, MIN(ticket_created) AS birth, " +
-    "  ANY_VALUE(SAFE_CAST(customerid AS INT64)) AS center_id " +
-    " FROM " + T('jira_data') + " WHERE REGEXP_CONTAINS(summary, r'[A-Za-z0-9]{2}-[A-Za-z0-9]{6,}') " +
-    "  AND " + jiraTypeFilterSql_() + " " +   // fleet devices only (Connector + ECG Machine)
-    " GROUP BY serial), " +
-    "ftix AS (" +
-    " SELECT CenterID AS center_id, " + P + "CreatedAt) AS created, IssueCategory " +
-    " FROM " + T('zoho_data') + " WHERE CenterID IS NOT NULL " +
-    "  AND " + techBoolSql_("IFNULL(IssueCategory,'')") + " " +
-    "  AND " + P + "CreatedAt) IS NOT NULL), " +
-    "fail AS (SELECT center_id, MIN(created) AS first_fail, COUNT(*) AS n_fail FROM ftix GROUP BY center_id), " +
-    "pd AS (SELECT d.serial, EXTRACT(YEAR FROM d.birth) AS batch_year, d.center_id, " +
-    "  (f.first_fail IS NOT NULL) AS ever_failed, IFNULL(f.n_fail, 0) AS n_fail, " +
-    "  CASE WHEN f.first_fail > DATETIME(d.birth) THEN DATETIME_DIFF(f.first_fail, DATETIME(d.birth), DAY) END AS ttff_days " +
-    "  FROM dev d LEFT JOIN fail f ON d.center_id = f.center_id WHERE d.birth IS NOT NULL), " +
-    "cohort AS (SELECT batch_year, COUNT(*) AS devices, " +
-    "  ROUND(COUNTIF(ever_failed) / COUNT(*) * 100, 1) AS ftf_rate_pct, " +
-    "  ROUND(APPROX_QUANTILES(ttff_days, 2)[OFFSET(1)], 0) AS median_ttff_days, " +
-    "  COUNTIF(ttff_days IS NOT NULL AND ttff_days < 7) AS early_fails, " +
-    "  ROUND(AVG(n_fail), 2) AS avg_failures FROM pd GROUP BY batch_year), " +
-    "issue_rank AS (SELECT batch_year, IssueCategory, " +
-    "  ROW_NUMBER() OVER (PARTITION BY batch_year ORDER BY COUNT(*) DESC) AS rn " +
-    "  FROM pd JOIN ftix USING (center_id) GROUP BY batch_year, IssueCategory), " +
-    "top_issue AS (SELECT batch_year, IssueCategory AS top_issue FROM issue_rank WHERE rn = 1) " +
-    "SELECT c.batch_year, c.devices, c.ftf_rate_pct, c.median_ttff_days, c.early_fails, " +
-    " c.avg_failures, t.top_issue " +
-    "FROM cohort c LEFT JOIN top_issue t USING (batch_year) ORDER BY c.batch_year";
-}
-
 /** Zoho stringly-typed datetime parser fragments. */
 function zohoParsedDates_() {
   return "SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created, " +
@@ -242,17 +179,6 @@ function buildDashboardQuerySpecs(hub, segment) {
         "GROUP BY firmware ORDER BY devices DESC LIMIT 8"
     },
     {
-      key: 'assets',
-      sql:
-        // Permanent fleet-device filter (Connector + ECG Machine only).
-        "SELECT 'status' AS dim, status_name AS label, COUNT(DISTINCT issue_key) AS cnt " +
-        "FROM " + T('jira_data') + " WHERE " + jiraTypeFilterSql_() + " GROUP BY label " +
-        "UNION ALL " +
-        "SELECT 'type' AS dim, issuetype_name AS label, COUNT(DISTINCT issue_key) AS cnt " +
-        "FROM " + T('jira_data') + " WHERE " + jiraTypeFilterSql_() + " GROUP BY label " +
-        "ORDER BY dim, cnt DESC"
-    },
-    {
       // Reliability watchlist = canonical Machine Uptime % (TRD M-A1), worst
       // (lowest-uptime) centers first. center name + devices added in Api.js.
       key: 'reliability',
@@ -280,13 +206,6 @@ function buildDashboardQuerySpecs(hub, segment) {
         "SELECT center_id AS centerid, uptime_pct, mtbf_hrs, failures, health_score " +
         "FROM scored ORDER BY health_score ASC LIMIT 12")
     },
-    {
-      // Batch-cohort failure analysis: First-Time-Failure (M-A3) + Batch
-      // Failure Detection (M-A5), one row per device production year.
-      key: 'cohortReliability',
-      sql: cohortReliabilitySql_()
-    },
-
     /* ═══════════ CENTERS / CUSTOMERS VIEW — geography & deployments ═════ */
     {
       key: 'centerKpis',
@@ -347,14 +266,15 @@ function buildDashboardQuerySpecs(hub, segment) {
       key: 'zohoKpis',
       params: p,
       sql:
-        "WITH t AS (SELECT status, TicketActiveDays, " + zohoParsedDates_() + " " +
+        "WITH t AS (SELECT status, " + zohoParsedDates_() + " " +
         " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + segZ + ") " +
         "SELECT " +
         " COUNT(*) AS total_tickets, " +
         " COUNTIF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS open_tickets, " +
         " COUNTIF(created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 7 DAY)) AS created_7d, " +
         " COUNTIF(closed >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 7 DAY)) AS closed_7d, " +
-        " ROUND(AVG(IF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ", TicketActiveDays, NULL)), 1) AS avg_open_age_days " +
+        " ROUND(AVG(IF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + " AND created IS NOT NULL, " +
+        "   DATETIME_DIFF(CURRENT_DATETIME(), created, HOUR) / 24.0, NULL)), 1) AS avg_open_age_days " +
         "FROM t"
     },
     {
@@ -465,15 +385,6 @@ function buildDashboardQuerySpecs(hub, segment) {
         "SELECT IFNULL(NULLIF(TRIM(hub_master_segment), ''), 'Unknown') AS segment, COUNT(*) AS cnt " +
         "FROM t WHERE " + HUB_FILTER_SQL + segZ + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
         "GROUP BY segment ORDER BY cnt DESC LIMIT 8"
-    },
-
-    /* ═══════════ SHARED ═════════════════════════════════════════════════ */
-    {
-      key: 'hubOptions',
-      sql:
-        "SELECT HubName AS hub, COUNT(*) AS devices FROM " + T('cloud_devices') + " " +
-        "WHERE TRIM(IFNULL(HubName, '')) != '' " +
-        "GROUP BY hub ORDER BY devices DESC LIMIT 300"
     }
   ];
 }
@@ -580,58 +491,6 @@ function buildCenterSourceSpecs() {
         " ANY_VALUE(NULLIF(TRIM(hub_master_segment), '')) AS segment " +
         "FROM " + T('zoho_data') + " WHERE CenterID IS NOT NULL " +
         "GROUP BY CenterID"
-    }
-  ];
-}
-
-/* ═══════════ Asset-360 sources (Map view) — joined in Apps Script ═══════ */
-
-/**
- * Jira assets parsed per issue_key, plus the two lookup tables that link a
- * serial or SIM IMSI to a center. All single-table reads; the joins happen
- * in Api.js (getAssetIndex_).
- *
- * summary formats observed in the data:
- *   "Vcardia - B2-c2a6f0d2"  → machine type + Mac serial
- *   "H4-F79C6E22"            → bare device/serial id
- *   "IMSI-404453402490237"   → SIM card (joins via cloud_devices.IMSI)
- * @return {Array<{key:string, sql:string, maxRows:number}>}
- */
-function buildAssetSourceSpecs() {
-  return [
-    {
-      key: 'jiraAssets',
-      maxRows: 80000,
-      sql:
-        "WITH a AS (SELECT issue_key, ANY_VALUE(summary) AS summary, " +
-        " ANY_VALUE(issuetype_name) AS category, " +
-        " CAST(DATE(MIN(ticket_created)) AS STRING) AS birthday, " +
-        " DATE_DIFF(CURRENT_DATE(), DATE(MIN(ticket_created)), DAY) AS age_days " +
-        // Permanent fleet-device filter (Connector + ECG Machine only).
-        " FROM " + T('jira_data') + " WHERE " + jiraTypeFilterSql_() + " GROUP BY issue_key) " +
-        "SELECT issue_key, summary, category, birthday, age_days, " +
-        " UPPER(TRIM(REGEXP_EXTRACT(summary, r'([A-Za-z0-9]{2}-[A-Za-z0-9]{8})'))) AS serial, " +
-        " REGEXP_EXTRACT(summary, r'^IMSI[- ]*([0-9]{8,})') AS imsi, " +
-        " UPPER(COALESCE(NULLIF(TRIM(REGEXP_EXTRACT(summary, r'^([A-Za-z]{3,})')), ''), " +
-        "  REGEXP_EXTRACT(summary, r'^([A-Za-z0-9]{2})-'))) AS machine_type " +
-        "FROM a"
-    },
-    {
-      key: 'deviceCenters',
-      maxRows: 80000,
-      sql:
-        "SELECT UPPER(deviceid) AS device_key, centerid FROM ( " +
-        " SELECT deviceid, centerid, " +
-        "  ROW_NUMBER() OVER (PARTITION BY deviceid ORDER BY startdatetime DESC) AS rn " +
-        " FROM " + T('device_center_mapping') + ") WHERE rn = 1"
-    },
-    {
-      key: 'imsiCenters',
-      maxRows: 80000,
-      sql:
-        "SELECT UPPER(IMSI) AS imsi, ANY_VALUE(CenterID) AS centerid " +
-        "FROM " + T('cloud_devices') + " " +
-        "WHERE TRIM(IFNULL(IMSI, '')) != '' GROUP BY imsi"
     }
   ];
 }

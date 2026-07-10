@@ -37,21 +37,6 @@
              placeholder="Search centers, devices, hubs, serials…" autocomplete="off"
              aria-label="Search across the dashboard" />
     </div>
-    <input id="hubFilter" list="hubOptions" class="input topbar-hub" type="text"
-           placeholder="All hubs" autocomplete="off" aria-label="Filter by hub" />
-    <datalist id="hubOptions"></datalist>
-    <select id="globalSegment" class="select topbar-seg" aria-label="Filter by segment">
-      <option value="">All segments</option>
-    </select>
-
-    <button id="activeOnlyBtn" class="btn btn-ghost" type="button" aria-pressed="false"
-            title="Show only centers with Status = ACTIVE (center_details)">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      <span>Active centers</span>
-    </button>
-
     <button id="refreshBtn" class="btn btn-primary" type="button">
       <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" stroke="currentColor"
@@ -200,6 +185,16 @@
 
   <!-- ══════════════ VIEW 1 · ASSET ══════════════ -->
   <section id="panel-asset" class="panel" role="tabpanel" aria-labelledby="tab-asset" hidden>
+    <div class="page-filters" role="group" aria-label="Asset page filters">
+      <span class="filter-chip" title="Fixed scope: center_details Status = ACTIVE and F2P_Customer = 0. Applies to every number on this page.">
+        Active · Paid centers
+      </span>
+      <label class="filter-label" for="assetSegment">Segment</label>
+      <select id="assetSegment" class="select page-seg" data-page="asset">
+        <option value="">All segments</option>
+      </select>
+      <span class="filter-note">Segment follows each device’s mapped center — unmapped devices drop out when a segment is selected.</span>
+    </div>
     <div class="page-summary card">
       <span class="exec-eyebrow">Executive summary</span>
       <p id="assetSummary" class="exec-narrative">Loading the story from live data…</p>
@@ -238,7 +233,7 @@
       <article class="card span-4">
         <header class="card-head">
           <h2 class="card-title">Asset lifecycle</h2>
-          <p class="card-sub">12,839 Jira-tracked assets by status</p>
+          <p class="card-sub">Sheet-tracked Connector + ECG devices by status</p>
         </header>
         <div id="chartAssetStatus" class="chart" role="img"
              aria-label="Bar chart of assets by lifecycle status"></div>
@@ -253,54 +248,10 @@
              aria-label="Horizontal bar chart of assets by hardware type"></div>
       </article>
 
-      <article class="card span-12">
-        <header class="card-head">
-          <h2 class="card-title">Reliability watchlist</h2>
-          <p class="card-sub">Machine Uptime % (M-A1) · lowest-uptime centers first · click a row</p>
-        </header>
-        <div class="table-scroll">
-          <table class="data-table" id="reliabilityTable">
-            <caption class="sr-only">Centers with the lowest machine uptime</caption>
-            <thead>
-              <tr>
-                <th scope="col">Center</th>
-                <th scope="col" class="num">Devices</th>
-                <th scope="col" class="num">Uptime %</th>
-                <th scope="col" class="num">Downtime %</th>
-                <th scope="col" class="num">Failures</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </article>
-
-      <article class="card span-12">
-        <header class="card-head">
-          <h2 class="card-title">Asset health score</h2>
-          <p class="card-sub">Composite 0–100 (M-A6): 50% uptime + MTBF tier + failure tier · lowest first · click a row</p>
-        </header>
-        <div class="table-scroll">
-          <table class="data-table" id="assetHealthTable">
-            <caption class="sr-only">Centers with the lowest composite health score</caption>
-            <thead>
-              <tr>
-                <th scope="col">Center</th>
-                <th scope="col" class="num">Health</th>
-                <th scope="col" class="num">Uptime %</th>
-                <th scope="col" class="num">MTBF (days)</th>
-                <th scope="col" class="num">Failures</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </article>
-
       <article class="card span-7">
         <header class="card-head">
           <h2 class="card-title">First-time-failure by production batch</h2>
-          <p class="card-sub">FTF rate (M-A3) &amp; failures/device (M-A5) per birth-year cohort</p>
+          <p class="card-sub">FTF rate (M-A3) &amp; failures/device (M-A5) per birth-year cohort · center-grain proxy</p>
         </header>
         <div id="chartCohort" class="chart chart-tall" role="img"
              aria-label="Combined bar and line chart of first-time-failure rate and failures per device by production batch year"></div>
@@ -384,6 +335,16 @@
 
   <!-- ══════════════ VIEW 2 · CENTERS / CUSTOMERS ══════════════ -->
   <section id="panel-centers" class="panel" role="tabpanel" aria-labelledby="tab-centers" hidden>
+    <div class="page-filters" role="group" aria-label="Centers page filters">
+      <span class="filter-chip" title="Fixed scope: center_details Status = ACTIVE and F2P_Customer = 0. Applies to every number on this page.">
+        Active · Paid centers
+      </span>
+      <label class="filter-label" for="centersSegment">Segment</label>
+      <select id="centersSegment" class="select page-seg" data-page="centers">
+        <option value="">All segments</option>
+      </select>
+      <span class="filter-note">Applies to every KPI, chart and the Center 360 table.</span>
+    </div>
     <div class="page-summary card">
       <span class="exec-eyebrow">Executive summary</span>
       <p id="centersSummary" class="exec-narrative">Loading the story from live data…</p>
@@ -394,17 +355,17 @@
     <div class="card-grid">
       <article class="card span-4">
         <header class="card-head">
-          <h2 class="card-title">Devices by state</h2>
-          <p class="card-sub">Latest known deployment location</p>
+          <h2 class="card-title">Centers by state</h2>
+          <p class="card-sub">Distinct active centers per state</p>
         </header>
         <div id="chartGeo" class="chart chart-tall" role="img"
-             aria-label="Bar chart of devices per state"></div>
+             aria-label="Bar chart of centers per state"></div>
       </article>
 
       <article class="card span-4">
         <header class="card-head">
           <h2 class="card-title">Deployment age</h2>
-          <p class="card-sub">Active deployments by time in field</p>
+          <p class="card-sub">Centers by time since first deployment</p>
         </header>
         <div id="chartDeploymentAge" class="chart chart-tall" role="img"
              aria-label="Bar chart of active deployments by age band"></div>
@@ -425,7 +386,51 @@
           <p class="card-sub">Largest hubs by number of spokes (centers)</p>
         </header>
         <div id="chartHubs" class="chart chart-tall" role="img"
-             aria-label="Stacked horizontal bar chart of online and offline devices per hub"></div>
+             aria-label="Bar chart of spoke counts per hub"></div>
+      </article>
+
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Reliability watchlist</h2>
+          <p class="card-sub">Machine Uptime % (M-A1) · lowest-uptime centers first · click a row</p>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table" id="reliabilityTable">
+            <caption class="sr-only">Centers with the lowest machine uptime</caption>
+            <thead>
+              <tr>
+                <th scope="col">Center</th>
+                <th scope="col" class="num">Devices</th>
+                <th scope="col" class="num">Uptime %</th>
+                <th scope="col" class="num">Downtime %</th>
+                <th scope="col" class="num">Failures</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Center health score</h2>
+          <p class="card-sub">Composite 0–100 (M-A6): 50% uptime + MTBF tier + failure tier · lowest first · click a row</p>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table" id="assetHealthTable">
+            <caption class="sr-only">Centers with the lowest composite health score</caption>
+            <thead>
+              <tr>
+                <th scope="col">Center</th>
+                <th scope="col" class="num">Health</th>
+                <th scope="col" class="num">Uptime %</th>
+                <th scope="col" class="num">MTBF (days)</th>
+                <th scope="col" class="num">Failures</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </article>
 
       <article class="card span-12">
@@ -462,6 +467,16 @@
 
   <!-- ══════════════ VIEW 3 · SUPPORT / CS ══════════════ -->
   <section id="panel-support" class="panel" role="tabpanel" aria-labelledby="tab-support" hidden>
+    <div class="page-filters" role="group" aria-label="Support page filters">
+      <span class="filter-chip" title="Fixed scope: center_details Status = ACTIVE and F2P_Customer = 0. Applies to every number on this page.">
+        Active · Paid centers
+      </span>
+      <label class="filter-label" for="supportSegment">Segment</label>
+      <select id="supportSegment" class="select page-seg" data-page="support">
+        <option value="">All segments</option>
+      </select>
+      <span class="filter-note">Zoho tickets filter by segment; CS-tracker cards have no segment lineage and always show all segments.</span>
+    </div>
     <div id="supportKpiGrid" class="kpi-grid"></div>
 
     <div class="card-grid">
@@ -517,7 +532,7 @@
       <article class="card span-4">
         <header class="card-head">
           <h2 class="card-title">Active backlog</h2>
-          <p class="card-sub">Open tickets by current status</p>
+          <p class="card-sub">Current open backlog by status · all-time</p>
         </header>
         <div id="chartZohoStatus" class="chart" role="img"
              aria-label="Bar chart of open tickets by status"></div>
@@ -553,7 +568,7 @@
       <article class="card span-8">
         <header class="card-head">
           <h2 class="card-title">Field service TAT</h2>
-          <p class="card-sub">CS tracker sheet · cases resolved and average turnaround per month</p>
+          <p class="card-sub">CS tracker sheet · cases resolved and average turnaround per month · last 12 sheet-months</p>
         </header>
         <div id="chartTatTrend" class="chart chart-tall" role="img"
              aria-label="Combined chart of field cases per month and average turnaround days"></div>
@@ -562,7 +577,7 @@
       <article class="card span-4">
         <header class="card-head">
           <h2 class="card-title">Machines in the field</h2>
-          <p class="card-sub">CS tracker sheet · cases by machine type</p>
+          <p class="card-sub">CS tracker sheet · cases by machine type · all-time</p>
         </header>
         <div id="chartCsMachine" class="chart chart-tall" role="img"
              aria-label="Horizontal bar chart of field cases by machine type"></div>
@@ -571,7 +586,7 @@
       <article class="card span-6">
         <header class="card-head">
           <h2 class="card-title">Field issue types</h2>
-          <p class="card-sub">CS tracker sheet</p>
+          <p class="card-sub">CS tracker sheet · all-time</p>
         </header>
         <div id="chartCsIssueType" class="chart" role="img"
              aria-label="Horizontal bar chart of field cases by issue type"></div>
@@ -580,7 +595,7 @@
       <article class="card span-6">
         <header class="card-head">
           <h2 class="card-title">Case owners</h2>
-          <p class="card-sub">CS tracker sheet · workload and turnaround per owner</p>
+          <p class="card-sub">CS tracker sheet · workload and turnaround per owner · all-time</p>
         </header>
         <div class="table-scroll">
           <table class="data-table" id="csOwnerTable">

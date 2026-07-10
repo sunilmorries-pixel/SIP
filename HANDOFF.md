@@ -53,9 +53,9 @@ review; every SQL verified live on BQ; full preview pass 0 console errors).
   they silently default to 5 days, now disclosed in the tooltip); device-grain
   uptime/health still deferred; Overview/Map/TopCustomers/Numbers have no filter bar
   (Overview alignment = future pass); `segSlug_` would collide if two segment names
-  slugify identically (safe with current 7 values); LIVE SMOKE TEST still to be done
-  by the user (open the stable URL, pick a segment on Centers, expect ~10,743 for
-  Private - SME).
+  slugify identically (safe with current 7 values). LIVE SMOKE TEST PASSED (user,
+  2026-07-10): Private - SME on Centers → 10,743 centers, matching the BQ-verified
+  figure exactly.
 
 **v5.7 (2026-07-08, deployed @31):** dropped "Fleet" terminology app-wide; rebuilt the
 Asset and Centers pages **page by page, metric by metric** with the user (each formula

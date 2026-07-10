@@ -22,3 +22,6 @@ dist/
 
 # Throwaway verification scripts (see docs/superpowers/plans — not deployed, rootDir is src)
 scratch/
+
+# Claude Code worktrees — never commit (accidentally tracked as a gitlink once)
+.claude/worktrees/

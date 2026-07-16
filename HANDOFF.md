@@ -1,6 +1,73 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-07-10 · **Version:** 5.8 · **Status:** LIVE (deployment @33, same URL).
+**Last updated:** 2026-07-16 · **Version:** 5.9 · **Status:** LIVE (pushed directly via clasp;
+this branch back-fills the repo to match).
+
+**v5.9 (2026-07-11 → 2026-07-16):** security review + KPI-mismatch investigation + data-load
+performance pass. Done in an interactive session (code review → live BigQuery verification via
+a temporary `server/Diag.js` → fixes), pushed straight to the live script with `clasp push` as
+each fix landed — **this branch is the first time these changes reach git**, ported from the
+live `clasp clone` snapshot into `src/`. No spec/plan doc precedes this entry (retrospective).
+
+- **Server-side authorization guard** (`assertAuthorized_()` in `Auth.js`, enforced in
+  `Api.js` `respond_()` and `WebApp.js` `doGet()`): previously `access: DOMAIN` +
+  `executeAs: USER_DEPLOYING` meant any tricog.com account could read the full fleet/
+  customer/ticket data through the deployer's BigQuery access, and every global function
+  was reachable via `google.script.run`. Allowlist is the `AUTHORIZED_EMAILS` Script
+  Property (comma-separated emails) — **fail-open until set** (logs a warning) so this
+  change alone can't lock anyone out. Set the property to actually enforce it.
+- **XSS fixes**: Leaflet map tooltip (`MapView.html`) rendered the center name as raw HTML
+  via `bindTooltip` — added a local `esc()` escaper. `relTime()` in `App.html`'s device/
+  center tables returned the raw server string on unparseable dates and was inserted into
+  `<td>` content unescaped — wrapped in `escapeHtml`.
+- **Subresource Integrity**: real `sha384-` hashes + `crossorigin` added to all 6 CDN
+  assets (echarts, Leaflet, markercluster JS+CSS) in `Index.html` — previously loaded
+  with no integrity check.
+- **Segment-refresh race fixed**: `loadDashboard` used a `state.loading` drop-on-busy
+  guard; a segment change mid-flight was silently dropped, leaving the KPIs/charts on the
+  old segment. Replaced with the same latest-wins `requestId` pattern already used by
+  `loadDevices`/`loadCenters`.
+- **`active_deployments` KPI bug**: `centerKpis` counted `COUNTIF(deactivationdate IS
+  NULL)` over `center_details`' duplicated rows (row-grain) instead of `CenterID`
+  (center-grain) — live value was **25,648, exceeding the 18,370-center universe**
+  (~140%). Fixed to `COUNT(DISTINCT IF(deactivationdate IS NULL, CenterID, NULL))`.
+- **Data-load performance** (uncached `apiGetDashboardCD` measured ~40s):
+  - BigQuery result page size now matches each query's `maxRows` (was hardcoded 1,000)
+    — `buildQueryPayload_`/`fetchResultsPage_`/`collectRows_` in `BigQuery.js`. The
+    ~27k-row center dimension went from ~28 **sequential** pageToken fetches (~8–12s) to
+    1–2; bearer token reused across pages instead of refetched per page.
+  - **Fixed a correctness bug this surfaced**: the per-center uptime query inside
+    `getCenter360RowsCD_` had no `maxRows`, so it silently capped at 1,000 of ~18k
+    centers — uptime/lifecycle/downtime columns were blank for all but the first 1,000
+    centers in the Centers table. Same latent cap in `Numbers.js` `deviceCenterMap_`
+    (harmless today since it reads from the Sheets fallback path, but will bite once
+    Sheets access is restored).
+  - New `server/Warm.js`: `warmCaches()` + `installWarmTrigger()` (10-min time trigger,
+    **run once manually from the editor** — needs a new `script.scriptapp` OAuth scope,
+    added to `appsscript.json`) pre-warms the dashboard/exec/map/top-customers/numbers
+    caches so users never hit a cold ~40s load. `CACHE_TTL_SECONDS` 300 → 900 and the
+    Center-360/map large-object cache TTLs 600 → 1800, both intentionally longer than
+    the 10-min warm interval so a warmed value never expires before the next warm pass.
+  - Client: auto-refresh (`tickCountdown`, every 5 min) no longer passes `bypassCache` —
+    it was forcing the full recompute on a timer that matched the server TTL, buying zero
+    freshness at ~40s of cost per client per cycle. Only the manual Refresh button still
+    bypasses. "Silent refresh" — recurring loads no longer blank all 19 charts to
+    skeletons; only the first load (nothing rendered yet) shows loading state.
+  - Negative caching for Google Sheets reads (`fetchSheetValues_` in `SheetSource.js`):
+    the Sheets API is currently **disabled** in the GCP project, so `readCsTracker`/
+    `readJiraSheet` were burning 1–4s of guaranteed-403 calls on every cold dashboard/
+    exec load; failures are now remembered for 10 minutes and skipped.
+- **Still open** (see `docs/SOURCES.md`/inline TODOs for detail): enable the Google
+  Sheets API in GCP project `218180702013` (CS tracker returns null, Jira devices source
+  falls back to the static `JIRA_DUMP` snapshot until then); switch `CONFIG.CS_SHEET_ID`
+  to the new field-cases sheet `1X33LBKEJx1HNp289TPK750KUnEOBTHYWa-Xdfiejsxg`; consolidate
+  the 4x-per-load uptime CTE into one query; merge the Reliability watchlist + Center
+  health score tables (requested, not started); merge the exec payload into the dashboard
+  payload (currently duplicates ~8 of the same BigQuery specs under a separate cache key).
+- A temporary `server/Diag.js` (read-only BigQuery/Sheets probes used to verify the KPI
+  mismatch and dataset inventory) was pushed to the **live** script during
+  investigation and is **not** included in this branch — remove it from the live project
+  next time it's opened in the editor.
 
 **v5.8 (2026-07-10, deployed @33):** page-level filters + 13 KPI corrections, built via
 subagent-driven development from spec `docs/superpowers/specs/2026-07-10-page-filters-and-kpi-corrections-design.md`

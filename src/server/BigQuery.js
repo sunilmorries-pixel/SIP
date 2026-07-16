@@ -29,14 +29,18 @@ function bqEndpoint_() {
  * Builds the jobs.query request payload.
  * @param {string} sql
  * @param {Object<string,(string|number)>=} params named query parameters
+ * @param {number=} maxRows result page size — MUST match the caller's row
+ *   target: with the old fixed 1000, a 27k-row query needed ~28 SEQUENTIAL
+ *   pageToken fetches (~8-12s); one big page is 1-2 fetches (BQ caps a page
+ *   at ~10MB regardless, so large values are safe).
  * @return {Object}
  */
-function buildQueryPayload_(sql, params) {
+function buildQueryPayload_(sql, params, maxRows) {
   var payload = {
     query: sql,
     useLegacySql: false,
     timeoutMs: 45000,
-    maxResults: CONFIG.MAX_ROWS
+    maxResults: maxRows || CONFIG.MAX_ROWS
   };
   if (params && Object.keys(params).length) {
     payload.parameterMode = 'NAMED';
@@ -88,15 +92,16 @@ function parseRows_(data) {
  * @return {Array<Object>} rows
  */
 function runQuery(sql, params, options) {
+  var maxRows = (options && options.maxRows) || CONFIG.MAX_ROWS;
   var response = UrlFetchApp.fetch(bqEndpoint_(), {
     method: 'post',
     contentType: 'application/json',
     headers: { Authorization: 'Bearer ' + getBigQueryAccessToken() },
-    payload: JSON.stringify(buildQueryPayload_(sql, params)),
+    payload: JSON.stringify(buildQueryPayload_(sql, params, maxRows)),
     muteHttpExceptions: true
   });
   var data = validateResponse_(response);
-  return collectRows_(data, (options && options.maxRows) || CONFIG.MAX_ROWS);
+  return collectRows_(data, maxRows);
 }
 
 /**
@@ -114,7 +119,7 @@ function runQueriesParallel(specs) {
       method: 'post',
       contentType: 'application/json',
       headers: { Authorization: 'Bearer ' + token },
-      payload: JSON.stringify(buildQueryPayload_(spec.sql, spec.params)),
+      payload: JSON.stringify(buildQueryPayload_(spec.sql, spec.params, spec.maxRows)),
       muteHttpExceptions: true
     };
   });
@@ -160,8 +165,9 @@ function validateResponse_(response) {
 function collectRows_(data, maxRows) {
   var rows = parseRows_(data);
   var pageToken = data.pageToken;
+  var token = pageToken ? getBigQueryAccessToken() : null; // one token for all pages
   while (pageToken && rows.length < maxRows) {
-    var page = fetchResultsPage_(data.jobReference, pageToken);
+    var page = fetchResultsPage_(data.jobReference, pageToken, maxRows, token);
     rows = rows.concat(parseRows_(page));
     pageToken = page.pageToken;
   }
@@ -172,16 +178,18 @@ function collectRows_(data, maxRows) {
  * getQueryResults for one page (used for pagination and slow-job polling).
  * @param {Object} jobReference
  * @param {?string} pageToken
+ * @param {number=} maxRows page size (defaults to CONFIG.MAX_ROWS)
+ * @param {string=} token reuse an already-fetched bearer token
  * @return {Object}
  */
-function fetchResultsPage_(jobReference, pageToken) {
+function fetchResultsPage_(jobReference, pageToken, maxRows, token) {
   var url = 'https://bigquery.googleapis.com/bigquery/v2/projects/' +
     CONFIG.BQ_PROJECT_ID + '/queries/' + jobReference.jobId +
-    '?timeoutMs=30000&maxResults=' + CONFIG.MAX_ROWS +
+    '?timeoutMs=30000&maxResults=' + (maxRows || CONFIG.MAX_ROWS) +
     (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : '') +
     (jobReference.location ? '&location=' + jobReference.location : '');
   var response = UrlFetchApp.fetch(url, {
-    headers: { Authorization: 'Bearer ' + getBigQueryAccessToken() },
+    headers: { Authorization: 'Bearer ' + (token || getBigQueryAccessToken()) },
     muteHttpExceptions: true
   });
   var data = JSON.parse(response.getContentText());

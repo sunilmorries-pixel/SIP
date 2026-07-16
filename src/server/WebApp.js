@@ -8,6 +8,16 @@
  * @return {GoogleAppsScript.HTML.HtmlOutput}
  */
 function doGet(e) {
+  try {
+    assertAuthorized_();
+  } catch (err) {
+    return HtmlService.createHtmlOutput(
+      '<div style="font:16px/1.5 system-ui,sans-serif;padding:48px;max-width:520px;margin:0 auto;color:#333">' +
+      '<h2>Access restricted</h2>' +
+      '<p>Your account isn’t authorized to view this dashboard. ' +
+      'Contact the dashboard owner to request access.</p></div>'
+    ).setTitle('Access restricted');
+  }
   var template = htmlTemplate_('Index');
   template.appName = CONFIG.APP_NAME;
   template.appVersion = CONFIG.APP_VERSION;

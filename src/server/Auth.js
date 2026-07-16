@@ -38,3 +38,46 @@ function getBigQueryAccessToken() {
   }
   return service.getAccessToken();
 }
+
+/**
+ * Application-level access control.
+ *
+ * appsscript.json restricts the web app to the tricog.com DOMAIN, but every
+ * endpoint runs as the DEPLOYING user's service account — so any domain user
+ * would otherwise read the full fleet/customer/ticket data. This narrows that
+ * to an explicit allowlist.
+ *
+ * The allowlist is the AUTHORIZED_EMAILS Script Property: a comma/space/newline
+ * separated list of emails. ROLLOUT-SAFE: if the property is UNSET, the guard
+ * allows everyone (preserving today's behaviour) and logs a warning, so pushing
+ * this code never locks anyone out. Enforcement begins the moment you set the
+ * property. Set it in Project Settings → Script Properties, e.g.
+ *   AUTHORIZED_EMAILS = abi@tricog.com, sunil.morries@tricog.com
+ *
+ * @return {Array<string>} lowercased allowlist ([] when unconfigured)
+ */
+function getAuthorizedEmails_() {
+  var raw = PropertiesService.getScriptProperties().getProperty('AUTHORIZED_EMAILS') || '';
+  return raw.split(/[\s,;]+/)
+    .map(function (e) { return e.trim().toLowerCase(); })
+    .filter(function (e) { return e.length > 0; });
+}
+
+/**
+ * Throws if the current caller is not on the allowlist. No-op (with a warning)
+ * while AUTHORIZED_EMAILS is unconfigured. Call at every trust boundary
+ * (respond_, doGet).
+ */
+function assertAuthorized_() {
+  var allow = getAuthorizedEmails_();
+  if (!allow.length) {
+    console.warn('AUTHORIZED_EMAILS is not set — access control is OPEN to the whole domain. ' +
+      'Set the Script Property to enforce an allowlist.');
+    return;
+  }
+  var user = '';
+  try { user = (Session.getActiveUser().getEmail() || '').toLowerCase(); } catch (e) { user = ''; }
+  if (!user || allow.indexOf(user) === -1) {
+    throw new Error('Not authorized');
+  }
+}

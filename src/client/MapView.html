@@ -18,6 +18,14 @@ function MapView(containerId) {
   var map = null, cluster = null, tileLayer = null;
   var centers = [], pendingRender = null, theme = 'dark';
 
+  // Leaflet renders string tooltip/popup content as HTML, so any field that
+  // originates from data (e.g. a center name) MUST be escaped first.
+  function esc(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   function ticketColor(openTickets) {
     if (openTickets >= 4) return '#F87171';
     if (openTickets > 0) return '#FBBF24';
@@ -52,9 +60,9 @@ function MapView(containerId) {
         radius: radius, color: color, weight: 1.5, fillColor: color, fillOpacity: 0.4
       });
       marker.bindTooltip(
-        c[1] + ' · ' + c[4] + ' device' + (c[4] === 1 ? '' : 's') +
-        ' · ' + c[6] + ' open ticket' + (c[6] === 1 ? '' : 's') +
-        (c[7] ? ' · ' + c[7] + ' assets' : ''),
+        esc(c[1]) + ' · ' + esc(c[4]) + ' device' + (c[4] === 1 ? '' : 's') +
+        ' · ' + esc(c[6]) + ' open ticket' + (c[6] === 1 ? '' : 's') +
+        (c[7] ? ' · ' + esc(c[7]) + ' assets' : ''),
         { direction: 'top' });
       marker.on('click', function () { onClick(c); });
       return marker;

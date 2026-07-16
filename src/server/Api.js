@@ -10,6 +10,7 @@
 /** Wraps a producer in the standard response envelope. */
 function respond_(producer) {
   try {
+    assertAuthorized_();
     return { ok: true, data: producer(), meta: { generatedAt: new Date().toISOString() } };
   } catch (err) {
     console.error(err && err.stack ? err.stack : err);

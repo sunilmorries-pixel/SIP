@@ -526,23 +526,35 @@
     'chartZohoChannel', 'chartZohoSegment', 'chartTatTrend', 'chartCsMachine', 'chartCsIssueType',
     'chartCohort'];
 
+  var dashboardRequestId = 0;
   function loadDashboard(bypassCache) {
-    if (state.loading) return;
+    // Latest-wins: a segment change (or manual refresh) mid-flight supersedes
+    // the in-flight request instead of being dropped, so KPIs/charts can never
+    // stay pinned to a stale segment. Mirrors loadDevices/loadCenters.
+    var requestId = ++dashboardRequestId;
     state.loading = true;
     $('refreshBtn').classList.add('is-busy');
     $('refreshBtn').disabled = true;
     $('errorBanner').hidden = true;
-    Charts.setLoading(CHART_IDS);
+    // Silent refresh: blank the charts only on the very first load. Later
+    // refreshes keep the rendered dashboard on screen and swap data on arrival
+    // (the latest-wins requestId above already guards against races).
+    if (!state.lastDashboard) Charts.setLoading(CHART_IDS);
 
     gsCall(ep('apiGetDashboard'), { segment: dashSegmentFor(state.activeTab) || '', bypassCache: !!bypassCache })
-      .then(renderDashboard)
+      .then(function (data) {
+        if (requestId !== dashboardRequestId) return;
+        renderDashboard(data);
+      })
       .catch(function (err) {
+        if (requestId !== dashboardRequestId) return;
         $('errorBanner').hidden = false;
         $('errorMessage').textContent = 'Could not load dashboard: ' + err.message;
         $('statusStrip').classList.add('is-stale');
         toast('Dashboard refresh failed', 'error');
       })
       .finally(function () {
+        if (requestId !== dashboardRequestId) return; // a newer load now owns the UI
         state.loading = false;
         $('refreshBtn').classList.remove('is-busy');
         $('refreshBtn').disabled = false;
@@ -1021,7 +1033,7 @@
           '<td><span class="badge badge-' + badge + '">' + escapeHtml(r.status) + '</span></td>' +
           '<td>' + escapeHtml(r.center || '—') + '</td>' +
           '<td>' + escapeHtml(r.hub || '—') + '</td>' +
-          '<td class="num" title="' + escapeHtml(r.last_seen || '') + '">' + relTime(r.last_seen) + '</td>' +
+          '<td class="num" title="' + escapeHtml(r.last_seen || '') + '">' + escapeHtml(relTime(r.last_seen)) + '</td>' +
           '<td class="num">' + escapeHtml(batteryText) + '</td>' +
           '<td class="num">' + (r.csq == null ? '—' : escapeHtml(r.csq)) + '</td>' +
           '<td class="num">' + (r.unsynced == null ? '—' : escapeHtml(r.unsynced)) + '</td>' +
@@ -1114,7 +1126,7 @@
           '<td class="num"><span class="badge badge-' + upBadge + '">' + (r.uptime_pct != null ? r.uptime_pct + '%' : '—') + '</span></td>' +
           '<td class="num">' + FMT.format(r.tickets_total || 0) + '</td>' +
           '<td class="num"><span class="badge badge-' + ticketBadge + '">' + FMT.format(r.open_tickets || 0) + '</span></td>' +
-          '<td class="num" title="' + escapeHtml(r.last_seen || '') + '">' + relTime(r.last_seen) + '</td>' +
+          '<td class="num" title="' + escapeHtml(r.last_seen || '') + '">' + escapeHtml(relTime(r.last_seen)) + '</td>' +
           '</tr>';
       }).join('');
       Array.prototype.forEach.call($('centerTable').querySelectorAll('tr.is-clickable'), function (tr) {
@@ -1507,7 +1519,8 @@
 
   /* ── Executive Overview (landing) ────────────────────────────── */
   function loadExec() {
-    Charts.setLoading(['execFleet', 'execTrend', 'execTopCust', 'execGeo']);
+    // Silent refresh: only show skeletons before the first successful load.
+    if (!state.execLoaded) Charts.setLoading(['execFleet', 'execTrend', 'execTopCust', 'execGeo']);
     gsCall(ep('apiGetExecOverview'), {})
       .then(function (data) { state.execLoaded = true; state.execData = data; renderExec(data); })
       .catch(function (err) {
@@ -1988,7 +2001,10 @@
     if (!state.autoRefresh) { $('refreshCountdown').textContent = ''; return; }
     state.countdown -= 1;
     if (state.countdown <= 0) {
-      refreshAll(true);
+      // No cache bypass here: the server TTL already bounds staleness, and a
+      // bypass forced the full multi-query recompute on every cycle. Only the
+      // manual Refresh button bypasses.
+      refreshAll(false);
       state.countdown = REFRESH_SECONDS;
     }
     var m = Math.floor(state.countdown / 60);
@@ -2230,7 +2246,7 @@
     wireTabs();
 
     $('refreshBtn').addEventListener('click', function () { refreshAll(true); });
-    $('retryBtn').addEventListener('click', function () { loadDashboard(true); });
+    $('retryBtn').addEventListener('click', function () { loadDashboard(false); });
 
     // Theme (persisted) — replaces the old auto-refresh toggle.
     applyTheme(localStorage.getItem('sip.theme') || 'dark', false);

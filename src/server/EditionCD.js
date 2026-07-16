@@ -109,7 +109,9 @@ function buildDashboardQuerySpecsCD(hub, segment) {
       "SELECT COUNT(DISTINCT CenterID) AS centers, COUNT(DISTINCT CenterID) AS devices, " +
       " COUNT(DISTINCT NULLIF(TRIM(State), '')) AS states, " +
       " COUNT(DISTINCT NULLIF(TRIM(City), '')) AS cities, " +
-      " COUNTIF(deactivationdate IS NULL) AS active_deployments FROM " + CD + " WHERE " + F + SC,
+      // center-grain, not row-grain: center_details has duplicate rows per
+      // center, so COUNTIF(...) counted rows (25,648 > 18,370 centers → 140%).
+      " COUNT(DISTINCT IF(deactivationdate IS NULL, CenterID, NULL)) AS active_deployments FROM " + CD + " WHERE " + F + SC,
     geo:
       // Distinct CENTERS per state (the reload duplicated rows; every other
       // Centers metric dedupes — this one was still COUNT(*)). Field name stays
@@ -259,11 +261,16 @@ function cohortFromIndex_(assets, zohoFail) {
 
 /* ═══════════════ Center-360 rows from center_details ═════════════════════ */
 
-/** center_details center dimension ⟕ live telemetry ⟕ open tickets (by CenterID). */
-function getCenter360RowsCD_() {
+/**
+ * center_details center dimension ⟕ live telemetry ⟕ open tickets (by CenterID).
+ * @param {boolean=} bypassCache force a rebuild (used by the warm trigger)
+ */
+function getCenter360RowsCD_(bypassCache) {
   var ckey = 'ctr360cd_v5';
-  var cached = cacheGetLarge(ckey);
-  if (cached) return cached;
+  if (bypassCache !== true) {
+    var cached = cacheGetLarge(ckey);
+    if (cached) return cached;
+  }
 
   var specs = buildCenterSourceSpecs().map(function (s) {
     if (s.key !== 'centerBase') return s; // telemetry + tickets are center-table-agnostic
@@ -313,11 +320,13 @@ function getCenter360RowsCD_() {
   // Per-center lifecycle/downtime/uptime — same "scored" engine as the North-Star
   // KPI and the reliability/health watchlists, but for EVERY scored center (no
   // LIMIT), for the Center-360 table columns.
+  // maxRows is REQUIRED here: without it collectRows_ capped at 1000, so only
+  // 1000 of ~18k centers got lifecycle/downtime/uptime columns.
   var uptimeRows = runQuery(centerUptimeSqlCD_(
     "SELECT center_id, " +
     " ROUND(life_hrs / 24 / 365, 2) AS lifecycle_years, " +
     " ROUND(downtime_hrs / 24, 1) AS downtime_days, " +
-    " uptime_pct FROM scored"));
+    " uptime_pct FROM scored"), null, { maxRows: 60000 });
   var uptimeByCenter = {};
   uptimeRows.forEach(function (r) { uptimeByCenter[r.center_id] = r; });
 
@@ -336,7 +345,7 @@ function getCenter360RowsCD_() {
     return row;
   });
 
-  cachePutLarge(ckey, joined, 600);
+  cachePutLarge(ckey, joined, 1800); // outlives the 10-min warm interval
   return joined;
 }
 
@@ -444,8 +453,10 @@ function apiGetCentersCD(options) {
 function apiGetMapDataCD(options) {
   options = options || {};
   return respond_(function () {
-    var cached = cacheGetLarge('mapcd_v5');
-    if (cached) return cached;
+    if (options.bypassCache !== true) {
+      var cached = cacheGetLarge('mapcd_v5');
+      if (cached) return cached;
+    }
 
     var centers = getCenter360RowsCD_();
     var assets = getAssetIndex_();               // from the Jira SHEET (Connector + ECG only)
@@ -490,7 +501,7 @@ function apiGetMapDataCD(options) {
       matchedAssets: Object.keys(assetCount).length,
       edition: 'center_details', flags: FLAGS_CD
     };
-    cachePutLarge('mapcd_v5', payload, 600);
+    cachePutLarge('mapcd_v5', payload, 1800); // outlives the 10-min warm interval
     return payload;
   });
 }
@@ -559,7 +570,8 @@ function computeTopCustomersCD_() {
 function apiGetTopCustomersCD(options) {
   options = options || {};
   return respond_(function () {
-    return withCache('topcustcd_v5', function () { return computeTopCustomersCD_(); });
+    return withCache('topcustcd_v5', function () { return computeTopCustomersCD_(); },
+      options.bypassCache === true);
   });
 }
 
@@ -612,7 +624,7 @@ function apiGetExecOverviewCD(options) {
         fleet: jiraDeviceStats_(),
         edition: 'center_details', flags: FLAGS_CD
       };
-    });
+    }, options.bypassCache === true);
   });
 }
 

@@ -22,13 +22,15 @@ function deviceCenterMap_() {
   var map = {};
   // 1. PRIMARY: cloud_devices.DeviceID.
   runQuery("SELECT UPPER(TRIM(DeviceID)) AS did, ANY_VALUE(CenterID) AS cid FROM " +
-    T('cloud_devices') + " WHERE DeviceID IS NOT NULL AND CenterID IS NOT NULL GROUP BY did")
+    T('cloud_devices') + " WHERE DeviceID IS NOT NULL AND CenterID IS NOT NULL GROUP BY did",
+    null, { maxRows: 60000 }) // full map — default cap (1000) would drop most serials
     .forEach(function (r) { if (r.did) map[r.did] = r.cid; });
   // 2. FALLBACK: center_details DeviceID / MacSerialID (only serials not in cloud_devices).
   ['DeviceID', 'MacSerialID'].forEach(function (coln) {
     try {
       runQuery("SELECT UPPER(TRIM(" + coln + ")) AS did, ANY_VALUE(CenterID) AS cid FROM " +
-        T('center_details') + " WHERE " + coln + " IS NOT NULL AND CenterID IS NOT NULL GROUP BY did")
+        T('center_details') + " WHERE " + coln + " IS NOT NULL AND CenterID IS NOT NULL GROUP BY did",
+        null, { maxRows: 60000 })
         .forEach(function (r) { if (r.did && !(r.did in map)) map[r.did] = r.cid; });
     } catch (e) { /* column not present → skip */ }
   });

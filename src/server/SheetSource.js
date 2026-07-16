@@ -20,11 +20,22 @@
  * @return {?{kpis:Object, tatByMonth:Array, byMachine:Array,
  *            byIssueType:Array, byOwner:Array}}
  */
-function readCsTracker() {
-  var values;
+/**
+ * Sheets-REST fetch with NEGATIVE caching. While the Sheets API is disabled
+ * (or a sheet unshared), every cold dashboard/exec load was paying 1-4s of
+ * guaranteed-403 UrlFetch calls; on failure we remember the outage for 10 min
+ * and fail fast instead.
+ * @param {string} sheetId
+ * @param {string} label for the error log
+ * @return {?Array<Array>} values or null
+ */
+function fetchSheetValues_(sheetId, label) {
+  var cache = CacheService.getScriptCache();
+  var downKey = 'sheetdown_' + sheetId.slice(0, 12);
+  if (cache.get(downKey)) return null; // known-down: skip the doomed fetch
   try {
     var url = 'https://sheets.googleapis.com/v4/spreadsheets/' +
-      CONFIG.CS_SHEET_ID + '/values/A:Z?majorDimension=ROWS';
+      sheetId + '/values/A:Z?majorDimension=ROWS';
     var response = UrlFetchApp.fetch(url, {
       headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
       muteHttpExceptions: true
@@ -33,11 +44,16 @@ function readCsTracker() {
     if (response.getResponseCode() >= 400) {
       throw new Error((data.error && data.error.message) || 'HTTP ' + response.getResponseCode());
     }
-    values = data.values;
+    return data.values || null;
   } catch (err) {
-    console.error('CS tracker sheet unreadable: ' + err.message);
+    console.error(label + ' sheet unreadable: ' + err.message);
+    try { cache.put(downKey, '1', 600); } catch (e) { /* best effort */ }
     return null;
   }
+}
+
+function readCsTracker() {
+  var values = fetchSheetValues_(CONFIG.CS_SHEET_ID, 'CS tracker');
   if (!values || values.length < 2) return null;
 
   var col = headerIndex_(values[0]);
@@ -109,23 +125,7 @@ function readCsTracker() {
  * @return {?Array<Object>} row objects, or null if the sheet is unreadable.
  */
 function readJiraSheet() {
-  var values;
-  try {
-    var url = 'https://sheets.googleapis.com/v4/spreadsheets/' +
-      CONFIG.JIRA_SHEET_ID + '/values/A:Z?majorDimension=ROWS';
-    var response = UrlFetchApp.fetch(url, {
-      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
-      muteHttpExceptions: true
-    });
-    var data = JSON.parse(response.getContentText());
-    if (response.getResponseCode() >= 400) {
-      throw new Error((data.error && data.error.message) || 'HTTP ' + response.getResponseCode());
-    }
-    values = data.values;
-  } catch (err) {
-    console.error('Jira sheet unreadable: ' + err.message);
-    return null;
-  }
+  var values = fetchSheetValues_(CONFIG.JIRA_SHEET_ID, 'Jira devices');
   if (!values || values.length < 2) return null;
 
   var norm = values[0].map(function (h) { return String(h).toLowerCase().replace(/[^a-z0-9]/g, ''); });

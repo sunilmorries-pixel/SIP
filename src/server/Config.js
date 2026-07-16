@@ -17,8 +17,13 @@ var CONFIG = {
   /** OAuth scope — read-only, this app never writes to BigQuery. */
   BQ_SCOPE: 'https://www.googleapis.com/auth/bigquery.readonly',
 
-  /** Seconds a dashboard payload stays in CacheService before re-querying. */
-  CACHE_TTL_SECONDS: 300,
+  /**
+   * Seconds a dashboard payload stays in CacheService before re-querying.
+   * Kept LONGER than the warm-trigger interval (Warm.js, every 10 min) so a
+   * warmed value never expires before the next warm pass — users always hit
+   * a hot cache. Data is batch-loaded, not streaming, so 15 min is fresh.
+   */
+  CACHE_TTL_SECONDS: 900,
 
   /** Hard cap on rows returned by any single query. */
   MAX_ROWS: 1000,

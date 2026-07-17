@@ -1,13 +1,18 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-07-16 · **Version:** 5.9 · **Status:** LIVE (pushed directly via clasp;
-this branch back-fills the repo to match).
+**Last updated:** 2026-07-17 · **Version:** 5.9 · **Status:** LIVE IN PRODUCTION — redeployed
+2026-07-16 from Apps Script version 33 → **version 34** on the stable production deployment
+(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL). Repo is
+synced: `integrate/2026-07-security-perf-fixes` was fast-forwarded into `main`, and releases
+v5.2→v5.9 are annotated git tags mapping each to its commit + Apps Script version.
 
 **v5.9 (2026-07-11 → 2026-07-16):** security review + KPI-mismatch investigation + data-load
 performance pass. Done in an interactive session (code review → live BigQuery verification via
 a temporary `server/Diag.js` → fixes), pushed straight to the live script with `clasp push` as
 each fix landed — **this branch is the first time these changes reach git**, ported from the
 live `clasp clone` snapshot into `src/`. No spec/plan doc precedes this entry (retrospective).
+Since then: redeployed to production as version 34 on 2026-07-16, and the branch was merged to
+`main` and tagged `v5.9` — see the release-convention note below.
 
 - **Server-side authorization guard** (`assertAuthorized_()` in `Auth.js`, enforced in
   `Api.js` `respond_()` and `WebApp.js` `doGet()`): previously `access: DOMAIN` +
@@ -57,17 +62,26 @@ live `clasp clone` snapshot into `src/`. No spec/plan doc precedes this entry (r
     the Sheets API is currently **disabled** in the GCP project, so `readCsTracker`/
     `readJiraSheet` were burning 1–4s of guaranteed-403 calls on every cold dashboard/
     exec load; failures are now remembered for 10 minutes and skipped.
-- **Still open** (see `docs/SOURCES.md`/inline TODOs for detail): enable the Google
-  Sheets API in GCP project `218180702013` (CS tracker returns null, Jira devices source
-  falls back to the static `JIRA_DUMP` snapshot until then); switch `CONFIG.CS_SHEET_ID`
-  to the new field-cases sheet `1X33LBKEJx1HNp289TPK750KUnEOBTHYWa-Xdfiejsxg`; consolidate
-  the 4x-per-load uptime CTE into one query; merge the Reliability watchlist + Center
-  health score tables (requested, not started); merge the exec payload into the dashboard
-  payload (currently duplicates ~8 of the same BigQuery specs under a separate cache key).
+- **Still open** (see `docs/SOURCES.md`/inline TODOs for detail): **`AUTHORIZED_EMAILS`
+  Script Property is still UNSET, so the auth guard remains fail-open**; **`installWarmTrigger()`
+  has NOT yet been run** (warm caching is inactive — first run will prompt re-authorization
+  for the new `script.scriptapp` scope); enable the Google Sheets API in GCP project
+  `218180702013` (CS tracker returns null, Jira devices source falls back to the static
+  `JIRA_DUMP` snapshot until then); switch `CONFIG.CS_SHEET_ID` to the new field-cases sheet
+  `1X33LBKEJx1HNp289TPK750KUnEOBTHYWa-Xdfiejsxg`; consolidate the 4x-per-load uptime CTE
+  into one query; merge the Reliability watchlist + Center health score tables (requested,
+  not started); merge the exec payload into the dashboard payload (currently duplicates ~8
+  of the same BigQuery specs under a separate cache key).
 - A temporary `server/Diag.js` (read-only BigQuery/Sheets probes used to verify the KPI
   mismatch and dataset inventory) was pushed to the **live** script during
-  investigation and is **not** included in this branch — remove it from the live project
-  next time it's opened in the editor.
+  investigation and is **not** included in this branch — **still on the live script as of
+  2026-07-17** (kept out of git deliberately) — remove it from the live project next time
+  it's opened in the editor.
+
+**Release convention (from v5.9 onward):** each release = `clasp push` → `clasp version
+"<desc>"` (cuts a new Apps Script version) → redeploy the production deployment to point at
+that version → merge the working branch to `main` → annotated git tag `vX.Y` naming the
+Apps Script version number it corresponds to.
 
 **v5.8 (2026-07-10, deployed @33):** page-level filters + 13 KPI corrections, built via
 subagent-driven development from spec `docs/superpowers/specs/2026-07-10-page-filters-and-kpi-corrections-design.md`
@@ -394,6 +408,7 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 7. **Device uptime / Device health (deferred, 2026-07-08)** — Asset page currently has no device-grain uptime metric (moved Center uptime/health to Centers page instead). Needs a fresh formula from the user before building — do not guess; the sandbox has no per-device downtime source today (candidate proxy: cloud_devices heartbeat recency, but that's a different definition and would only cover the ~11k devices with telemetry).
 8. **Asset KPI tiles still show the OLD tiles** (device-status donut, firmware, asset lifecycle/types, health-score table, cohort) — only the executive summary + a new "Device age" chart were added/changed on this page so far; the KPI strip itself (Poor signal / Unsynced ECG removal was applied, but no full KPI redesign) is not yet revisited metric-by-metric with the user.
 9. **Remaining pages not yet worked**: Support/CS, Map, Top Customers, Numbers, Raw Data, Overview — the page-by-page/metric-by-metric pass (started 2026-07-08 with Asset then Centers) has not reached these yet.
+10. **Next up (queued, not started):** user has queued a batch of changes around filters and data extraction — requirements gathering (brainstorm/spec) has started but the change inventory has not yet been provided.
 
 ---
 

@@ -1,10 +1,66 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-07-17 · **Version:** 5.9 · **Status:** LIVE IN PRODUCTION — redeployed
-2026-07-16 from Apps Script version 33 → **version 34** on the stable production deployment
-(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL). Repo is
-synced: `integrate/2026-07-security-perf-fixes` was fast-forwarded into `main`, and releases
-v5.2→v5.9 are annotated git tags mapping each to its commit + Apps Script version.
+**Last updated:** 2026-07-22 · **Version:** 5.10 · **Status:** SHIPPED TO GIT, **NOT YET
+DEPLOYED** — Apps Script version 37 (tag `v5.10`) points the connection layer at the real
+`tricogde-dwh.abi_tables` warehouse and removes the silent Active+Paid center filter, but the
+stable production deployment
+(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL) is still
+pinned to an older version and must be manually redeployed to version 37. Repo is synced:
+releases v5.2→v5.10 are annotated git tags mapping each to its commit + Apps Script version.
+
+**v5.10 (2026-07-22):** connection-layer migration off the dev/test sandbox onto the real
+production warehouse, plus removal of a filter that had silently scoped every center-grain
+figure since v5.8. Built from spec
+`docs/superpowers/specs/2026-07-22-tricogde-dwh-migration-design.md` and plan
+`docs/superpowers/plans/2026-07-22-connection-layer-swap.md` (task 1 of 5; 4 commits
+`89e37c0..facd82c`, cut as Apps Script **version 37**, tagged `v5.10`). **Production has NOT
+been redeployed** — see below.
+
+- **Dataset swap**: `Config.js` now points at `tricogde-dwh.abi_tables` (was
+  `magnaquest-sand-box.abi_team_sip_devtest_poc`) — 3 lines changed (`BQ_PROJECT_ID`,
+  `BQ_DATASET`, `SA_PROPERTY_KEY`). `Auth.js`'s OAuth2 service renamed `'BigQuery-SA'` →
+  `'BigQuery-DWH-SA'` deliberately, to avoid a stale-token-reuse bug now that a different
+  service account backs the new project. Old `SA_KEY` Script Property (sandbox access) is
+  untouched/dormant — rollback is just reverting these 2 files, no credential
+  re-provisioning needed.
+- **Verified live, not assumed**: all 6 tables (`center_details`, `cloud_devices`,
+  `device_center_mapping`, `device_metrics`, `jira_data`, `zoho_data`) confirmed present in
+  `tricogde-dwh` with byte-identical column schema to the old dataset, via a temporary
+  diagnostic script run before cutting over. New warehouse is genuinely live/growing (higher
+  row counts than the old frozen snapshot; "created this week" ticket KPIs are now non-zero,
+  where the old dataset always read 0 for any time-relative figure).
+- **Baseline filter removed**: the "Active + Paid" filter (`Status='ACTIVE' AND
+  F2P_Customer=0`), silently applied to every center query since v5.8 (2026-07-10), is gone —
+  `cdFilter_()`/`CD_SEG_FILTER` in `EditionCD.js` neutralized to return `'1=1'` rather than
+  deleted, so every existing `"WHERE " + cdFilter_()` call site (including `Geo.js`'s
+  `distinctLocations_`) stays syntactically valid without a call-site rewrite. Center count:
+  **19,143 (filtered) → 28,482 (true universe)**. "Active · Paid centers" UI chip now reads
+  "All centers"; fixed 4 stale tooltip/label references (`App.html` `METRIC_INFO`,
+  `Index.html` Numbers-page copy) that still described the removed filter. Segment dropdown +
+  global search are UNCHANGED this release — full filter-system removal (segment/search/
+  status-chip UI) is a separate, not-yet-done follow-up.
+- **Verification performed**: `node --check` on every changed file; live round-trip through
+  the actual production code path (re-ran the existing `diagServiceAccountEmail`/
+  `diagCenterCounts` diagnostics after the `Config.js` change, not just the isolated
+  migration-testing credential); clicked through Overview, Centers/Customers, Map, Top
+  Customers on the `@HEAD` test deployment
+  (`AKfycbyUlvvXqJo0f6z5LdqeSfarj9JnbvmnrcJf70Ciw0o`) — 0 console errors, correct new numbers
+  on every tab checked.
+- **PRODUCTION NOT REDEPLOYED**: the stable deployment
+  (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`) is still pinned
+  to an old version, still serving the OLD `magnaquest-sand-box` data under the OLD filter —
+  real users see none of this yet. Redeploying to version 37 (Deploy → Manage deployments →
+  edit → Version 37 → Deploy) is a manual step for the user, same convention as prior
+  releases.
+- **Version-number gap**: Apps Script versions 35 ("v1.34") and 36 ("V1") were created by the
+  user directly in the editor mid-session, unrelated to this work — noted so a future reader
+  isn't confused by 34 → 37 skipping 35/36.
+- **Still open**: full filter-system removal (Segment dropdown, global search, status chips)
+  — remaining scope from the design doc, not started; native BigQuery asset/device pipeline
+  (design doc §6, replacing the Sheet/JIRA_DUMP devices source) — designed, not implemented;
+  temporary `server/Diag.js` (new `diagNewDwh`/`diagJiraDataDetail`/
+  `setupDwhServiceAccountKey`/`diagServiceAccountEmail` probes) still live on the script,
+  excluded from git by design — remove from the editor once no longer needed.
 
 **v5.9 (2026-07-11 → 2026-07-16):** security review + KPI-mismatch investigation + data-load
 performance pass. Done in an interactive session (code review → live BigQuery verification via

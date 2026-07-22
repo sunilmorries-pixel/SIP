@@ -82,8 +82,8 @@ function saveGeoStore_(store) {
  * ORDERED ACTIVE-FIRST so runGeocodeBatch spends its quota on active centers
  * before deactivated ones. Locations serving any ACTIVE center sort ahead; the
  * JS dedup below then keeps that active-first row per geo key.
- * Reads PinCode/City/State/Spoke_Country (post-reload column names) and honours
- * the F2P exclusion (CD_SEG_FILTER).
+ * Reads PinCode/City/State/Spoke_Country (post-reload column names). No
+ * baseline filter applies (CD_SEG_FILTER = '1=1' since 2026-07-22).
  */
 function distinctLocations_() {
   var rows = runQuery(

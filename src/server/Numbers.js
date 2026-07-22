@@ -4,9 +4,10 @@
  * totals broken down by status / type.
  *
  * device_center_mapping has been removed as a data source, so this page now
- * reports center_details only. F2P_CENTER centers are excluded everywhere
- * (CD_SEG_FILTER, shared with EditionCD.js). Status/segment come from
- * center_details; Devices (Jira) and Tickets (Zoho) are source-independent.
+ * reports center_details only. No baseline filter applies (removed 2026-07-22 —
+ * see cdFilter_ in EditionCD.js): every number is the full distinct-center
+ * universe. Status/segment come from center_details; Devices (Jira) and
+ * Tickets (Zoho) are source-independent.
  */
 /**
  * Device serial → CenterID map, used to map a Jira device (by its Summary
@@ -136,7 +137,7 @@ function apiGetNumbers(options) {
       // var JIRA = T('jira_data');   // commented out per request (use JIRA_SHEET_ID)
       var ZOHO = T('zoho_data');
       var techBool = techBoolSql_("IFNULL(IssueCategory,'')");
-      var F = cdFilter_(); // fixed baseline: F2P excluded + Status='ACTIVE'
+      var F = cdFilter_(); // no baseline filter (removed 2026-07-22) — always '1=1'
 
       var specs = [
         { key: 'centersTot', sql:
@@ -198,7 +199,7 @@ function apiGetNumbers(options) {
 }
 
 /**
- * Paginated RAW center_details rows for the Numbers page table (F2P excluded).
+ * Paginated RAW center_details rows for the Numbers page table (no baseline filter).
  * @param {{page:number, pageSize:number}=} options
  */
 function apiGetCenterDetailsRaw(options) {

@@ -24,20 +24,20 @@
  */
 
 /**
- * Business filter: F2P (free-to-pilot) centers are excluded from every
- * center_details query via the F2P_Customer flag (0 = keep, non-zero = drop).
- * The legacy 'F2P_CENTER' segment value no longer exists in the data (verified
- * 0 rows after the 2026-07-07 reload), so the flag is the sole F2P signal.
- * Today all 35,804 rows have F2P_Customer = 0, so nothing is excluded yet —
- * the filter activates automatically once the DE team populates the flag.
+ * center_details WHERE fragment(s). REMOVED 2026-07-22 (user request,
+ * tricogde-dwh migration): the app previously applied a fixed "Active + Paid"
+ * baseline (Status = 'ACTIVE' AND F2P_Customer = 0) to every center query,
+ * hiding ~9,300 deactivated centers from every KPI/table/map. That baseline
+ * is gone — every number now reflects the FULL distinct-center universe.
+ *
+ * Both are kept declared (not deleted, not inlined as '') so every existing
+ * "WHERE " + cdFilter_()/CD_SEG_FILTER + cdSegCond_(segment) call site
+ * (here and in Geo.js's distinctLocations_) stays syntactically valid SQL —
+ * '1=1' excludes nothing and lets the query planner drop it.
  */
-var CD_SEG_FILTER = "IFNULL(F2P_Customer, 0) = 0";
-
-/** center_details WHERE fragment — the FIXED page baseline (2026-07-10 design):
- *  F2P excluded AND Status = 'ACTIVE', always on, no user toggle.
- *  (F2P half is dormant until DE populates the flag; Status half is live.) */
+var CD_SEG_FILTER = '1=1';
 function cdFilter_() {
-  return CD_SEG_FILTER + " AND Status = 'ACTIVE'";
+  return '1=1';
 }
 
 /** Machine-readable flags describing the device→center remap (shown in the UI banner). */

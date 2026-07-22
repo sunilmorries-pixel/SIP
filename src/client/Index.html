@@ -186,8 +186,8 @@
   <!-- ══════════════ VIEW 1 · ASSET ══════════════ -->
   <section id="panel-asset" class="panel" role="tabpanel" aria-labelledby="tab-asset" hidden>
     <div class="page-filters" role="group" aria-label="Asset page filters">
-      <span class="filter-chip" title="Fixed scope: center_details Status = ACTIVE and F2P_Customer = 0. Applies to every number on this page.">
-        Active · Paid centers
+      <span class="filter-chip" title="No baseline filter — every center in center_details, any status. Applies to every number on this page.">
+        All centers
       </span>
       <label class="filter-label" for="assetSegment">Segment</label>
       <select id="assetSegment" class="select page-seg" data-page="asset">
@@ -336,8 +336,8 @@
   <!-- ══════════════ VIEW 2 · CENTERS / CUSTOMERS ══════════════ -->
   <section id="panel-centers" class="panel" role="tabpanel" aria-labelledby="tab-centers" hidden>
     <div class="page-filters" role="group" aria-label="Centers page filters">
-      <span class="filter-chip" title="Fixed scope: center_details Status = ACTIVE and F2P_Customer = 0. Applies to every number on this page.">
-        Active · Paid centers
+      <span class="filter-chip" title="No baseline filter — every center in center_details, any status. Applies to every number on this page.">
+        All centers
       </span>
       <label class="filter-label" for="centersSegment">Segment</label>
       <select id="centersSegment" class="select page-seg" data-page="centers">
@@ -468,8 +468,8 @@
   <!-- ══════════════ VIEW 3 · SUPPORT / CS ══════════════ -->
   <section id="panel-support" class="panel" role="tabpanel" aria-labelledby="tab-support" hidden>
     <div class="page-filters" role="group" aria-label="Support page filters">
-      <span class="filter-chip" title="Fixed scope: center_details Status = ACTIVE and F2P_Customer = 0. Applies to every number on this page.">
-        Active · Paid centers
+      <span class="filter-chip" title="No baseline filter — every center in center_details, any status. Applies to every number on this page.">
+        All centers
       </span>
       <label class="filter-label" for="supportSegment">Segment</label>
       <select id="supportSegment" class="select page-seg" data-page="support">
@@ -733,7 +733,7 @@
 
   <!-- ══════════════ VIEW 6 · NUMBERS (source reconciliation) ══════════════ -->
   <section id="panel-numbers" class="panel" role="tabpanel" aria-labelledby="tab-numbers" hidden>
-    <p class="num-lead">Counts only, from <code>center_details</code> — <strong>F2P_CENTER excluded</strong>.
+    <p class="num-lead">Counts only, from <code>center_details</code> — <strong>no baseline filter</strong>.
       <strong>Devices</strong> (Jira) and <strong>Tickets</strong> (Zoho) are source-independent.</p>
 
     <div class="num-grid">
@@ -769,7 +769,7 @@
     <article class="card span-12" style="margin-top:20px">
       <header class="card-head">
         <h2 class="card-title">center_details · raw data</h2>
-        <p class="card-sub">Raw center rows (F2P_CENTER excluded)</p>
+        <p class="card-sub">Raw center rows (no baseline filter)</p>
       </header>
       <div class="table-scroll">
         <table class="data-table" id="cdRawTable">

@@ -2108,7 +2108,7 @@
 
     // ── Centers ──
     centersCount: { name: 'Centers',
-      formula: 'COUNT(DISTINCT CenterID) under the fixed page baseline: Status = ACTIVE and F2P_Customer = 0.',
+      formula: 'COUNT(DISTINCT CenterID) — every center, any status (no baseline filter).',
       source: 'center_details (sole center source).' },
     hubs: { name: 'Hubs', formula: 'COUNT(DISTINCT HubID) from center_details.', source: 'center_details.' },
     geo: { name: 'Geographic spread', formula: 'Centers / devices grouped by state (or city).', source: 'center_details.state / city.' },
@@ -2116,7 +2116,7 @@
     citiesReach: { name: 'Cities', formula: 'Distinct cities with at least one center.', source: 'center_details.city.' },
     deployStatus: { name: 'Deployment / lifecycle status', formula: 'Centers (or assets) grouped by status — active vs ended / lifecycle stage.', source: 'center_details.Status / jira_data.status_name.' },
     center360: { name: 'Center 360', formula: 'One row per center: devices (cloud_devices + Jira sheet), online, lifecycle (today − deploymentdate), downtime (merged technical-ticket hours), uptime %, tickets (total + open) — joined in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data ⋈ Jira sheet asset index (hash-joined).' },
-    centersRaw: { name: 'center_details · raw data', formula: 'Raw center_details rows (F2P-excluded), paginated, with a per-center device count and mapped flag.', source: 'center_details + LEFT JOIN cloud_devices.' },
+    centersRaw: { name: 'center_details · raw data', formula: 'Raw center_details rows (no baseline filter), paginated, with a per-center device count and mapped flag.', source: 'center_details + LEFT JOIN cloud_devices.' },
 
     // ── Customers ──
     topHubs: { name: 'Top hubs', formula: 'Hubs ranked by number of spokes — COUNT(DISTINCT CenterID) per hub.', source: 'center_details grouped by HubName.' },

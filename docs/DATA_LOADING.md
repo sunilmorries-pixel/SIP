@@ -2,10 +2,14 @@
 
 **Updated:** 2026-07-07 (v5.0 data model)
 
-The dashboard reads from `magnaquest-sand-box.abi_team_sip_devtest_poc` (BigQuery) plus two
-Google Sheets. Today the BigQuery dataset is a **partial copy** of production with **6 tables**
-(no `DIM_Centers`). Reloading a table with the **same schema + more rows/columns** is picked up
-automatically — no code change, no redeploy. Row caps in the app support 50–80k per source.
+The dashboard reads from `tricogde-dwh.abi_tables` (BigQuery; migrated 2026-07-22 from the
+`magnaquest-sand-box.abi_team_sip_devtest_poc` dev/test copy described below — see
+`docs/superpowers/specs/2026-07-22-tricogde-dwh-migration-design.md`) plus two Google Sheets.
+The rest of this doc's gap analysis (written 2026-07-07, against the sandbox copy) has not
+been re-verified against `tricogde-dwh` and may be stale — re-run `diagnostics()`/the column
+comparison in `Diag.js` before treating any row below as still accurate. Reloading a table with
+the **same schema + more rows/columns** is picked up automatically — no code change, no
+redeploy. Row caps in the app support 50–80k per source.
 
 | Table | Sandbox now | Production target | Gap / action |
 |---|---|---|---|
@@ -73,5 +77,6 @@ No redeploy is required unless the app code itself changes.
 
 ## What the app will NOT do
 - It can't invent centers/devices absent from these tables/sheets.
-- It can't reach production directly — this service account is scoped to the sandbox
-  (verified: `tricogde-dwh` is Access Denied). Everything must land in `abi_team_sip_devtest_poc`.
+- (2026-07-07 note, now superseded: at the time this doc was written, `tricogde-dwh` access
+  was denied and everything had to land in the sandbox dataset. As of 2026-07-22 the app has
+  its own isolated service account with `tricogde-dwh` access and reads from it directly.)

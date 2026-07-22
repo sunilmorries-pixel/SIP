@@ -107,7 +107,7 @@ followed by row counts per panel (`kpis: 1 rows`, `fleetStatus: 6 rows`, …).
 | Symptom | Likely cause / fix |
 |---|---|
 | Banner: *Service-account key not found* | `setupServiceAccountKey()` never ran — do step 1 |
-| Banner: *BigQuery auth failed* | SA lacks `BigQuery Data Viewer` + `BigQuery Job User` on `magnaquest-sand-box`, or key was rotated |
+| Banner: *BigQuery auth failed* | SA lacks `BigQuery Data Viewer` + `BigQuery Job User` on `tricogde-dwh`, or key was rotated |
 | Panels empty, log shows `Query "x" failed` | Run the SQL from `Queries.js` in the BigQuery console to see the real error |
 | Charts blank on a tab | Hard-refresh; charts flush when a tab first becomes visible — a JS error earlier in the console is the usual culprit |
 | `Logging output too large` in editor | Expected for big payloads — use `diagnostics()` which logs row counts only |

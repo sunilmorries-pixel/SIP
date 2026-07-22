@@ -1,7 +1,7 @@
 # SIP Insights — Device Fleet Intelligence Dashboard
 
 A production-ready, **Tricog-branded**, interactive analytics dashboard built on **Google
-Apps Script + BigQuery**. It surfaces live insights from the `abi_team_sip_devtest_poc`
+Apps Script + BigQuery**. It surfaces live insights from the `tricogde-dwh.abi_tables`
 dataset plus two Google Sheets: center reliability, revenue-at-risk, support-ticket flow
 (Zoho), SLA compliance, device fleet, and asset reliability.
 

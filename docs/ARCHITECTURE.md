@@ -15,8 +15,8 @@
                                                                     │ (parallel, Bearer token)
                                                         ┌───────────▼─────────────┐
                                                         │  BigQuery REST API      │
-                                                        │  magnaquest-sand-box    │
-                                                        │  abi_team_sip_devtest…  │
+                                                        │  tricogde-dwh           │
+                                                        │  abi_tables             │
                                                         └─────────────────────────┘
 ```
 

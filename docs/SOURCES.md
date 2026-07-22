@@ -1,9 +1,11 @@
 # Data Sources — SIP Insights
 
 The dashboard is powered by BigQuery tables in
-`magnaquest-sand-box.abi_team_sip_devtest_poc` plus **two Google Sheets** (a Jira
-devices export and the CS/Service tracker). The `sql/*.lineage.sql` files are the
-upstream DWH queries that *produced* the sandbox tables — read them for column semantics.
+`tricogde-dwh.abi_tables` (migrated 2026-07-22 from the `magnaquest-sand-box.abi_team_sip_devtest_poc`
+dev/test dataset — same six table names, byte-identical schema, live-verified) plus **two
+Google Sheets** (a Jira devices export and the CS/Service tracker). The `sql/*.lineage.sql`
+files describe the upstream DWH queries that originally produced these tables — read them
+for column semantics.
 
 ## BigQuery tables
 

@@ -5,14 +5,20 @@
  */
 
 var CONFIG = {
-  /** GCP project that owns the BigQuery dataset AND is billed for queries. */
-  BQ_PROJECT_ID: 'magnaquest-sand-box',
+  /**
+   * GCP project that owns the BigQuery dataset AND is billed for queries.
+   * Migrated 2026-07-22 from magnaquest-sand-box (dev/test) to tricogde-dwh
+   * (production warehouse) — see docs/superpowers/specs/2026-07-22-tricogde-dwh-migration-design.md.
+   * Rollback: revert this file; the old SA_KEY property and magnaquest-sand-box
+   * access are untouched.
+   */
+  BQ_PROJECT_ID: 'tricogde-dwh',
 
   /** Fully-qualified dataset prefix used in every query. */
-  BQ_DATASET: 'magnaquest-sand-box.abi_team_sip_devtest_poc',
+  BQ_DATASET: 'tricogde-dwh.abi_tables',
 
   /** Script Property key that holds the service-account JSON. */
-  SA_PROPERTY_KEY: 'SA_KEY',
+  SA_PROPERTY_KEY: 'SA_KEY_DWH',
 
   /** OAuth scope — read-only, this app never writes to BigQuery. */
   BQ_SCOPE: 'https://www.googleapis.com/auth/bigquery.readonly',

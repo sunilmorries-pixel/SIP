@@ -17,7 +17,10 @@ function getBigQueryService() {
     );
   }
   var key = JSON.parse(raw);
-  return OAuth2.createService('BigQuery-SA')
+  // Renamed from 'BigQuery-SA' during the 2026-07-22 tricogde-dwh migration: a
+  // different service name guarantees a fresh OAuth2 token cache, so no stale
+  // token issued for the old magnaquest-sand-box service account can be reused.
+  return OAuth2.createService('BigQuery-DWH-SA')
     .setTokenUrl(key.token_uri || 'https://oauth2.googleapis.com/token')
     .setPrivateKey(key.private_key)
     .setIssuer(key.client_email)

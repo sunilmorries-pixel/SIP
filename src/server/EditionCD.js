@@ -140,7 +140,7 @@ function buildDashboardQuerySpecsCD(hub, segment) {
       " GROUP BY hub ORDER BY spokes DESC LIMIT 12",
     reliability: centerUptimeSqlCD_(
       "SELECT center_id AS centerid, uptime_pct, ROUND(100 - uptime_pct, 1) AS downtime_pct, " +
-      " failures, ROUND(life_hrs / 24.0, 0) AS life_days FROM scored ORDER BY uptime_pct ASC LIMIT 12", segment),
+      " failures, ROUND(life_hrs / 24.0, 0) AS life_days FROM scored ORDER BY uptime_pct ASC", segment),
     uptimeFleet: centerUptimeSqlCD_(
       "SELECT COUNT(*) AS scored, ROUND(AVG(uptime_pct), 1) AS avg_uptime, " +
       " ROUND(COUNTIF(uptime_pct >= 99) / NULLIF(COUNT(*), 0) * 100, 1) AS pct99, " +
@@ -151,13 +151,20 @@ function buildDashboardQuerySpecsCD(hub, segment) {
       " ROUND(AVG(downtime_hrs) / 24, 1) AS avg_downtime_days FROM scored", segment),
     assetHealth: centerUptimeSqlCD_(
       "SELECT center_id AS centerid, uptime_pct, mtbf_hrs, failures, health_score " +
-      "FROM scored ORDER BY health_score ASC LIMIT 12", segment)
+      "FROM scored ORDER BY health_score ASC", segment)
   };
   // The jira_data BQ specs (assets/cohortReliability) were removed from
   // buildDashboardQuerySpecs — the status/type donut and the batch cohort are
   // now computed in JS from the Jira SHEET asset index (see apiGetDashboardCD).
   var specs = buildDashboardQuerySpecs(hub, segment).map(function (s) {
     return cd[s.key] ? { key: s.key, params: s.params, sql: cd[s.key], maxRows: s.maxRows } : s;
+  });
+  // reliability/assetHealth now return EVERY scored center (LIMIT removed above) so the
+  // client can merge + sort-toggle between uptime% and health score — the default
+  // MAX_ROWS (1000) would silently truncate the ~28k-center universe, repeating the
+  // exact bug already fixed once in getCenter360RowsCD_ (see its own maxRows comment).
+  specs.forEach(function (s) {
+    if (s.key === 'reliability' || s.key === 'assetHealth') s.maxRows = 60000;
   });
 
   // Distinct real segment values (hub_master_segment), for the topbar segment filter.
@@ -389,32 +396,40 @@ function apiGetDashboardCD(options) {
   var hub = String(options.hub || '').slice(0, 120);
   var segment = segClean_(options.segment);
   return respond_(function () {
-    return withCache('dashcd_v5_' + segSlug_(segment) + '_' + shortHash(hub), function () {
-      var results = runQueriesParallel(buildDashboardQuerySpecsCD(hub, segment));
-      enrichCenterNamesCD_(results.reliability);
-      enrichCenterNamesCD_(results.assetHealth);
-      // Jira metrics from the Sheet index; when a segment is selected, keep only
-      // assets whose center belongs to it (unmapped devices drop out — by design).
-      var assetIdx = getAssetIndex_();
-      if (segment) {
-        var segMap = centerSegmentMap_();
-        assetIdx = assetIdx.filter(function (a) {
-          return a.center_id != null && segMap[a.center_id] === segment;
-        });
-      }
-      results.assets = assetsDonutFromIndex_(assetIdx);
-      results.cohortReliability = cohortFromIndex_(assetIdx, results.zohoFailByCenter);
-      delete results.zohoFailByCenter;
-      results.csTracker = readCsTracker();
-      results.appName = CONFIG.APP_NAME;
-      results.appVersion = CONFIG.APP_VERSION;
-      results.fleet = jiraDeviceStats_(segment);
-      results.segment = segment;
-      results.edition = 'center_details';
-      results.flags = FLAGS_CD;
-      results.hub = hub;
-      return results;
-    }, options.bypassCache === true);
+    // reliability/assetHealth now carry every scored center (2026-07-23 watchlist
+    // merge), not just 12, so this payload can exceed withCache's 100KB-per-key
+    // limit. cachePutLarge/cacheGetLarge (gzip + chunked, already used for
+    // Center-360) replace withCache here — same TTL, no size ceiling.
+    var cacheKey = 'dashcd_v5_' + segSlug_(segment) + '_' + shortHash(hub);
+    if (options.bypassCache !== true) {
+      var cached = cacheGetLarge(cacheKey);
+      if (cached) return cached;
+    }
+    var results = runQueriesParallel(buildDashboardQuerySpecsCD(hub, segment));
+    enrichCenterNamesCD_(results.reliability);
+    enrichCenterNamesCD_(results.assetHealth);
+    // Jira metrics from the Sheet index; when a segment is selected, keep only
+    // assets whose center belongs to it (unmapped devices drop out — by design).
+    var assetIdx = getAssetIndex_();
+    if (segment) {
+      var segMap = centerSegmentMap_();
+      assetIdx = assetIdx.filter(function (a) {
+        return a.center_id != null && segMap[a.center_id] === segment;
+      });
+    }
+    results.assets = assetsDonutFromIndex_(assetIdx);
+    results.cohortReliability = cohortFromIndex_(assetIdx, results.zohoFailByCenter);
+    delete results.zohoFailByCenter;
+    results.csTracker = readCsTracker();
+    results.appName = CONFIG.APP_NAME;
+    results.appVersion = CONFIG.APP_VERSION;
+    results.fleet = jiraDeviceStats_(segment);
+    results.segment = segment;
+    results.edition = 'center_details';
+    results.flags = FLAGS_CD;
+    results.hub = hub;
+    cachePutLarge(cacheKey, results, CONFIG.CACHE_TTL_SECONDS);
+    return results;
   });
 }
 

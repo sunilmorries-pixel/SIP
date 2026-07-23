@@ -562,11 +562,6 @@
       });
   }
 
-  function pct(part, whole) {
-    if (!whole) return '0%';
-    return Math.round((part / whole) * 100) + '%';
-  }
-
   function renderDashboard(data) {
     state.lastDashboard = data; // kept so theme changes can re-render charts offline
     state.dashSegment = data.segment || '';

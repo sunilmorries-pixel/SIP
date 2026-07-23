@@ -456,9 +456,8 @@
       kpiTile('kpiCenters', 'building', 'var(--secondary)', 'Centers', 'all centers') +
       kpiTile('kpiUptime', 'online', 'var(--ok)', 'Center uptime', 'avg per-center uptime') +
       kpiTile('kpiHealth', 'health', 'var(--primary)', 'Center health', 'avg score / 100') +
-      kpiTile('kpiActiveDep', 'layers', 'var(--ok)', 'Active placements', 'deployment open') +
       kpiTile('kpiStates', 'map', 'var(--accent)', 'States', 'geographic reach') +
-      kpiTile('kpiCities', 'map', 'var(--violet)', 'Cities', 'geographic reach');
+      kpiTile('kpiMtbf', 'clock', 'var(--violet)', 'MTBF', 'avg days between failures');
     $('supportKpiGrid').innerHTML =
       kpiTile('kpiZOpen', 'inbox', 'var(--accent)', 'Open tickets', 'active backlog') +
       kpiTile('kpiZIn', 'ticket', 'var(--info)', 'Created · 7d', 'new this week') +
@@ -589,9 +588,8 @@
     uptimeKpi('kpiUptime', up);
     setKpi('kpiHealth', up ? up.avg_health : null,
       up && up.avg_mtbf_days != null ? 'avg MTBF ' + up.avg_mtbf_days + 'd · ' + (up.pct_healthy || 0) + '% healthy' : 'composite 0–100');
-    setKpi('kpiActiveDep', ck.active_deployments, pct(ck.active_deployments, ck.centers) + ' of centers');
     setKpi('kpiStates', ck.states, 'geographic reach');
-    setKpi('kpiCities', ck.cities, 'geographic reach');
+    setKpi('kpiMtbf', up && up.avg_mtbf_days != null ? up.avg_mtbf_days : null, 'avg days between failures');
 
     /* Support KPIs */
     var zoho = (data.zohoKpis && data.zohoKpis[0]) || {};
@@ -2095,7 +2093,6 @@
     devicesCount: { name: 'Devices',
       formula: 'Count of Jira-sheet devices (deduped by Key), restricted to Connector + ECG Machine.',
       source: 'Jira devices Google Sheet.' },
-    activePlacements: { name: 'Active placements', formula: 'Device-center deployments currently open (no end date).', source: 'center_details (deactivationdate IS NULL).' },
     poorSignal: { name: 'Poor signal', formula: 'Devices reporting signal quality CSQ < 10.', source: 'cloud_devices.CSQ.' },
     unsynced: { name: 'Unsynced ECGs', formula: 'Devices with data still waiting to upload.', source: 'cloud_devices.UnsyncedData > 0.' },
     firmware: { name: 'Firmware spread', formula: 'Devices grouped by firmware version.', source: 'cloud_devices.FirmwareName.' },
@@ -2107,7 +2104,6 @@
     hubs: { name: 'Hubs', formula: 'COUNT(DISTINCT HubID) from center_details.', source: 'center_details.' },
     geo: { name: 'Geographic spread', formula: 'Centers / devices grouped by state (or city).', source: 'center_details.state / city.' },
     statesReach: { name: 'States', formula: 'Distinct states with at least one center.', source: 'center_details.state.' },
-    citiesReach: { name: 'Cities', formula: 'Distinct cities with at least one center.', source: 'center_details.city.' },
     deployStatus: { name: 'Deployment / lifecycle status', formula: 'Centers (or assets) grouped by status — active vs ended / lifecycle stage.', source: 'center_details.Status / jira_data.status_name.' },
     center360: { name: 'Center 360', formula: 'One row per center: devices (cloud_devices + Jira sheet), online, lifecycle (today − deploymentdate), downtime (merged technical-ticket hours), uptime %, tickets (total + open) — joined in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data ⋈ Jira sheet asset index (hash-joined).' },
     centersRaw: { name: 'center_details · raw data', formula: 'Raw center_details rows (no baseline filter), paginated, with a per-center device count and mapped flag.', source: 'center_details + LEFT JOIN cloud_devices.' },
@@ -2131,8 +2127,8 @@
     exTicketCount: 'ticketsCount', tcTicketCount: 'ticketsCount',
     exSlaBreach: 'slaBreach', tcSlaBreach: 'slaBreach',
     kpiHealth: 'health', kpiSignal: 'poorSignal', kpiUnsynced: 'unsynced',
-    kpiAvgAge: 'assetAge', kpiPastLife: 'assetAge', kpiActiveDep: 'activePlacements',
-    kpiStates: 'statesReach', kpiCities: 'citiesReach',
+    kpiAvgAge: 'assetAge', kpiPastLife: 'assetAge',
+    kpiStates: 'statesReach', kpiMtbf: 'mtbf',
     kpiZIn: 'created7d', kpiZOut: 'closed7d', kpiZAge: 'openAge', kpiCsCases: 'fieldCases',
     mapAssets: 'assetLifecycle', tcAssets: 'assetLifecycle'
   };

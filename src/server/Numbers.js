@@ -52,9 +52,10 @@ function isTrackedJiraDeviceType_(issueTypeName) {
 
 /**
  * Fleet/device stats shared by the Numbers page, Asset "Total fleet" and
- * Overview "Devices" KPI. Devices = Jira issues (dedup by Key). A device is
- * "mapped" when its serial resolves to a center via deviceCenterMap_. Cached.
- * @return {{total,with_center,jira_centers,in_cd,by_status,source,center_source}}
+ * Overview "Devices" KPI. Devices = Jira issues (dedup by Key). A device's
+ * serial resolves to a center via deviceCenterMap_ for segment filtering only
+ * (see below) — device→center coverage itself is not surfaced as a stat. Cached.
+ * @return {{total,by_status,source,center_source}}
  */
 function jiraDeviceStats_(segment) {
   segment = segClean_(segment);
@@ -62,8 +63,6 @@ function jiraDeviceStats_(segment) {
     var jiraRows = readJiraSheet();
     if (jiraRows) {
       jiraRows = jiraRows.filter(function (row) { return isTrackedJiraDeviceType_(row.issuetype_name); });
-      var cdIds = {};
-      getCenter360RowsCD_().forEach(function (c) { cdIds[c.center_id] = true; });
       // The Jira "Customer ID" column is IGNORED — a device's center comes from
       // its serial (parsed from Summary) via deviceCenterMap_.
       var dcm = deviceCenterMap_();
@@ -91,13 +90,12 @@ function jiraDeviceStats_(segment) {
           if (!isFinite(o.cid) || segMap[o.cid] !== segment) delete byIssue[ik];
         });
       }
-      var dTotal = 0, dWith = 0, dCenters = {}, dInCd = {}, dStatus = {};
+      var dTotal = 0, dStatus = {};
       var ageSum = 0, ageN = 0;
       // Age bands (days): <1y / 1-2y / 2-3y / 3-5y / 5y+ (5-yr expected device life).
       var ageBands = { '<1y': 0, '1-2y': 0, '2-3y': 0, '3-5y': 0, '5y+': 0 };
       Object.keys(byIssue).forEach(function (ik) {
         var o = byIssue[ik]; dTotal++;
-        if (isFinite(o.cid)) { dWith++; dCenters[o.cid] = true; if (cdIds[o.cid]) dInCd[o.cid] = true; }
         var st = o.status || '(blank)';
         dStatus[st] = (dStatus[st] || 0) + 1;
         if (o.age != null) {
@@ -109,8 +107,7 @@ function jiraDeviceStats_(segment) {
         }
       });
       return {
-        total: dTotal, with_center: dWith,
-        jira_centers: Object.keys(dCenters).length, in_cd: Object.keys(dInCd).length,
+        total: dTotal,
         by_status: Object.keys(dStatus).map(function (k) { return { k: k, n: dStatus[k] }; })
           .sort(function (a, b) { return b.n - a.n; }),
         avg_age_days: ageN ? Math.round(ageSum / ageN) : null,
@@ -121,8 +118,7 @@ function jiraDeviceStats_(segment) {
       };
     }
     return {
-      total: JIRA_DUMP.total, with_center: JIRA_DUMP.with_center,
-      jira_centers: JIRA_DUMP.jira_centers, in_cd: JIRA_DUMP.in_cd,
+      total: JIRA_DUMP.total,
       by_status: JIRA_DUMP.by_status, source: 'dump-snapshot', center_source: 'cloud_devices'
     };
   });

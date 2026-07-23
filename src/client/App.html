@@ -172,7 +172,7 @@
         hubs: { total: 14577,
           by_status: kv([['ACTIVE', 12100], ['DEACTIVATED', 2430], ['(blank)', 47]]),
           by_segment: kv([['(blank)', 14428], ['Diagnostic centre', 149]]) },
-        devices: { total: 43794, with_center: 9888, jira_centers: 4621, in_cd: 9888, source: 'dump-snapshot', center_source: 'cloud_devices',
+        devices: { total: 43794, source: 'dump-snapshot', center_source: 'cloud_devices',
           by_status: kv([['Deployed', 23165], ['Delivered', 6085], ['Hardware', 3997], ['Decommissioned', 3361], ['Store', 2873], ['Field', 2089], ['Exported', 1734]]) },
         tickets: { total: 84545, tech: 28100, nontech: 56445,
           by_status: kv([['Closed', 77678], ['Duplicate', 6308], ['Open', 211], ['Pending on Logistics Team', 82], ['Pending on Customer Success Team', 70]]) }
@@ -224,7 +224,7 @@
         topCustomers: ['VIJAYA DIAGNOSTIC', 'Aarthi Scans', 'Apollo Hospital', 'Metropolis', 'Fortis Hospital', 'Suburban Diagnostics'].map(function (n) { return { hub: n, devices: rnd(15, 160) }; }),
         topTotals: { customers: 27, devices: 665, centers: 720 },
         uptimeFleet: { scored: 11344, avg_uptime: 98.9, pct99: 80.6, avg_mtbf_days: 572.9, avg_health: 95.0, pct_healthy: 98.6, avg_life_years: 2.6, avg_downtime_days: 4.1 },
-        fleet: { total: 28444, with_center: 17323, jira_centers: 12028, in_cd: 12028,
+        fleet: { total: 28444,
           avg_age_days: 1411, aged_devices: 28444, past_life: 8105,
           age_bands: [{ k: '<1y', n: 3566 }, { k: '1-2y', n: 3343 }, { k: '2-3y', n: 7072 }, { k: '3-5y', n: 6358 }, { k: '5y+', n: 8105 }],
           by_status: [{ k: 'Deployed', n: 5210 }, { k: 'Store', n: 1180 }, { k: 'Hardware', n: 640 },
@@ -305,7 +305,7 @@
         return { centerid: rnd(1000, 50000), center: 'Demo Center ' + rnd(1, 400), devices: rnd(1, 12), uptime_pct: up, downtime_pct: Math.round((100 - up) * 10) / 10, failures: rnd(1, 9) };
       }),
       uptimeFleet: [{ scored: 11344, avg_uptime: 98.9, pct99: 80.6, avg_mtbf_days: 572.9, avg_health: 95.0, pct_healthy: 98.6, avg_life_years: 2.6, avg_downtime_days: 4.1 }],
-      fleet: { total: 28444, with_center: 17323, jira_centers: 12028, in_cd: 12028,
+      fleet: { total: 28444,
         avg_age_days: 1411, aged_devices: 28444, past_life: 8105,
         age_bands: [{ k: '<1y', n: 3566 }, { k: '1-2y', n: 3343 }, { k: '2-3y', n: 7072 }, { k: '3-5y', n: 6358 }, { k: '5y+', n: 8105 }] },
       assetHealth: Array.from({ length: 12 }, function (_, i) {
@@ -453,7 +453,7 @@
       kpiTile('kpiSignal', 'signal', 'var(--info)', 'Poor signal', 'CSQ < 10') +
       kpiTile('kpiUnsynced', 'sync', 'var(--violet)', 'Unsynced ECGs', 'waiting to upload');
     $('centersKpiGrid').innerHTML =
-      kpiTile('kpiCenters', 'building', 'var(--secondary)', 'Centers', 'active · paid') +
+      kpiTile('kpiCenters', 'building', 'var(--secondary)', 'Centers', 'all centers') +
       kpiTile('kpiUptime', 'online', 'var(--ok)', 'Center uptime', 'avg per-center uptime') +
       kpiTile('kpiHealth', 'health', 'var(--primary)', 'Center health', 'avg score / 100') +
       kpiTile('kpiActiveDep', 'layers', 'var(--ok)', 'Active placements', 'deployment open') +
@@ -573,8 +573,7 @@
     /* Asset KPIs (device grain) */
     var kpi = (data.kpis && data.kpis[0]) || {};
     var fleet = data.fleet || {};
-    setKpi('kpiTotal', fleet.total != null ? fleet.total : kpi.total_devices,
-      FMT.format(fleet.with_center || 0) + ' mapped to a center');
+    setKpi('kpiTotal', fleet.total != null ? fleet.total : kpi.total_devices);
     setKpiText('kpiAvgAge',
       fleet.avg_age_days != null ? (fleet.avg_age_days / 365).toFixed(1) + 'y' : '—',
       'across ' + FMT.format(fleet.aged_devices || 0) + ' dated devices');
@@ -586,7 +585,7 @@
     /* Centers KPIs (center grain) */
     var up = (data.uptimeFleet && data.uptimeFleet[0]) || null;
     var ck = (data.centerKpis && data.centerKpis[0]) || {};
-    setKpi('kpiCenters', ck.centers, 'active · paid');
+    setKpi('kpiCenters', ck.centers, 'all centers');
     uptimeKpi('kpiUptime', up);
     setKpi('kpiHealth', up ? up.avg_health : null,
       up && up.avg_mtbf_days != null ? 'avg MTBF ' + up.avg_mtbf_days + 'd · ' + (up.pct_healthy || 0) + '% healthy' : 'composite 0–100');
@@ -1536,8 +1535,7 @@
     /* KPI strip */
     uptimeKpi('exUptime', d.uptimeFleet || null);
     var fleet = d.fleet || {};
-    setKpi('exActive', fleet.total != null ? fleet.total : k.total_devices,
-      FMT.format(fleet.with_center || 0) + ' mapped to a center');
+    setKpi('exActive', fleet.total != null ? fleet.total : k.total_devices);
     setKpi('exCenters', roll.centers, FMT.format(roll.attention_centers || 0) + ' need attention');
     setKpi('exTickets', z.open_tickets, FMT.format(z.created_7d || 0) + ' new this week');
     setKpi('exTopLe', tt.devices, tt.customers + ' Top LE accounts');
@@ -1952,10 +1950,7 @@
     var devSrc = { 'google-sheet': 'live Google Sheet', 'dump-snapshot': 'offline dump (Sheets API pending)', 'sheet-unavailable': 'unavailable' }[d.devices.source] || '';
     var mapSrc = { 'center_details': 'center_details serial', 'cloud_devices': 'serial→cloud_devices' }[d.devices.center_source] || 'serial';
     $('numDevicesKpi').innerHTML = numCompare([
-      { label: 'Devices', value: d.devices.total, hi: true },
-      { label: 'Devices mapped', value: d.devices.with_center },
-      { label: 'Centers mapped', value: d.devices.jira_centers },
-      { label: 'In center_details', value: d.devices.in_cd }
+      { label: 'Devices', value: d.devices.total, hi: true }
     ]) + (devSrc ? '<div class="num-src">source: ' + escapeHtml(devSrc) + ' · mapped by ' + escapeHtml(mapSrc) + ' (Jira Customer ID ignored)</div>' : '');
     $('numDevicesStatus').innerHTML = numTable('By Jira status', d.devices.by_status);
 
@@ -2098,9 +2093,8 @@
       formula: 'Jira devices grouped by lifecycle status (Deployed, Store, Hardware, Decommissioned, …). Restricted to Issue Type = Connector or ECG Machine.',
       source: 'Jira devices Google Sheet (issuetype_name filtered to CONFIG.JIRA_DEVICE_TYPES).' },
     devicesCount: { name: 'Devices',
-      formula: 'Count of Jira-sheet devices (deduped by Key), restricted to Connector + ECG Machine. “Mapped” = those whose serial resolves to a center.',
-      source: 'Jira devices Google Sheet; serial (from Summary) → center via cloud_devices then center_details.' },
-    devicesMapped: { name: 'Devices mapped', formula: 'Devices whose serial resolves to a CenterID.', source: 'Jira-sheet serial ⋈ cloud_devices.DeviceID → CenterID.' },
+      formula: 'Count of Jira-sheet devices (deduped by Key), restricted to Connector + ECG Machine.',
+      source: 'Jira devices Google Sheet.' },
     activePlacements: { name: 'Active placements', formula: 'Device-center deployments currently open (no end date).', source: 'center_details (deactivationdate IS NULL).' },
     poorSignal: { name: 'Poor signal', formula: 'Devices reporting signal quality CSQ < 10.', source: 'cloud_devices.CSQ.' },
     unsynced: { name: 'Unsynced ECGs', formula: 'Devices with data still waiting to upload.', source: 'cloud_devices.UnsyncedData > 0.' },

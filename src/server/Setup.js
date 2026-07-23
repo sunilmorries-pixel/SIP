@@ -106,8 +106,8 @@ function diagnostics() {
 
   // Jira device-type filter (Connector + ECG Machine only, permanent).
   var jiraStats = jiraDeviceStats_();
-  Logger.log('Jira devices (Connector + ECG Machine only): ' + jiraStats.total + ' total, ' +
-    jiraStats.with_center + ' mapped to a center, source=' + jiraStats.source);
+  Logger.log('Jira devices (Connector + ECG Machine only): ' + jiraStats.total +
+    ' total, source=' + jiraStats.source);
   Logger.log('Jira devices by status: ' + JSON.stringify(jiraStats.by_status));
 
   // Raw Data page — one row-count check per source.

@@ -25,3 +25,6 @@ scratch/
 
 # Claude Code worktrees — never commit (accidentally tracked as a gitlink once)
 .claude/worktrees/
+
+# Subagent-driven-development scratch ledger — session-local, not shared history
+.superpowers/

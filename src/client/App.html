@@ -23,6 +23,7 @@
     devices: { status: '', sortBy: 'last_seen', sortDir: 'desc', page: 0, pageSize: 15 },
     deviceRows: [], deviceTotal: 0,
     centers: { sortBy: 'devices', sortDir: 'desc', page: 0, pageSize: 15 },
+    centersWatchlistSort: 'uptime_pct',
     centerRows: [], centerTotal: 0,
     autoRefresh: true,
     countdown: REFRESH_SECONDS,
@@ -613,8 +614,7 @@
     var assets = data.assets || [];
     Charts.assetStatus(assets.filter(function (r) { return r.dim === 'status'; }).slice(0, 8));
     Charts.assetTypes(assets.filter(function (r) { return r.dim === 'type'; }).slice(0, 8));
-    renderReliability(data.reliability || []);
-    renderAssetHealth(data.assetHealth || []);
+    renderCenterWatchlist(data.reliability || [], data.assetHealth || [], state.centersWatchlistSort);
     renderCohort(data.cohortReliability || []);
     renderAssetSummary(data);
 
@@ -734,43 +734,46 @@
     $('centersSummaryFlags').innerHTML = flagChips_(flags);
   }
 
-  function renderReliability(rows) {
-    var body = $('reliabilityTable').querySelector('tbody');
+  /**
+   * Merges reliability + assetHealth by centerid (both arrays cover the exact
+   * same "scored" center set — see centerUptimeSqlCD_ — so every reliability
+   * row has a matching assetHealth row), sorts by sortBy ascending (worst
+   * first — both uptime_pct and health_score are "higher is better"), and
+   * renders the worst 12.
+   */
+  function renderCenterWatchlist(reliabilityRows, assetHealthRows, sortBy) {
+    var body = $('centerWatchlistTable').querySelector('tbody');
+    var healthByCid = {};
+    (assetHealthRows || []).forEach(function (r) { healthByCid[r.centerid] = r; });
+    var merged = (reliabilityRows || []).map(function (r) {
+      var h = healthByCid[r.centerid] || {};
+      return {
+        centerid: r.centerid, center: r.center, devices: r.devices,
+        uptime_pct: r.uptime_pct, downtime_pct: r.downtime_pct, failures: r.failures,
+        health_score: h.health_score, mtbf_hrs: h.mtbf_hrs
+      };
+    });
+    merged.sort(function (a, b) { return a[sortBy] - b[sortBy]; });
+    var rows = merged.slice(0, 12);
     if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="5" class="chart-empty">No reliability metrics yet</td></tr>';
+      body.innerHTML = '<tr><td colspan="7" class="chart-empty">No reliability/health metrics yet</td></tr>';
       return;
     }
     body.innerHTML = rows.map(function (r) {
-      var sev = r.uptime_pct >= 95 ? 'ok' : (r.uptime_pct >= 90 ? 'warn' : 'danger');
-      return '<tr class="is-clickable" data-cid="' + escapeHtml(r.centerid) + '" tabindex="0" role="button" aria-label="Open ' + escapeHtml(r.center || ('center ' + r.centerid)) + '">' +
-        '<td><strong>' + escapeHtml(r.center || ('Center #' + r.centerid)) + '</strong></td>' +
-        '<td class="num">' + FMT.format(r.devices || 0) + '</td>' +
-        '<td class="num"><span class="badge badge-' + sev + '">' + escapeHtml(r.uptime_pct) + '%</span></td>' +
-        '<td class="num">' + escapeHtml(r.downtime_pct) + '%</td>' +
-        '<td class="num">' + FMT.format(r.failures || 0) + '</td>' +
-        '</tr>';
-    }).join('');
-    wireCenterRowClicks($('reliabilityTable'));
-  }
-
-  function renderAssetHealth(rows) {
-    var body = $('assetHealthTable').querySelector('tbody');
-    if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="5" class="chart-empty">No health data yet</td></tr>';
-      return;
-    }
-    body.innerHTML = rows.map(function (r) {
-      var band = r.health_score >= 80 ? 'ok' : (r.health_score >= 60 ? 'warn' : 'danger');
+      var uptimeSev = r.uptime_pct >= 95 ? 'ok' : (r.uptime_pct >= 90 ? 'warn' : 'danger');
+      var healthBand = r.health_score >= 80 ? 'ok' : (r.health_score >= 60 ? 'warn' : 'danger');
       var mtbf = r.mtbf_hrs == null ? '—' : FMT.format(Math.round(r.mtbf_hrs / 24)) + 'd';
       return '<tr class="is-clickable" data-cid="' + escapeHtml(r.centerid) + '" tabindex="0" role="button" aria-label="Open ' + escapeHtml(r.center || ('center ' + r.centerid)) + '">' +
         '<td><strong>' + escapeHtml(r.center || ('Center #' + r.centerid)) + '</strong></td>' +
-        '<td class="num"><span class="badge badge-' + band + '">' + escapeHtml(r.health_score) + '</span></td>' +
-        '<td class="num">' + escapeHtml(r.uptime_pct) + '%</td>' +
+        '<td class="num">' + FMT.format(r.devices || 0) + '</td>' +
+        '<td class="num"><span class="badge badge-' + healthBand + '">' + escapeHtml(r.health_score) + '</span></td>' +
+        '<td class="num"><span class="badge badge-' + uptimeSev + '">' + escapeHtml(r.uptime_pct) + '%</span></td>' +
+        '<td class="num">' + escapeHtml(r.downtime_pct) + '%</td>' +
         '<td class="num">' + mtbf + '</td>' +
         '<td class="num">' + FMT.format(r.failures || 0) + '</td>' +
         '</tr>';
     }).join('');
-    wireCenterRowClicks($('assetHealthTable'));
+    wireCenterRowClicks($('centerWatchlistTable'));
   }
 
   /**
@@ -2066,9 +2069,9 @@
     attention: { name: 'Centers needing attention',
       formula: 'Centers ranked by number of open tickets (4+ open = flagged).',
       source: 'zoho_data open tickets grouped by center, joined to center_details names.' },
-    reliability: { name: 'Reliability watchlist',
-      formula: 'Centers with the lowest Machine Uptime % (M-A1), lowest first.',
-      source: 'The uptime engine (see M-A1).' },
+    reliability: { name: 'Reliability & health watchlist',
+      formula: 'Centers ranked by Machine Uptime % (M-A1) or composite Health Score (M-A6), whichever the sort toggle selects — worst first either way.',
+      source: 'The uptime engine (see M-A1/M-A6).' },
     backlog: { name: 'Active backlog', formula: 'Open (non-terminal) tickets grouped by status. No date window — the whole current backlog.', source: 'zoho_data (status not Closed / Duplicate / Junk).' },
     priority: { name: 'Priority mix', formula: 'Open tickets grouped by priority (blank = “Unset”).', source: 'zoho_data.priority.' },
     categories: { name: 'Issue categories', formula: 'Ticket counts grouped by issue category / type.', source: 'zoho_data.IssueCategory (or CS-sheet issue type).' },
@@ -2137,10 +2140,10 @@
   var TITLE_METRIC = {
     'device status (jira)': 'jiraFleetStatus', 'device status': 'fleetStatus',
     'support ticket flow': 'ticketFlow', 'ticket flow': 'ticketFlow',
-    'centers needing attention': 'attention', 'reliability watchlist': 'reliability',
+    'centers needing attention': 'attention', 'reliability & health': 'reliability',
     'top le customers': 'topLe', 'where devices live': 'geo', 'firmware spread': 'firmware',
     'asset lifecycle': 'assetLifecycle', 'asset types': 'assetLifecycle',
-    'asset health score': 'health', 'first-time-failure by production batch': 'ftf',
+    'first-time-failure by production batch': 'ftf',
     'batch signal': 'batch', 'batch cohort detail': 'ftf',
     'devices by state': 'geo', 'deployment age': 'deployAge', 'deployment status': 'deployStatus',
     'top hubs': 'topHubs', 'center 360': 'center360',
@@ -2264,6 +2267,15 @@
         if (page === 'asset') { state.devices.page = 0; loadDevices(); }
         loadDashboard(false); // shared payload refetches with the active page's segment
       });
+    });
+
+    // Reliability/health watchlist sort toggle — re-renders from the already-
+    // fetched dashboard payload, no refetch needed.
+    $('watchlistSort').addEventListener('change', function (event) {
+      state.centersWatchlistSort = event.target.value;
+      if (state.lastDashboard) {
+        renderCenterWatchlist(state.lastDashboard.reliability || [], state.lastDashboard.assetHealth || [], state.centersWatchlistSort);
+      }
     });
 
     $('prevPageBtn').addEventListener('click', function () {

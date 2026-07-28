@@ -323,7 +323,11 @@
         { batch_year: 2025, devices: 2428, ftf_rate_pct: 22.7, median_ttff_days: 153, early_fails: 4, avg_failures: 0.72, top_issue: 'Network -Sim Card Issue' },
         { batch_year: 2026, devices: 2241, ftf_rate_pct: 12.0, median_ttff_days: 66, early_fails: 5, avg_failures: 0.46, top_issue: 'Network -Sim Card Issue' }
       ],
-      centerKpis: [{ centers: 18370, devices: 18370, states: 357, cities: 1901, active_deployments: 25648 }],
+      // centers reflects the v5.10 unfiltered universe (28,482 per HANDOFF —
+      // not independently re-verified here, no local BigQuery access to
+      // tricogde-dwh). devices/cities/active_deployments dropped: dead since
+      // the Centers KPI rebuild removed their tiles, nothing reads them.
+      centerKpis: [{ centers: 28482, states: 357 }],
       segment: (args && args.segment) || '',
       geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
       hubs: Array.from({ length: 10 }, function (_, i) { return { hub: 'Demo Hub ' + (i + 1), spokes: rnd(20, 400) }; }),

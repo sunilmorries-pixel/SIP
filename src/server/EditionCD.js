@@ -106,7 +106,7 @@ function buildDashboardQuerySpecsCD(hub, segment) {
   var SC = cdSegCond_(segment);
   var cd = {
     centerKpis:
-      "SELECT COUNT(DISTINCT CenterID) AS centers, COUNT(DISTINCT CenterID) AS devices, " +
+      "SELECT COUNT(DISTINCT CenterID) AS centers, " +
       " COUNT(DISTINCT NULLIF(TRIM(State), '')) AS states, " +
       " COUNT(DISTINCT NULLIF(TRIM(City), '')) AS cities, " +
       // center-grain, not row-grain: center_details has duplicate rows per

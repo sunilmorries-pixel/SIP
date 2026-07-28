@@ -8,6 +8,16 @@ stable production deployment
 pinned to an older version and must be manually redeployed to version 37. Repo is synced:
 releases v5.2→v5.10 are annotated git tags mapping each to its commit + Apps Script version.
 
+> **Update (2026-07-28):** git has since caught up further — `centers-tab-kpi-rebuild` (9
+> reviewed commits: Centers KPI grid corrections, Reliability/Health-score table merge) was
+> fast-forward merged on top of v5.10, plus 2 small cleanup fixes (dead `centerKpis.devices`
+> alias, stale preview-mock values). **Production is still deliberately held at Apps Script
+> @34 (v5.9)** — not an oversight, a standing decision — because promoting past v5.9 also
+> promotes the still-pending v5.10 tricogde-dwh cutover (new warehouse + Active+Paid filter
+> removed, 19,143 → 28,482 centers), which needs its own explicit go-ahead, not a side effect
+> of merging an unrelated branch. A Jest test harness was also added this session — see open
+> item 11 below and `docs/superpowers/specs/2026-07-28-testing-harness-design.md`.
+
 **v5.10 (2026-07-22):** connection-layer migration off the dev/test sandbox onto the real
 production warehouse, plus removal of a filter that had silently scoped every center-grain
 figure since v5.8. Built from spec
@@ -465,6 +475,7 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 8. **Asset KPI tiles still show the OLD tiles** (device-status donut, firmware, asset lifecycle/types, health-score table, cohort) — only the executive summary + a new "Device age" chart were added/changed on this page so far; the KPI strip itself (Poor signal / Unsynced ECG removal was applied, but no full KPI redesign) is not yet revisited metric-by-metric with the user.
 9. **Remaining pages not yet worked**: Support/CS, Map, Top Customers, Numbers, Raw Data, Overview — the page-by-page/metric-by-metric pass (started 2026-07-08 with Asset then Centers) has not reached these yet.
 10. **Next up (queued, not started):** user has queued a batch of changes around filters and data extraction — requirements gathering (brainstorm/spec) has started but the change inventory has not yet been provided.
+11. **Test harness added (2026-07-28)** — a two-tier Jest suite now exists: `npm test` (fast unit tests, no credentials) and `npm run test:reconcile` (live-BigQuery reconciliation, needs `GOOGLE_APPLICATION_CREDENTIALS`); `npm run verify-before-deploy` runs both as a manual pre-deploy gate. CI (`.github/workflows/test.yml`) runs the unit tier on every push and the reconciliation tier on PRs into `main`. **Still open:** the `BQ_SERVICE_ACCOUNT_KEY` repo secret (base64-encoded `tricogde-dwh` service-account key) has not been added to GitHub yet, so the CI reconciliation job currently no-ops on every PR — see `docs/superpowers/specs/2026-07-28-testing-harness-design.md` for the full design and what's still uncovered.
 
 ---
 

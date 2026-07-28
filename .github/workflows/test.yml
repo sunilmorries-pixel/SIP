@@ -1,0 +1,82 @@
+name: Test
+
+# Tier 1 (unit-tests) runs on every push to any branch — fast, no
+# credentials needed. Tier 2 (reconciliation-tests) only runs on PRs
+# targeting main — it hits live BigQuery and would be wasteful (and
+# would burn quota) on every feature-branch commit.
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
+  reconciliation-tests:
+    name: reconciliation-tests
+    runs-on: ubuntu-latest
+    # Only on PRs targeting main — see the comment on the top-level `on:`
+    # trigger. This job must still succeed even before the BQ_SERVICE_ACCOUNT_KEY
+    # secret exists in this repo (see docs/superpowers/specs/2026-07-28-testing-harness-design.md):
+    # test/helpers/bq.js's hasCredentials() makes the reconciliation suite
+    # describe.skip itself when GOOGLE_APPLICATION_CREDENTIALS isn't set, so
+    # this job just needs to avoid erroring out on a missing/empty secret.
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # BQ_SERVICE_ACCOUNT_KEY is expected to be a BASE64-ENCODED service
+      # account JSON key (base64 is the standard way to store a multi-line
+      # JSON secret as a single-line GitHub Actions secret value). Decode it
+      # to a temp file and point GOOGLE_APPLICATION_CREDENTIALS at it — this
+      # is the standard @google-cloud/bigquery client env var, a DIFFERENT
+      # mechanism from this repo's ad hoc `bq` CLI scripts, which read
+      # CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE instead (see test/helpers/bq.js).
+      - name: Decode BigQuery service account key
+        # secrets.* (not env.*) — a step's own `env:` block isn't in scope
+        # for its own `if:` evaluation, so checking env.BQ_SERVICE_ACCOUNT_KEY
+        # here would always read empty and this step would never run, even
+        # after the secret is added. secrets.* IS available to `if:`.
+        if: ${{ secrets.BQ_SERVICE_ACCOUNT_KEY != '' }}
+        env:
+          BQ_SERVICE_ACCOUNT_KEY: ${{ secrets.BQ_SERVICE_ACCOUNT_KEY }}
+        run: |
+          echo "$BQ_SERVICE_ACCOUNT_KEY" | base64 --decode > "$RUNNER_TEMP/bq-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/bq-service-account.json" >> "$GITHUB_ENV"
+
+      # No `if` guard needed here: when the secret is absent, the step above
+      # never set GOOGLE_APPLICATION_CREDENTIALS (it didn't run), so
+      # hasCredentials() returns false and every reconciliation test skips
+      # itself — this still exits 0.
+      - name: Run reconciliation tests
+        run: npm run test:reconcile

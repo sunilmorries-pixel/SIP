@@ -1,0 +1,32 @@
+{
+  "name": "demo-sip",
+  "version": "1.0.0",
+  "description": "A production-ready, **Tricog-branded**, interactive analytics dashboard built on **Google\r Apps Script + BigQuery**. It surfaces live insights from the `tricogde-dwh.abi_tables`\r dataset plus two Google Sheets: center reliability, revenue-at-risk, support-ticket flow\r (Zoho), SLA compliance, device fleet, and asset reliability.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "jest --config jest.config.js",
+    "test:reconcile": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --config jest.reconcile.config.js --runInBand",
+    "test:all": "npm test && npm run test:reconcile",
+    "verify-before-deploy": "node scripts/verify-before-deploy.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sunilmorries-pixel/SIP.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/sunilmorries-pixel/SIP/issues"
+  },
+  "homepage": "https://github.com/sunilmorries-pixel/SIP#readme",
+  "devDependencies": {
+    "@google-cloud/bigquery": "^8.3.1",
+    "cross-env": "^10.1.0",
+    "jest": "^30.4.2"
+  }
+}

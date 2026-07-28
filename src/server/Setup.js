@@ -120,39 +120,44 @@ function diagnostics() {
 }
 
 /**
- * Clears cached payloads so the next load recomputes (e.g. after the Google
- * Sheet changes, to refresh the device count immediately). CacheService has no
- * clear-all, so we remove the current known keys.
+ * Current cache epoch — bumped by clearDashboardCache(). Every filter-varying
+ * cache key folds this in, so bumping it invalidates every existing filtered
+ * variant at once without needing to enumerate what combinations were ever
+ * cached (the old approach: a live BQ query for every distinct segment value,
+ * one cache-key removal per value — doesn't scale past one multi-select
+ * dimension, let alone five). Stale entries under the old epoch simply age
+ * out via their own TTL (900s / 1800s for large objects) — no explicit
+ * deletion needed.
+ * @return {number}
+ */
+function getCacheEpoch_() {
+  var props = PropertiesService.getScriptProperties();
+  var v = parseInt(props.getProperty('CACHE_EPOCH'), 10);
+  return isFinite(v) ? v : 0;
+}
+
+/**
+ * Clears cached payloads so the next load recomputes. Bumps CACHE_EPOCH
+ * (invalidates every filter-varying key at once) and removes the small
+ * number of keys that DON'T vary by filter (Numbers, Center-360 base fetch,
+ * raw-sheet snapshots) directly, since those never had a combinatorial
+ * enumeration problem to begin with.
  */
 function clearDashboardCache() {
+  var props = PropertiesService.getScriptProperties();
+  var next = getCacheEpoch_() + 1;
+  props.setProperty('CACHE_EPOCH', String(next));
+
   var cache = CacheService.getScriptCache();
-  var h = shortHash('');
-  // Segment-sliced keys: one per real segment value + 'all'.
-  var slugs = ['all'];
-  try {
-    runQuery("SELECT DISTINCT TRIM(hub_master_segment) AS s FROM " + T('center_details') +
-      " WHERE NULLIF(TRIM(hub_master_segment), '') IS NOT NULL")
-      .forEach(function (r) { slugs.push(segSlug_(r.s)); });
-  } catch (e) { /* BQ unavailable → clear the 'all' slice at least */ }
-  var small = ['dash_v7_' + h, 'exec_v4', 'execcd_v5', 'topcust_v1', 'topcustcd_v5', 'numbers_v4'];
-  // Large (gzip-chunked) caches: remove #meta + each chunk.
-  var largeBases = ['ctr360_v3', 'ctr360cd_v5', 'map_v3', 'mapcd_v5', 'assets_v3',
-    'rawsheet_v1_' + CONFIG.JIRA_SHEET_ID, 'rawsheet_v1_' + CONFIG.CS_SHEET_ID];
-  slugs.forEach(function (sg) {
-    small.push('jiradev_v5_' + sg);
-    // dashcd_v5_* moved to the large (gzip-chunked) cache 2026-07-23 — its
-    // reliability/assetHealth arrays now carry every scored center, not 12,
-    // and can exceed withCache's 100KB-per-key limit (see EditionCD.js
-    // apiGetDashboardCD).
-    largeBases.push('dashcd_v5_' + sg + '_' + h);
-  });
-  cache.removeAll(small);
-  largeBases.forEach(function (base) {
+  cache.removeAll(['exec_v4', 'numbers_v4']);
+  // Large (gzip-chunked) caches with NO filter variant: remove #meta + each chunk.
+  ['ctr360cd_v6', 'map_v3', 'assets_v3',
+    'rawsheet_v1_' + CONFIG.JIRA_SHEET_ID, 'rawsheet_v1_' + CONFIG.CS_SHEET_ID].forEach(function (base) {
     var meta = cache.get(base + '#meta');
     var n = meta ? parseInt(meta, 10) : 40;
     var keys = [base + '#meta'];
     for (var i = 0; i < n; i++) keys.push(base + '#' + i);
     cache.removeAll(keys);
   });
-  Logger.log('Caches cleared (' + slugs.length + ' segment slices) — next load recomputes.');
+  Logger.log('Cache epoch bumped to ' + next + ' — every filtered dashboard/map/exec/top-customers/jira-devices variant now recomputes on next access.');
 }

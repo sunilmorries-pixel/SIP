@@ -1,22 +1,31 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-07-22 · **Version:** 5.10 · **Status:** SHIPPED TO GIT, **NOT YET
-DEPLOYED** — Apps Script version 37 (tag `v5.10`) points the connection layer at the real
-`tricogde-dwh.abi_tables` warehouse and removes the silent Active+Paid center filter, but the
-stable production deployment
-(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL) is still
-pinned to an older version and must be manually redeployed to version 37. Repo is synced:
-releases v5.2→v5.10 are annotated git tags mapping each to its commit + Apps Script version.
+**Last updated:** 2026-07-28 · **Version:** 5.10 + centers-tab-kpi-rebuild · **Status:** LIVE —
+Apps Script **version 39** deployed to the stable production URL
+(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always).
+Git, the Apps Script editor content, and the live deployment are all in sync at commit `f5c3d9f`.
 
-> **Update (2026-07-28):** git has since caught up further — `centers-tab-kpi-rebuild` (9
-> reviewed commits: Centers KPI grid corrections, Reliability/Health-score table merge) was
-> fast-forward merged on top of v5.10, plus 2 small cleanup fixes (dead `centerKpis.devices`
-> alias, stale preview-mock values). **Production is still deliberately held at Apps Script
-> @34 (v5.9)** — not an oversight, a standing decision — because promoting past v5.9 also
-> promotes the still-pending v5.10 tricogde-dwh cutover (new warehouse + Active+Paid filter
-> removed, 19,143 → 28,482 centers), which needs its own explicit go-ahead, not a side effect
-> of merging an unrelated branch. A Jest test harness was also added this session — see open
-> item 11 below and `docs/superpowers/specs/2026-07-28-testing-harness-design.md`.
+> **2026-07-28 deploy note:** this single deploy promotes EVERYTHING that had accumulated since
+> v5.9 (@34) in one shot — the connection layer swap to the real `tricogde-dwh.abi_tables`
+> warehouse, removal of the Active+Paid center filter (visible center count **19,143 → 28,482**),
+> the `centers-tab-kpi-rebuild` Centers KPI grid rebuild (9 reviewed commits), and 2 small
+> cleanup fixes. Explicitly confirmed with the user before deploying (this reverses an earlier
+> "leave v5.10 pending" decision from earlier the same day — a deliberate reversal, not an
+> accident).
+>
+> **Cache staleness window:** cache keys were NOT bumped for the dataset swap
+> (`dashcd_v5_...` etc. are unchanged; `CACHE_TTL_SECONDS` = 900). Any request cached in the
+> ~15 minutes before this deploy may still serve OLD sandbox-filtered numbers (19,143 centers)
+> for up to 15 minutes post-deploy — self-healing, not permanent, but if you check the live
+> site right away and see old numbers, that's why. Run `clearDashboardCache()` in the Apps
+> Script editor for an immediate clean cutover (could not be run remotely — `clasp run` isn't
+> configured as an API-executable for this project).
+>
+> A Jest test harness was also added this session (repo-only, never deployed — see
+> `docs/superpowers/specs/2026-07-28-testing-harness-design.md`) — `npm test` (36 unit tests)
+> and `npm run test:reconcile` (11 live-BigQuery structural-invariant tests). CI's
+> reconciliation tier still needs a `BQ_SERVICE_ACCOUNT_KEY` GitHub secret added (for the
+> `tricogde-dwh` project specifically) before it runs anything beyond a no-op.
 
 **v5.10 (2026-07-22):** connection-layer migration off the dev/test sandbox onto the real
 production warehouse, plus removal of a filter that had silently scoped every center-grain

@@ -31,9 +31,11 @@
  * is gone — every number now reflects the FULL distinct-center universe.
  *
  * Both are kept declared (not deleted, not inlined as '') so every existing
- * "WHERE " + cdFilter_()/CD_SEG_FILTER + cdSegCond_(segment) call site
- * (here and in Geo.js's distinctLocations_) stays syntactically valid SQL —
- * '1=1' excludes nothing and lets the query planner drop it.
+ * "WHERE " + cdFilter_()/CD_SEG_FILTER + ... call site (here and in Geo.js's
+ * distinctLocations_) stays syntactically valid SQL — '1=1' excludes nothing
+ * and lets the query planner drop it. (cdFilter_ call sites now thread the
+ * 5-dimension `filters` object via filterCond/multiCond_ instead of the old
+ * single-segment cdSegCond_ — see buildDashboardQuerySpecsCD/centerUptimeSqlCD_.)
  */
 var CD_SEG_FILTER = '1=1';
 function cdFilter_() {
@@ -57,9 +59,10 @@ var FLAGS_CD = [
  * else — Zoho device-failure downtime, MTBF, health tiers — is identical.
  * @param {string} tailSelect a SELECT over the final `scored` CTE
  */
-function centerUptimeSqlCD_(tailSelect, segment) {
+function centerUptimeSqlCD_(tailSelect, filters) {
   var f = CONFIG.ZOHO_DT_FORMAT;
   var P = "SAFE.PARSE_DATETIME('" + f + "', ";
+  var ff = filters || {};
   return "WITH tix AS (" +
     " SELECT CenterID AS center_id, " + P + "CreatedAt) AS s, " +
     "  COALESCE(" + P + "ClosedAt), CURRENT_DATETIME()) AS e " +
@@ -67,7 +70,13 @@ function centerUptimeSqlCD_(tailSelect, segment) {
     "  AND " + techBoolSql_("IFNULL(IssueCategory,'')") + " " +
     "  AND " + P + "CreatedAt) IS NOT NULL), " +
     "birth AS (SELECT CenterID AS center_id, MIN(DATETIME(deploymentdate)) AS b " +
-    "  FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_() + cdSegCond_(segment) + " GROUP BY CenterID), " +
+    "  FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_() +
+    multiCond_('hub_master_segment', ff.segments) +
+    multiCond_('Status', ff.statuses) +
+    multiCond_('State', ff.states) +
+    multiCond_('HubName', ff.hubs) +
+    dateRangeCond_('deploymentdate', ff.dateFrom, ff.dateTo) +
+    " GROUP BY CenterID), " +
     "flagged AS (SELECT center_id, s, e, " +
     "  MAX(e) OVER (PARTITION BY center_id ORDER BY s ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS pe FROM tix), " +
     "islands AS (SELECT center_id, s, e, " +
@@ -100,10 +109,15 @@ function centerUptimeSqlCD_(tailSelect, segment) {
  * cohort) are reused verbatim from the original builder.
  * @param {string} hub
  */
-function buildDashboardQuerySpecsCD(hub, segment) {
+function buildDashboardQuerySpecsCD(hub, filters) {
   var CD = T('center_details');
   var F = cdFilter_();
-  var SC = cdSegCond_(segment);
+  var ff = filters || {};
+  var filterCond = multiCond_('hub_master_segment', ff.segments) +
+    multiCond_('Status', ff.statuses) +
+    multiCond_('State', ff.states) +
+    multiCond_('HubName', ff.hubs);
+  var dateCond = dateRangeCond_('deploymentdate', ff.dateFrom, ff.dateTo);
   var cd = {
     centerKpis:
       "SELECT COUNT(DISTINCT CenterID) AS centers, " +
@@ -111,36 +125,39 @@ function buildDashboardQuerySpecsCD(hub, segment) {
       " COUNT(DISTINCT NULLIF(TRIM(City), '')) AS cities, " +
       // center-grain, not row-grain: center_details has duplicate rows per
       // center, so COUNTIF(...) counted rows (25,648 > 18,370 centers → 140%).
-      " COUNT(DISTINCT IF(deactivationdate IS NULL, CenterID, NULL)) AS active_deployments FROM " + CD + " WHERE " + F + SC,
+      " COUNT(DISTINCT IF(deactivationdate IS NULL, CenterID, NULL)) AS active_deployments FROM " + CD + " WHERE " + F + filterCond + dateCond,
     geo:
       // Distinct CENTERS per state (the reload duplicated rows; every other
       // Centers metric dedupes — this one was still COUNT(*)). Field name stays
       // `devices` for client-payload compatibility; the card is retitled
       // "Centers by state" client-side.
       "SELECT IFNULL(NULLIF(TRIM(State), ''), 'Unknown') AS state, COUNT(DISTINCT CenterID) AS devices " +
-      "FROM " + CD + " WHERE " + F + SC + " GROUP BY state ORDER BY devices DESC LIMIT 12",
+      "FROM " + CD + " WHERE " + F + filterCond + dateCond + " GROUP BY state ORDER BY devices DESC LIMIT 12",
     // One row per center (MIN deploymentdate); counts DISTINCT centers so the
     // bands sum to the center count (was active-only rows → didn't match).
     deploymentAge:
       "WITH dep AS (SELECT CenterID, DATE_DIFF(CURRENT_DATE(), DATE(MIN(deploymentdate)), DAY) AS age_days " +
-      " FROM " + CD + " WHERE deploymentdate IS NOT NULL AND " + F + SC + " GROUP BY CenterID) " +
+      " FROM " + CD + " WHERE deploymentdate IS NOT NULL AND " + F + filterCond + dateCond + " GROUP BY CenterID) " +
       "SELECT CASE WHEN age_days < 90 THEN '<3 mo' WHEN age_days < 180 THEN '3-6 mo' " +
       " WHEN age_days < 365 THEN '6-12 mo' WHEN age_days < 730 THEN '1-2 yr' ELSE '2+ yr' END AS band, " +
       " COUNT(*) AS devices FROM dep GROUP BY band",
     // "Deployment status" card repurposed to a segment breakdown (hub_master_segment, per user).
+    // No dateCond here: the segment breakdown has no date semantics of its own
+    // (filterCond's own segment component still legitimately narrows which
+    // segments show; only the deployment-date range is skipped).
     activeVsEnded:
       "SELECT IFNULL(NULLIF(TRIM(hub_master_segment), ''), '(blank)') AS status, " +
-      " COUNT(DISTINCT CenterID) AS devices FROM " + CD + " WHERE " + F + SC +
+      " COUNT(DISTINCT CenterID) AS devices FROM " + CD + " WHERE " + F + filterCond +
       " GROUP BY status ORDER BY devices DESC LIMIT 12",
     // "Top hubs" ranked by SPOKE COUNT (distinct centers per hub), not device
     // online/offline (the legacy spec read cloud_devices, unrelated to hubs here).
     hubs:
       "SELECT IFNULL(NULLIF(TRIM(HubName), ''), 'Unassigned') AS hub, " +
-      " COUNT(DISTINCT CenterID) AS spokes FROM " + CD + " WHERE " + F + SC +
+      " COUNT(DISTINCT CenterID) AS spokes FROM " + CD + " WHERE " + F + filterCond + dateCond +
       " GROUP BY hub ORDER BY spokes DESC LIMIT 12",
     reliability: centerUptimeSqlCD_(
       "SELECT center_id AS centerid, uptime_pct, ROUND(100 - uptime_pct, 1) AS downtime_pct, " +
-      " failures, ROUND(life_hrs / 24.0, 0) AS life_days FROM scored ORDER BY uptime_pct ASC", segment),
+      " failures, ROUND(life_hrs / 24.0, 0) AS life_days FROM scored ORDER BY uptime_pct ASC", filters),
     uptimeFleet: centerUptimeSqlCD_(
       "SELECT COUNT(*) AS scored, ROUND(AVG(uptime_pct), 1) AS avg_uptime, " +
       " ROUND(COUNTIF(uptime_pct >= 99) / NULLIF(COUNT(*), 0) * 100, 1) AS pct99, " +
@@ -148,15 +165,15 @@ function buildDashboardQuerySpecsCD(hub, segment) {
       " ROUND(COUNTIF(health_score >= 80) / NULLIF(COUNT(*), 0) * 100, 1) AS pct_healthy, " +
       // Center lifecycle (today − deploymentdate) + downtime, for the Centers summary.
       " ROUND(AVG(life_hrs) / 24 / 365, 1) AS avg_life_years, " +
-      " ROUND(AVG(downtime_hrs) / 24, 1) AS avg_downtime_days FROM scored", segment),
+      " ROUND(AVG(downtime_hrs) / 24, 1) AS avg_downtime_days FROM scored", filters),
     assetHealth: centerUptimeSqlCD_(
       "SELECT center_id AS centerid, uptime_pct, mtbf_hrs, failures, health_score " +
-      "FROM scored ORDER BY health_score ASC", segment)
+      "FROM scored ORDER BY health_score ASC", filters)
   };
   // The jira_data BQ specs (assets/cohortReliability) were removed from
   // buildDashboardQuerySpecs — the status/type donut and the batch cohort are
   // now computed in JS from the Jira SHEET asset index (see apiGetDashboardCD).
-  var specs = buildDashboardQuerySpecs(hub, segment).map(function (s) {
+  var specs = buildDashboardQuerySpecs(hub, filters).map(function (s) {
     return cd[s.key] ? { key: s.key, params: s.params, sql: cd[s.key], maxRows: s.maxRows } : s;
   });
   // reliability/assetHealth now return EVERY scored center (LIMIT removed above) so the
@@ -438,27 +455,49 @@ function coordsForCD_(row, geoStore) {
 function apiGetDashboardCD(options) {
   options = options || {};
   var hub = String(options.hub || '').slice(0, 120);
-  var segment = segClean_(options.segment);
+  var filters = {
+    segments: (options.filters && options.filters.segments) || [],
+    statuses: (options.filters && options.filters.statuses) || [],
+    states: (options.filters && options.filters.states) || [],
+    hubs: (options.filters && options.filters.hubs) || [],
+    dateFrom: String((options.filters && options.filters.dateFrom) || ''),
+    dateTo: String((options.filters && options.filters.dateTo) || '')
+  };
   return respond_(function () {
     // reliability/assetHealth now carry every scored center (2026-07-23 watchlist
     // merge), not just 12, so this payload can exceed withCache's 100KB-per-key
     // limit. cachePutLarge/cacheGetLarge (gzip + chunked, already used for
     // Center-360) replace withCache here — same TTL, no size ceiling.
-    var cacheKey = 'dashcd_v5_' + segSlug_(segment) + '_' + shortHash(hub);
+    var cacheKey = 'dashcd_v6_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
     }
-    var results = runQueriesParallel(buildDashboardQuerySpecsCD(hub, segment));
+    var results = runQueriesParallel(buildDashboardQuerySpecsCD(hub, filters));
     enrichCenterNamesCD_(results.reliability);
     enrichCenterNamesCD_(results.assetHealth);
-    // Jira metrics from the Sheet index; when a segment is selected, keep only
-    // assets whose center belongs to it (unmapped devices drop out — by design).
+    // Jira metrics from the Sheet index; keep only assets whose center passes
+    // the global filter (unmapped devices drop out whenever ANY of
+    // Segment/Status/State/Hub is active — matching the existing v5.8
+    // behavior for Segment alone). Date range checks the asset's OWN Jira
+    // Created date directly, not the center's deployment date.
     var assetIdx = getAssetIndex_();
-    if (segment) {
-      var segMap = centerSegmentMap_();
+    var hasCenterFilter = filters.segments.length || filters.statuses.length ||
+      filters.states.length || filters.hubs.length;
+    if (hasCenterFilter) {
+      var cfMap = centerFilterMap_();
       assetIdx = assetIdx.filter(function (a) {
-        return a.center_id != null && segMap[a.center_id] === segment;
+        return a.center_id != null && centerPassesFilters_(cfMap[a.center_id] || {}, {
+          segments: filters.segments, statuses: filters.statuses, states: filters.states, hubs: filters.hubs
+        });
+      });
+    }
+    if (filters.dateFrom || filters.dateTo) {
+      assetIdx = assetIdx.filter(function (a) {
+        var d = a.birthday || '';
+        if (filters.dateFrom && (!d || d < filters.dateFrom)) return false;
+        if (filters.dateTo && (!d || d > filters.dateTo)) return false;
+        return true;
       });
     }
     results.assets = assetsDonutFromIndex_(assetIdx);
@@ -467,8 +506,18 @@ function apiGetDashboardCD(options) {
     results.csTracker = readCsTracker();
     results.appName = CONFIG.APP_NAME;
     results.appVersion = CONFIG.APP_VERSION;
-    results.fleet = jiraDeviceStats_(segment);
-    results.segment = segment;
+    // NOT jiraDeviceStats_(filters): jiraDeviceStats_ (Numbers.js) still has the
+    // OLD (segment:string) signature — segClean_(filters) on a non-null object
+    // always yields the truthy string "[object Object]", which would
+    // unconditionally hit Numbers.js's still-dangling centerSegmentMap_() call
+    // (removed by Task 3, not yet replaced — see its report) and throw on
+    // EVERY call, not just filtered ones, turning the whole payload into an
+    // error envelope via respond_'s catch. jiraDeviceStats_ is out of this
+    // task's file scope (Numbers.js) — Task 7 ("jiraDeviceStats_ + device
+    // explorer filter threading") owns rewriting it to accept `filters` and
+    // must update this call site to jiraDeviceStats_(filters) at that time.
+    results.fleet = jiraDeviceStats_();
+    results.filters = filters;
     results.edition = 'center_details';
     results.flags = FLAGS_CD;
     results.hub = hub;

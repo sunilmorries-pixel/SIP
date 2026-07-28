@@ -181,12 +181,13 @@ function zohoParsedDates_() {
  * @param {string} hub '' for all hubs
  * @return {Array<{key:string, sql:string, params:Object}>}
  */
-function buildDashboardQuerySpecs(hub, segment) {
+function buildDashboardQuerySpecs(hub, filters) {
   var p = { hub: hub || '' };
   var NOW_IST_SQL = nowIstSql_();
   var FLEET_BUCKET_SQL = fleetBucketSql_();
-  var segZ = cdSegCond_(segment);
-  var segD = devSegCond_(segment);
+  var f = filters || {};
+  var centerCond = centerFilterSubqueryCond_(f);          // for cloud_devices / zoho_data
+  var supportDateCond = dateRangeCond_("SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt)", f.dateFrom, f.dateTo);
 
   return [
 
@@ -200,7 +201,7 @@ function buildDashboardQuerySpecs(hub, segment) {
         " UPPER(IFNULL(BatteryLevel,'')) = 'CHARGING' AS charging, " +
         " SAFE_CAST(CSQ AS INT64) AS csq, " +
         " SAFE_CAST(UnsyncedData AS INT64) AS unsynced " +
-        " FROM " + T('cloud_devices') + " WHERE " + HUB_FILTER_SQL + segD + ") " +
+        " FROM " + T('cloud_devices') + " WHERE " + HUB_FILTER_SQL + centerCond + ") " +
         "SELECT COUNT(*) AS total_devices, " +
         " COUNTIF(LastTimeStamp >= TIMESTAMP_SUB(" + NOW_IST_SQL + ", INTERVAL " + CONFIG.ONLINE_WINDOW_HOURS + " HOUR)) AS online_24h, " +
         " COUNTIF(LastTimeStamp >= TIMESTAMP_SUB(" + NOW_IST_SQL + ", INTERVAL 1 HOUR)) AS live_1h, " +
@@ -218,7 +219,7 @@ function buildDashboardQuerySpecs(hub, segment) {
       params: p,
       sql:
         "SELECT " + FLEET_BUCKET_SQL + " AS status, COUNT(*) AS cnt " +
-        "FROM " + T('cloud_devices') + " WHERE " + HUB_FILTER_SQL + segD + " " +
+        "FROM " + T('cloud_devices') + " WHERE " + HUB_FILTER_SQL + centerCond + " " +
         "GROUP BY status"
     },
     {
@@ -227,7 +228,7 @@ function buildDashboardQuerySpecs(hub, segment) {
       sql:
         "SELECT IFNULL(NULLIF(TRIM(FirmwareName), ''), 'Unknown') AS firmware, COUNT(*) AS devices " +
         "FROM " + T('cloud_devices') + " " +
-        "WHERE " + HUB_FILTER_SQL + segD + " AND LastTimeStamp >= TIMESTAMP_SUB(" + NOW_IST_SQL + ", INTERVAL 30 DAY) " +
+        "WHERE " + HUB_FILTER_SQL + centerCond + " AND LastTimeStamp >= TIMESTAMP_SUB(" + NOW_IST_SQL + ", INTERVAL 30 DAY) " +
         "GROUP BY firmware ORDER BY devices DESC LIMIT 8"
     },
     {
@@ -319,7 +320,7 @@ function buildDashboardQuerySpecs(hub, segment) {
       params: p,
       sql:
         "WITH t AS (SELECT status, " + zohoParsedDates_() + " " +
-        " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + segZ + ") " +
+        " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + ") " +
         "SELECT " +
         " COUNT(*) AS total_tickets, " +
         " COUNTIF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS open_tickets, " +
@@ -337,7 +338,7 @@ function buildDashboardQuerySpecs(hub, segment) {
       sql:
         "WITH t AS (SELECT status, " + slaDaysCaseSql_("IFNULL(IssueCategory,'')") + " AS sla_days, " +
         techBoolSql_("IFNULL(IssueCategory,'')") + " AS is_tech, " + zohoParsedDates_() + " " +
-        " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + segZ + "), " +
+        " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + "), " +
         "s AS (SELECT sla_days, is_tech, " +
         " (status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL) AS resolved, " +
         " CASE WHEN status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL " +
@@ -361,7 +362,7 @@ function buildDashboardQuerySpecs(hub, segment) {
       sql:
         "WITH t AS (SELECT IFNULL(NULLIF(TRIM(IssueCategory), ''), 'Uncategorised') AS category, status, " +
         slaDaysCaseSql_("IFNULL(IssueCategory,'')") + " AS sla_days, " + techBoolSql_("IFNULL(IssueCategory,'')") + " AS is_tech, " +
-        zohoParsedDates_() + " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + segZ + "), " +
+        zohoParsedDates_() + " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + "), " +
         "s AS (SELECT category, sla_days, is_tech, " +
         " (status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL) AS resolved, " +
         " CASE WHEN status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL " +
@@ -377,7 +378,7 @@ function buildDashboardQuerySpecs(hub, segment) {
       key: 'zohoTrend',
       params: p,
       sql:
-        "WITH t AS (SELECT " + zohoParsedDates_() + " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + segZ + ") " +
+        "WITH t AS (SELECT " + zohoParsedDates_() + " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + ") " +
         "SELECT month, SUM(created_n) AS created, SUM(closed_n) AS closed FROM (" +
         " SELECT FORMAT_DATETIME('%Y-%m', created) AS month, COUNT(*) AS created_n, 0 AS closed_n " +
         "  FROM t WHERE created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 12 MONTH) GROUP BY month " +
@@ -391,51 +392,51 @@ function buildDashboardQuerySpecs(hub, segment) {
       params: p,
       sql:
         "SELECT status, COUNT(*) AS cnt FROM " + T('zoho_data') + " " +
-        "WHERE " + HUB_FILTER_SQL + segZ + " AND status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + " " +
+        "WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + " " +
         "GROUP BY status ORDER BY cnt DESC LIMIT 10"
     },
     {
       key: 'zohoCategories',
       params: p,
       sql:
-        "WITH t AS (SELECT IssueCategory, HubName, hub_master_segment, " +
+        "WITH t AS (SELECT IssueCategory, HubName, hub_master_segment, CenterID, CreatedAt, " +
         " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
         " FROM " + T('zoho_data') + ") " +
         "SELECT IFNULL(NULLIF(TRIM(IssueCategory), ''), 'Uncategorised') AS category, COUNT(*) AS cnt " +
-        "FROM t WHERE " + HUB_FILTER_SQL + segZ + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
+        "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
         "GROUP BY category ORDER BY cnt DESC LIMIT 10"
     },
     {
       key: 'zohoPriority',
       params: p,
       sql:
-        "WITH t AS (SELECT priority, HubName, hub_master_segment, " +
+        "WITH t AS (SELECT priority, HubName, hub_master_segment, CenterID, CreatedAt, " +
         " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
         " FROM " + T('zoho_data') + ") " +
         "SELECT IFNULL(NULLIF(TRIM(priority), ''), 'Unset') AS priority, COUNT(*) AS cnt " +
-        "FROM t WHERE " + HUB_FILTER_SQL + segZ + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
+        "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
         "GROUP BY priority ORDER BY cnt DESC LIMIT 6"
     },
     {
       key: 'zohoChannel',
       params: p,
       sql:
-        "WITH t AS (SELECT Channel, HubName, hub_master_segment, " +
+        "WITH t AS (SELECT Channel, HubName, hub_master_segment, CenterID, CreatedAt, " +
         " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
         " FROM " + T('zoho_data') + ") " +
         "SELECT IFNULL(NULLIF(TRIM(Channel), ''), 'Unknown') AS channel, COUNT(*) AS cnt " +
-        "FROM t WHERE " + HUB_FILTER_SQL + segZ + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
+        "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
         "GROUP BY channel ORDER BY cnt DESC LIMIT 8"
     },
     {
       key: 'zohoSegment',
       params: p,
       sql:
-        "WITH t AS (SELECT hub_master_segment, HubName, " +
+        "WITH t AS (SELECT hub_master_segment, HubName, CenterID, CreatedAt, " +
         " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
         " FROM " + T('zoho_data') + ") " +
         "SELECT IFNULL(NULLIF(TRIM(hub_master_segment), ''), 'Unknown') AS segment, COUNT(*) AS cnt " +
-        "FROM t WHERE " + HUB_FILTER_SQL + segZ + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
+        "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
         "GROUP BY segment ORDER BY cnt DESC LIMIT 8"
     }
   ];

@@ -71,6 +71,58 @@ function devSegCond_(segment) {
 }
 
 /**
+ * column IN ('v1','v2',...) for a sanitized, non-empty array; '' otherwise.
+ * Segment/Status/State/Hub all reuse this — structurally identical dimensions
+ * ("match this column against a list of values").
+ * @param {string} column
+ * @param {Array<string>=} values
+ * @return {string}
+ */
+function multiCond_(column, values) {
+  var clean = (values || []).map(segClean_).filter(Boolean);
+  if (!clean.length) return '';
+  return ' AND ' + column + ' IN (' + clean.map(function (v) { return "'" + v + "'"; }).join(',') + ')';
+}
+
+/**
+ * DATE column bounds check against a 'YYYY-MM-DD' from/to pair; '' if both
+ * are empty/invalid. `column` must already be a DATE/DATETIME-typed SQL
+ * expression at the call site (callers wrap SAFE.PARSE_DATETIME themselves
+ * for string-typed columns like zoho_data.CreatedAt — see buildDashboardQuerySpecs).
+ * @param {string} column
+ * @param {string=} from
+ * @param {string=} to
+ * @return {string}
+ */
+function dateRangeCond_(column, from, to) {
+  var f = /^\d{4}-\d{2}-\d{2}$/.test(String(from || '')) ? from : '';
+  var t = /^\d{4}-\d{2}-\d{2}$/.test(String(to || '')) ? to : '';
+  var cond = '';
+  if (f) cond += " AND DATE(" + column + ") >= '" + f + "'";
+  if (t) cond += " AND DATE(" + column + ") <= '" + t + "'";
+  return cond;
+}
+
+/**
+ * Stable hash of a filters object for cache keys — sorts each array so
+ * ['A','B'] and ['B','A'] hash identically, and fixes key order so the
+ * shape of `filters` (Task 3) never produces two different hashes for the
+ * same logical filter set.
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,dateFrom:string,dateTo:string}} filters
+ * @return {string}
+ */
+function filterHash_(filters) {
+  var f = filters || {};
+  function sorted(arr) { return (arr || []).map(segClean_).filter(Boolean).sort(); }
+  var canonical = JSON.stringify({
+    segments: sorted(f.segments), statuses: sorted(f.statuses),
+    states: sorted(f.states), hubs: sorted(f.hubs),
+    dateFrom: String(f.dateFrom || ''), dateTo: String(f.dateTo || '')
+  });
+  return shortHash(canonical);
+}
+
+/**
  * Canonical Machine Uptime % (M-A1) + MTBF (M-A2) + Health Score (M-A6) at
  * CENTER grain, from sandbox data (ServiceWRK pending). Downtime = UNION of
  * merged device-failure ticket intervals [CreatedAt, ClosedAt|NOW] (overlaps

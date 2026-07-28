@@ -26,7 +26,6 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const crypto = require('crypto');
 
 const SERVER_DIR = path.join(__dirname, '..', '..', 'src', 'server');
 
@@ -42,13 +41,6 @@ function loadGas(fileNames) {
     Logger: { log: function () {} },
     CacheService: { getScriptCache: function () { return null; } },
     PropertiesService: { getScriptProperties: function () { return { getProperty: function () { return null; } }; } },
-    Utilities: {
-      DigestAlgorithm: { MD5: 'MD5' },
-      computeDigest: function (algo, text) {
-        if (algo !== 'MD5') throw new Error('Only MD5 algorithm is supported in test');
-        return Array.from(crypto.createHash('md5').update(text).digest());
-      }
-    },
     console: console,
   };
   vm.createContext(sandbox);

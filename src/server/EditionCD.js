@@ -565,13 +565,22 @@ function apiGetCentersCD(options) {
 
 function apiGetMapDataCD(options) {
   options = options || {};
+  var filters = {
+    segments: (options.filters && options.filters.segments) || [],
+    statuses: (options.filters && options.filters.statuses) || [],
+    states: (options.filters && options.filters.states) || [],
+    hubs: (options.filters && options.filters.hubs) || [],
+    dateFrom: String((options.filters && options.filters.dateFrom) || ''),
+    dateTo: String((options.filters && options.filters.dateTo) || '')
+  };
   return respond_(function () {
+    var cacheKey = 'mapcd_v6_' + getCacheEpoch_() + '_' + filterHash_(filters);
     if (options.bypassCache !== true) {
-      var cached = cacheGetLarge('mapcd_v5');
+      var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
     }
 
-    var centers = getCenter360RowsCD_();
+    var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters); });
     var assets = getAssetIndex_();               // from the Jira SHEET (Connector + ECG only)
     var geoStore = loadGeoStore();
 
@@ -614,17 +623,17 @@ function apiGetMapDataCD(options) {
       matchedAssets: Object.keys(assetCount).length,
       edition: 'center_details', flags: FLAGS_CD
     };
-    cachePutLarge('mapcd_v5', payload, 1800); // outlives the 10-min warm interval
+    cachePutLarge(cacheKey, payload, 1800); // outlives the 10-min warm interval
     return payload;
   });
 }
 
 /** Top-customers rollup over the center_details center universe. */
-function computeTopCustomersCD_() {
+function computeTopCustomersCD_(filters) {
   var meta = {};
   TOP_CUSTOMERS.forEach(function (c) { meta[c.hub_id] = c; });
 
-  var centers = getCenter360RowsCD_();
+  var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters || {}); });
   var assets = getAssetIndex_();
   var geoStore = loadGeoStore();
 
@@ -682,26 +691,45 @@ function computeTopCustomersCD_() {
 
 function apiGetTopCustomersCD(options) {
   options = options || {};
+  var filters = {
+    segments: (options.filters && options.filters.segments) || [],
+    statuses: (options.filters && options.filters.statuses) || [],
+    states: (options.filters && options.filters.states) || [],
+    hubs: (options.filters && options.filters.hubs) || [],
+    dateFrom: String((options.filters && options.filters.dateFrom) || ''),
+    dateTo: String((options.filters && options.filters.dateTo) || '')
+  };
   return respond_(function () {
-    return withCache('topcustcd_v5', function () { return computeTopCustomersCD_(); },
+    return withCache('topcustcd_v6_' + getCacheEpoch_() + '_' + filterHash_(filters),
+      function () { return computeTopCustomersCD_(filters); },
       options.bypassCache === true);
   });
 }
 
 function apiGetExecOverviewCD(options) {
   options = options || {};
+  var filters = {
+    segments: (options.filters && options.filters.segments) || [],
+    statuses: (options.filters && options.filters.statuses) || [],
+    states: (options.filters && options.filters.states) || [],
+    hubs: (options.filters && options.filters.hubs) || [],
+    dateFrom: String((options.filters && options.filters.dateFrom) || ''),
+    dateTo: String((options.filters && options.filters.dateTo) || '')
+  };
   return respond_(function () {
-    return withCache('execcd_v5', function () {
-      var centers = getCenter360RowsCD_();
-      var top = computeTopCustomersCD_();
+    return withCache('execcd_v6_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
+      var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters); });
+      var top = computeTopCustomersCD_(filters);
       var want = { kpis: 1, fleetStatus: 1, zohoKpis: 1, zohoTrend: 1, geo: 1, reliability: 1, uptimeFleet: 1, slaKpis: 1 };
-      var specs = buildDashboardQuerySpecsCD('').filter(function (s) { return want[s.key]; });
+      var specs = buildDashboardQuerySpecsCD('', filters).filter(function (s) { return want[s.key]; });
       specs.push({
         key: 'deviceAge', maxRows: 1,
         // Center age = days since the center's deploymentdate (center-grain).
         sql: "SELECT ROUND(AVG(age_days), 0) AS avg_age_days, MAX(age_days) AS max_age_days FROM (" +
              " SELECT DATE_DIFF(CURRENT_DATE(), DATE(deploymentdate), DAY) AS age_days" +
-             " FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_() + ")"
+             " FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_() +
+             multiCond_('hub_master_segment', filters.segments) + multiCond_('Status', filters.statuses) +
+             multiCond_('State', filters.states) + multiCond_('HubName', filters.hubs) + ")"
       });
       var r = runQueriesParallel(specs);
       enrichCenterNamesCD_(r.reliability);
@@ -734,6 +762,11 @@ function apiGetExecOverviewCD(options) {
         avgAgeDays: age.avg_age_days != null ? age.avg_age_days : null,
         uptimeFleet: (r.uptimeFleet && r.uptimeFleet[0]) || null,
         slaKpis: (r.slaKpis && r.slaKpis[0]) || null, cs: cs,
+        // NOT jiraDeviceStats_(filters): jiraDeviceStats_ (Numbers.js) still has the
+        // OLD (segment:string) signature — see apiGetDashboardCD's identical comment
+        // above for why passing `filters` here would throw on every call. Task 7
+        // ("jiraDeviceStats_ + device explorer filter threading") owns rewriting it
+        // to accept `filters` and must update this call site to jiraDeviceStats_(filters).
         fleet: jiraDeviceStats_(),
         edition: 'center_details', flags: FLAGS_CD
       };

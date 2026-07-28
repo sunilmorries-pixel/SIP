@@ -273,7 +273,7 @@ function cohortFromIndex_(assets, zohoFail) {
  * @param {boolean=} bypassCache force a rebuild (used by the warm trigger)
  */
 function getCenter360RowsCD_(bypassCache) {
-  var ckey = 'ctr360cd_v5';
+  var ckey = 'ctr360cd_v6';
   if (bypassCache !== true) {
     var cached = cacheGetLarge(ckey);
     if (cached) return cached;
@@ -291,6 +291,7 @@ function getCenter360RowsCD_(bypassCache) {
         "SELECT DISTINCT CenterID AS center_id, Centername AS center, HubID AS hub_id, HubName AS hub, " +
         " City AS city, State AS state, PinCode AS pin, Spoke_Country AS country, " +
         " IFNULL(TRIM(hub_master_segment), '') AS segment, " +   // segment = hub_master_segment (per user)
+        " IFNULL(TRIM(Status), '') AS status, " +                // NEW: needed for the global Status filter
         " CAST(NULL AS FLOAT64) AS lat, CAST(NULL AS FLOAT64) AS lng, " +
         " CAST(deploymentdate AS STRING) AS deployment_date " +
         "FROM " + T('center_details') + " WHERE " + cdFilter_()
@@ -306,6 +307,7 @@ function getCenter360RowsCD_(bypassCache) {
         hub_id: base.hub_id != null ? base.hub_id : '', city: base.city || '',
         state: base.state || '', pin: base.pin || '', country: base.country || '',
         segment: base.segment || '', // from center_details, not Zoho tickets
+        status: base.status || '',
         lat: base.lat, lng: base.lng, deployment_date: base.deployment_date || '',
         devices: tel ? tel.devices : 0, online: tel ? tel.online : 0,
         last_seen: (tel && tel.last_seen) || ''
@@ -369,11 +371,53 @@ function enrichCenterNamesCD_(rows) {
   return rows;
 }
 
-/** center_id → segment lookup from the cached Center-360 rows (baseline-filtered). */
-function centerSegmentMap_() {
+/** center_id → {segment, status, state, hub} from the cached Center-360 rows. */
+function centerFilterMap_() {
   var m = {};
-  getCenter360RowsCD_().forEach(function (r) { m[r.center_id] = r.segment || ''; });
+  getCenter360RowsCD_().forEach(function (r) {
+    m[r.center_id] = { segment: r.segment || '', status: r.status || '', state: r.state || '', hub: r.hub || '' };
+  });
   return m;
+}
+
+/**
+ * Does this Center-360 row (or anything carrying the same 4 fields + a
+ * deployment_date) pass the current global filter set? Empty array on any
+ * dimension = no restriction on that dimension (existing convention).
+ * @param {{segment:string,status:string,state:string,hub:string,deployment_date:string}} row
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,dateFrom:string,dateTo:string}} filters
+ * @return {boolean}
+ */
+function centerPassesFilters_(row, filters) {
+  var f = filters || {};
+  function inList(list, value) { return !list || !list.length || list.indexOf(value) !== -1; }
+  if (!inList(f.segments, row.segment)) return false;
+  if (!inList(f.statuses, row.status)) return false;
+  if (!inList(f.states, row.state)) return false;
+  if (!inList(f.hubs, row.hub)) return false;
+  var d = row.deployment_date ? row.deployment_date.slice(0, 10) : '';
+  if (f.dateFrom && (!d || d < f.dateFrom)) return false;
+  if (f.dateTo && (!d || d > f.dateTo)) return false;
+  return true;
+}
+
+/**
+ * Narrows an outer table (zoho_data, cloud_devices) to rows whose CenterID
+ * passes the center_details filter set. Generalizes the old devSegCond_
+ * (segment-only) to all 4 center-attribute dimensions uniformly — one code
+ * path instead of mixing native-column and subquery access per dimension.
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array}} filters
+ * @return {string}
+ */
+function centerFilterSubqueryCond_(filters) {
+  var f = filters || {};
+  var cond = multiCond_('hub_master_segment', f.segments) +
+             multiCond_('Status', f.statuses) +
+             multiCond_('State', f.states) +
+             multiCond_('HubName', f.hubs);
+  if (!cond) return '';
+  return ' AND CenterID IN (SELECT DISTINCT CenterID FROM ' + T('center_details') +
+    ' WHERE ' + cdFilter_() + cond + ')';
 }
 
 /** Resolve [lat,lng] for a center_details row: direct coords, else pin-geostore. */

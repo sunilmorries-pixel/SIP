@@ -83,4 +83,20 @@ maybeDescribe('center-grain invariants (live BigQuery)', function () {
     ]);
     expect(uptimeRows[0].scored).toBeLessThanOrEqual(kpiRows[0].centers);
   });
+
+  test('apiGetCentersCD Status filter narrows results to only that status (structural check via direct SQL, since apiGetCentersCD itself needs the Apps Script runtime)', async function () {
+    const specs = sandbox.buildDashboardQuerySpecsCD('', {});
+    // Proxy check: COUNT(DISTINCT CenterID) WHERE Status IN ('ACTIVE') must be
+    // strictly <= the unfiltered centerKpis.centers count, and > 0 (sandbox/dwh
+    // always has some active centers) — a full apiGetCentersCD() call needs the
+    // live Apps Script environment (PropertiesService/CacheService), so this
+    // test checks the underlying SQL/grain logic apiGetCentersCD's predicate
+    // ultimately reads from instead.
+    const kpiSpec = specs.find(function (s) { return s.key === 'centerKpis'; });
+    const allRows = await runQuery(kpiSpec.sql);
+    const activeSpecs = sandbox.buildDashboardQuerySpecsCD('', { statuses: ['ACTIVE'] });
+    const activeRows = await runQuery(activeSpecs.find(function (s) { return s.key === 'centerKpis'; }).sql);
+    expect(activeRows[0].centers).toBeGreaterThan(0);
+    expect(activeRows[0].centers).toBeLessThanOrEqual(allRows[0].centers);
+  });
 });

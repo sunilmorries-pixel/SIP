@@ -530,8 +530,14 @@ function apiGetCentersCD(options) {
   options = options || {};
   var clean = {
     search: String(options.search || '').toLowerCase().slice(0, 80),
-    hub: String(options.hub || '').slice(0, 120),
-    segment: String(options.segment || '').slice(0, 80),
+    filters: {
+      segments: ((options.filters && options.filters.segments) || []).map(segClean_).filter(Boolean),
+      statuses: ((options.filters && options.filters.statuses) || []).map(segClean_).filter(Boolean),
+      states: ((options.filters && options.filters.states) || []).map(segClean_).filter(Boolean),
+      hubs: ((options.filters && options.filters.hubs) || []).map(segClean_).filter(Boolean),
+      dateFrom: String((options.filters && options.filters.dateFrom) || ''),
+      dateTo: String((options.filters && options.filters.dateTo) || '')
+    },
     sortBy: String(options.sortBy || 'devices'),
     sortDir: options.sortDir === 'asc' ? 'asc' : 'desc',
     page: Math.max(0, parseInt(options.page, 10) || 0),
@@ -540,8 +546,7 @@ function apiGetCentersCD(options) {
   return respond_(function () {
     var joined = getCenter360RowsCD_();
     var filtered = joined.filter(function (row) {
-      if (clean.hub && row.hub !== clean.hub) return false;
-      if (clean.segment && row.segment !== clean.segment) return false;
+      if (!centerPassesFilters_(row, clean.filters)) return false;
       if (!clean.search) return true;
       return (String(row.center).toLowerCase().indexOf(clean.search) !== -1 ||
               String(row.center_id).indexOf(clean.search) !== -1 ||

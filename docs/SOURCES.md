@@ -57,9 +57,12 @@ for column semantics.
 
 ## Raw Data page (v5.2)
 
-A dedicated "Raw Data" tab exposes all **8** sources this app has ever touched — the 6
-BigQuery tables above plus both Google Sheets — each as its own paginated, full-column
-table with a full-table CSV export. Unlike every other page, **no site filter applies
+A dedicated "Raw Data" tab exposes **5** live sources (`rawSources_()` in `RawData.js`) —
+`center_details`/`cloud_devices`/`zoho_data` plus both Google Sheets — each as its own
+paginated, full-column table with a full-table CSV export. `device_metrics` and `jira_data`
+were deliberately dropped as user-facing raw sources in earlier releases (the BQ tables
+still exist; nothing in the app queries either one anymore). Unlike every other page,
+**no site filter applies
 here** (no global Segment/Status/State/Hub/date-range filter, no search, and — unlike
 the rest of the app — the Jira Issue-Type restriction above does *not* apply to this
 page's raw Jira-sheet table either). It exists purely for source reconciliation and data

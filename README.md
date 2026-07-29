@@ -19,7 +19,7 @@ dataset plus two Google Sheets: center reliability, revenue-at-risk, support-tic
 | **Map** | Leaflet map of located centers, clustered, colored by open tickets, clickable ticket-bucket legend |
 | **Top Customers** | Curated 27 "Top LE" hubs: KPIs, map, ranked bars, leaderboard (→ customer drawer) |
 | **Numbers** | Source-reconciliation counts + raw paginated `center_details` table (Devices + Mapped columns) |
-| **Raw Data** | All 8 underlying sources (6 BQ tables + 2 Sheets) as paginated, unfiltered tables with pill-selector and full CSV export. No site filters apply |
+| **Raw Data** | All 5 underlying sources (3 BQ tables + 2 Sheets) as paginated, unfiltered tables with pill-selector and full CSV export. No site filters apply |
 
 Interactive everywhere: global search, a **Filters** drawer (Segment / Status / State / Hub
 multi-select + date range, with Status defaulting to `ACTIVE` as a removable chip), light/dark
@@ -43,7 +43,7 @@ demo-sip/
 │   │   ├── SlaCatalog.js     # SLA catalog + Tech/Non-Tech classification
 │   │   ├── Numbers.js         # Numbers page + Jira-sheet device stats (Connector/ECG Machine only)
 │   │   ├── SheetSource.js    # reads Jira + CS Google Sheets (REST API) + raw sheet reader
-│   │   ├── RawData.js        # Raw Data page: all 8 sources, paginated, CSV export
+│   │   ├── RawData.js        # Raw Data page: all 5 sources, paginated, CSV export
 │   │   ├── JiraDump.js       # offline device snapshot (Sheets-API fallback)
 │   │   ├── Api.js            # legacy endpoints (retained; CD versions are live)
 │   │   ├── TopCustomers.js   # curated 27 "Top LE" hubs

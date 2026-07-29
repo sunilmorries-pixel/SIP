@@ -99,4 +99,30 @@ maybeDescribe('center-grain invariants (live BigQuery)', function () {
     expect(activeRows[0].centers).toBeGreaterThan(0);
     expect(activeRows[0].centers).toBeLessThanOrEqual(allRows[0].centers);
   });
+
+  test('multi-value segment filter: 2 segments selected sums to each selected individually (no double-counting)', async function () {
+    var specs = sandbox.buildDashboardQuerySpecsCD('', {});
+    var segOptRows = await runQuery(specs.find(function (s) { return s.key === 'segmentOptions'; }).sql);
+    var segs = segOptRows.map(function (r) { return r.segment; }).slice(0, 2);
+    if (segs.length < 2) return; // skip gracefully if fewer than 2 real segments exist
+    var eachTotal = 0;
+    for (var i = 0; i < segs.length; i++) {
+      var s1 = sandbox.buildDashboardQuerySpecsCD('', { segments: [segs[i]] });
+      var r1 = await runQuery(s1.find(function (s) { return s.key === 'centerKpis'; }).sql);
+      eachTotal += r1[0].centers;
+    }
+    var sBoth = sandbox.buildDashboardQuerySpecsCD('', { segments: segs });
+    var rBoth = await runQuery(sBoth.find(function (s) { return s.key === 'centerKpis'; }).sql);
+    expect(rBoth[0].centers).toBe(eachTotal); // a center holds exactly one segment value — no overlap possible
+  });
+
+  test('date-range filter narrows deploymentAge band totals versus unfiltered', async function () {
+    var unfiltered = sandbox.buildDashboardQuerySpecsCD('', {});
+    var uRows = await runQuery(unfiltered.find(function (s) { return s.key === 'deploymentAge'; }).sql);
+    var uTotal = uRows.reduce(function (sum, r) { return sum + r.devices; }, 0);
+    var filtered = sandbox.buildDashboardQuerySpecsCD('', { dateFrom: '2024-01-01', dateTo: '2024-12-31' });
+    var fRows = await runQuery(filtered.find(function (s) { return s.key === 'deploymentAge'; }).sql);
+    var fTotal = fRows.reduce(function (sum, r) { return sum + r.devices; }, 0);
+    expect(fTotal).toBeLessThanOrEqual(uTotal);
+  });
 });

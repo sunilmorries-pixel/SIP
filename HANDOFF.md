@@ -1,9 +1,70 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-07-28 · **Version:** 5.10 + centers-tab-kpi-rebuild · **Status:** LIVE —
+**Last updated:** 2026-07-29 · **Version:** 5.10 + centers-tab-kpi-rebuild (LIVE) + global-nav-and-
+universal-filter (git HEAD, **NOT YET DEPLOYED** — see callout below) · **Status:** LIVE —
 Apps Script **version 39** deployed to the stable production URL
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always).
-Git, the Apps Script editor content, and the live deployment are all in sync at commit `f5c3d9f`.
+The Apps Script **editor content** (via `clasp push`) matches git HEAD byte-for-byte, but the
+**live deployment still serves version 39** (pre-dates this work) — git/editor and the live
+deployment have deliberately diverged; see the callout immediately below.
+
+> **2026-07-29 global nav + universal filter (built via Subagent-Driven Development, all 13
+> tasks + preview verification complete — editor pushed, PRODUCTION NOT REDEPLOYED):**
+> - **Nav reorder**: Overview is now the first tab (was after Top Customers); the other 7 tabs
+>   keep their prior relative order.
+> - **Universal filter**: one global selection (Segment · Status · State · Hub, all multi-select,
+>   plus a Date range) replaces the old per-page Segment `<select>`s on Asset/Centers/Support. A
+>   single "Filters" button in the topbar opens a drawer; a badge shows the active-filter count
+>   and individually-removable chips show exactly what's applied. **Status defaults to `['ACTIVE']`**
+>   on load (visible as a chip, not hidden). Date range is page-interpreted: Centers/Map →
+>   deployment date, Support → Zoho ticket created date, Asset → Jira created date; Top
+>   Customers/Overview get Segment/Status/State/Hub only (no date — an explicit, documented
+>   exemption); Numbers/Raw Data are exempt from every dimension (unchanged, diagnostic pages).
+> - **Architecture deviation from the original design spec (documented, not silent)**:
+>   `getCenter360RowsCD_()` fetches the FULL unfiltered center universe once (a single global
+>   cache entry) and every page (Map/Top Customers/Overview/Centers-table) filters that one
+>   cached array via a shared JS predicate (`centerFilterMap_`/`centerPassesFilters_`), instead of
+>   the design spec's assumed SQL-threaded, per-filter-set cache. The codebase had already moved
+>   to this simpler pattern before this feature started; the implementation plan was written to
+>   match the real code rather than force the spec's outdated assumption.
+> - **Cache-epoch mechanism**: `getCacheEpoch_()` (a Script Properties counter) is now folded
+>   into every dashboard/map/exec/top-customers/device cache key
+>   (`<name>_v6_<epoch>_<filterHash>_...`) — `clearDashboardCache()` just bumps the epoch instead
+>   of enumerating segment values via a live BigQuery query (the old approach didn't scale to a
+>   5-dimension filter).
+> - **Brand tagline fixed**: "Service Insight Platform" → "Service Insights Platform" (2 spots:
+>   header + footer). **New info icon** next to the tagline opens the existing metric-tooltip
+>   popover mechanism with a static "about the product" entry.
+> - **2 real gaps found and fixed during the Task 12 preview-verification pass** (neither caught
+>   by any of the 11 prior task reviews): (1) the new info icon's button had no `data-metric`
+>   attribute and no `METRIC_INFO` entry, so it was dead — clicking did nothing; (2) the State/Hub
+>   filter comboboxes read their option list from a `data-options` DOM attribute nothing ever
+>   populated (only ever written back as `'[]'`), so they were permanently empty and
+>   unsearchable — fixed by adding `stateOptions`/`hubOptions` BigQuery specs (analogous to the
+>   existing `segmentOptions`) and reading them from `state.lastDashboard`, matching the
+>   established `segmentOptions` pattern.
+> - **Verification**: `npm test` 49/49 unit tests pass. `npm run test:reconcile` 14/14 live
+>   reconciliation tests pass against the **`magnaquest-sand-box.abi_team_sip_devtest_poc`**
+>   sandbox project (the only BigQuery project the local
+>   `credentials/abi_team_sip_bq_access_service_account.json` key can access — it does NOT have
+>   `bigquery.jobs.create` on `tricogde-dwh`; use `QA_BQ_PROJECT_OVERRIDE=magnaquest-sand-box
+>   QA_BQ_DATASET_OVERRIDE=magnaquest-sand-box.abi_team_sip_devtest_poc` to point the harness at
+>   it, per `test/helpers/bq.js`'s override mechanism — the app's real `Config.js` still points
+>   at `tricogde-dwh` and that is NOT changed by this work). Full local preview pass: 0 console
+>   errors across all 8 tabs, drawer open/apply/chip-remove/reopen-state all verified correct in
+>   both light and dark themes. Mobile-viewport (375×812) could not be live-exercised in this
+>   session's browser-automation environment (a tooling limitation, not an app issue) — verified
+>   instead via static review of `Styles.html`'s 820px/560px responsive rules.
+> - **`clasp push --force` done and verified**: re-pulled into a scratch dir and diffed against
+>   `src/` — byte-for-byte identical. **`clasp deploy`/production redeploy was deliberately NOT
+>   run** — per this session's established, twice-reinforced convention, that step waits for the
+>   user's explicit go-ahead. To ship: `clasp deploy -i <stable-deployment-id> -d "<description>"`
+>   (or Deploy → Manage deployments → ✏️ edit → New version → Deploy in the editor UI).
+> - Plan: `docs/superpowers/plans/2026-07-28-global-nav-and-universal-filter.md` (13 tasks, all
+>   complete). Spec: `docs/superpowers/specs/2026-07-28-global-nav-and-universal-filter-design.md`.
+> - **Still open**: `clasp deploy` to production (waiting on user go-ahead); the
+>   `BQ_SERVICE_ACCOUNT_KEY` GitHub secret for CI's reconciliation tier (pre-existing open item,
+>   unrelated to this feature — see item 11 in section 6 below).
 
 > **2026-07-28 deploy note:** this single deploy promotes EVERYTHING that had accumulated since
 > v5.9 (@34) in one shot — the connection layer swap to the real `tricogde-dwh.abi_tables`

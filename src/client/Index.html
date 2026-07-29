@@ -23,7 +23,9 @@
     </span>
     <div class="brand-text">
       <span class="brand-name">SIP <span class="brand-accent">Insights</span></span>
-      <span class="brand-sub"><b>Tricog</b> · Service Insight Platform</span>
+      <span class="brand-sub"><b>Tricog</b> · Service Insights Platform
+        <button id="appInfoDot" class="info-dot" type="button" aria-label="About SIP Insights" tabindex="0">i</button>
+      </span>
     </div>
   </div>
 
@@ -44,6 +46,17 @@
       </svg>
       <span>Refresh</span>
     </button>
+
+    <div class="filter-control">
+      <button id="globalFilterBtn" class="btn btn-ghost" type="button" aria-haspopup="dialog" aria-expanded="false">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span>Filters</span>
+        <span id="filterBadge" class="filter-badge">1</span>
+      </button>
+      <div id="filterChips" class="filter-chips" role="group" aria-label="Active filters"></div>
+    </div>
 
     <div class="theme-toggle" role="group" aria-label="Colour theme">
       <button id="themeDark" type="button" aria-pressed="true" aria-label="Dark theme" title="Dark theme">
@@ -79,13 +92,13 @@
 </div>
 
 <nav class="tabs" role="tablist" aria-label="Dashboard views">
+  <!-- Overview is both the landing page AND now the first tab (2026-07-29). -->
+  <button class="tab is-active" id="tab-overview" role="tab" aria-selected="true" aria-controls="panel-overview">Overview</button>
   <button class="tab" id="tab-centers" role="tab" aria-selected="false" aria-controls="panel-centers" tabindex="-1">Centers / Customers</button>
   <button class="tab" id="tab-support" role="tab" aria-selected="false" aria-controls="panel-support" tabindex="-1">Support / CS</button>
   <button class="tab" id="tab-asset"   role="tab" aria-selected="false" aria-controls="panel-asset" tabindex="-1">Asset</button>
   <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" tabindex="-1">Map</button>
   <button class="tab" id="tab-topcust" role="tab" aria-selected="false" aria-controls="panel-topcust" tabindex="-1">Top Customers</button>
-  <!-- Overview stays the default landing page (is-active) but sits after Top Customers in the bar. -->
-  <button class="tab is-active" id="tab-overview" role="tab" aria-selected="true" aria-controls="panel-overview">Overview</button>
   <button class="tab" id="tab-numbers" role="tab" aria-selected="false" aria-controls="panel-numbers" tabindex="-1">Numbers</button>
   <button class="tab" id="tab-rawdata" role="tab" aria-selected="false" aria-controls="panel-rawdata" tabindex="-1">Raw Data</button>
 </nav>
@@ -185,16 +198,6 @@
 
   <!-- ══════════════ VIEW 1 · ASSET ══════════════ -->
   <section id="panel-asset" class="panel" role="tabpanel" aria-labelledby="tab-asset" hidden>
-    <div class="page-filters" role="group" aria-label="Asset page filters">
-      <span class="filter-chip" title="No baseline filter — every center in center_details, any status. Applies to every number on this page.">
-        All centers
-      </span>
-      <label class="filter-label" for="assetSegment">Segment</label>
-      <select id="assetSegment" class="select page-seg" data-page="asset">
-        <option value="">All segments</option>
-      </select>
-      <span class="filter-note">Segment follows each device’s mapped center — unmapped devices drop out when a segment is selected.</span>
-    </div>
     <div class="page-summary card">
       <span class="exec-eyebrow">Executive summary</span>
       <p id="assetSummary" class="exec-narrative">Loading the story from live data…</p>
@@ -335,16 +338,6 @@
 
   <!-- ══════════════ VIEW 2 · CENTERS / CUSTOMERS ══════════════ -->
   <section id="panel-centers" class="panel" role="tabpanel" aria-labelledby="tab-centers" hidden>
-    <div class="page-filters" role="group" aria-label="Centers page filters">
-      <span class="filter-chip" title="No baseline filter — every center in center_details, any status. Applies to every number on this page.">
-        All centers
-      </span>
-      <label class="filter-label" for="centersSegment">Segment</label>
-      <select id="centersSegment" class="select page-seg" data-page="centers">
-        <option value="">All segments</option>
-      </select>
-      <span class="filter-note">Applies to every KPI, chart and the Center 360 table.</span>
-    </div>
     <div class="page-summary card">
       <span class="exec-eyebrow">Executive summary</span>
       <p id="centersSummary" class="exec-narrative">Loading the story from live data…</p>
@@ -453,16 +446,6 @@
 
   <!-- ══════════════ VIEW 3 · SUPPORT / CS ══════════════ -->
   <section id="panel-support" class="panel" role="tabpanel" aria-labelledby="tab-support" hidden>
-    <div class="page-filters" role="group" aria-label="Support page filters">
-      <span class="filter-chip" title="No baseline filter — every center in center_details, any status. Applies to every number on this page.">
-        All centers
-      </span>
-      <label class="filter-label" for="supportSegment">Segment</label>
-      <select id="supportSegment" class="select page-seg" data-page="support">
-        <option value="">All segments</option>
-      </select>
-      <span class="filter-note">Zoho tickets filter by segment; CS-tracker cards have no segment lineage and always show all segments.</span>
-    </div>
     <div id="supportKpiGrid" class="kpi-grid"></div>
 
     <div class="card-grid">
@@ -852,7 +835,7 @@
   </section>
 
   <footer class="page-footer">
-    <span><?= appName ?> v<?= appVersion ?> · a Tricog Service Insight Platform · BigQuery · Apps Script</span>
+    <span><?= appName ?> v<?= appVersion ?> · a Tricog Service Insights Platform · BigQuery · Apps Script</span>
     <span>Data refreshes every 5 min · read-only service account</span>
   </footer>
 </main>
@@ -874,6 +857,52 @@
   <div id="centerDrawerBody" class="center-panel-body">
     <div class="chart-empty">Select a center to load details</div>
   </div>
+</aside>
+
+<!-- Global filter drawer: Segment/Status/State/Hub/Date range, applies everywhere -->
+<div id="filterScrim" class="drawer-scrim" hidden></div>
+<aside id="filterDrawer" class="center-drawer" hidden aria-label="Filters" role="dialog" aria-modal="true">
+  <header class="center-panel-head">
+    <div>
+      <h2 class="card-title">Filters</h2>
+      <p class="card-sub">Applies across every page except Numbers and Raw Data</p>
+    </div>
+    <button id="filterDrawerClose" class="btn btn-ghost btn-icon" type="button" aria-label="Close filters">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </header>
+  <div class="center-panel-body">
+    <section class="filter-section">
+      <h3 class="filter-section-title">Segment</h3>
+      <div id="filterSegment" class="filter-checklist" role="group" aria-label="Filter by segment"></div>
+    </section>
+    <section class="filter-section">
+      <h3 class="filter-section-title">Status</h3>
+      <div id="filterStatus" class="filter-checklist" role="group" aria-label="Filter by status"></div>
+    </section>
+    <section class="filter-section">
+      <h3 class="filter-section-title">State</h3>
+      <div id="filterState" class="filter-combo" data-dim="states"></div>
+    </section>
+    <section class="filter-section">
+      <h3 class="filter-section-title">Hub</h3>
+      <div id="filterHub" class="filter-combo" data-dim="hubs"></div>
+    </section>
+    <section class="filter-section">
+      <h3 class="filter-section-title">Date range</h3>
+      <div class="filter-daterange">
+        <label>From <input id="filterDateFrom" class="input" type="date"></label>
+        <label>To <input id="filterDateTo" class="input" type="date"></label>
+      </div>
+      <p class="filter-note">Centers/Map: deployment date · Support: ticket created date · Asset: Jira created date · Top Customers/Overview: Segment/Status/State/Hub only, no date · Numbers/Raw Data: exempt from all filters.</p>
+    </section>
+  </div>
+  <footer class="center-panel-head" style="border-top:1px solid var(--border);border-bottom:none;">
+    <button id="filterClearBtn" class="btn btn-ghost" type="button">Clear all</button>
+    <button id="filterApplyBtn" class="btn btn-primary" type="button">Apply</button>
+  </footer>
 </aside>
 
 <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>

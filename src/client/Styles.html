@@ -620,6 +620,12 @@ body[data-theme="light"] .bg-decor {
   padding: 5px 8px; border-radius: 6px;
 }
 .filter-combo-list label:hover { background: var(--surface-2); }
+/* Non-interactive status row inside the list (Hub's "Searching…" / "No hub
+   matches" / "Search failed") — muted + italic so it never reads as an option. */
+.filter-combo-list label.filter-combo-note {
+  color: var(--text-3); font-style: italic; cursor: default;
+}
+.filter-combo-list label.filter-combo-note:hover { background: none; }
 .filter-combo-selected { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
 
 @media (max-width: 820px) {

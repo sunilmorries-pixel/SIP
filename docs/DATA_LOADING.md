@@ -13,7 +13,7 @@ redeploy. Row caps in the app support 50–80k per source.
 
 | Table | Sandbox now | Production target | Gap / action |
 |---|---|---|---|
-| `center_details` | ~55.7k centers (28,299 after F2P-exclusion), 70 cols | full centers dim | **reload WITH `DeviceID` + `MacSerialID`** (see below) — highest priority |
+| `center_details` | ~35.8k rows / 27,410 distinct centers (no F2P-exclusion — full universe), 70 cols | full centers dim | **reload WITH `DeviceID` + `MacSerialID`** (see below) — highest priority |
 | `cloud_devices` | ~11,331 devices | ~49,137 device master | load full device master (currently the serial→center bridge) |
 | `zoho_data` | ~84,545 tickets | (full) | **add the business-hours SLA-quality fields** (see below) |
 | `device_metrics` | dup rows | (full) | reload if partial |
@@ -42,11 +42,19 @@ Per-status transition timestamps (a changelog grain) are needed for true lifecyc
 ## Required columns (do not drop or rename — the app queries these exact names)
 
 ### `center_details` — one row per center (SOLE center source)
-`CenterID`, center name, `city`, `state`, `pin`, `latitude`, `longitude`, `deploymentdate`,
-`deactivationdate`, `Status`, `Spoke_Center_Segment`, `Current_MRR`, `Device_Rental`
-**+ (requested) `DeviceID`, `MacSerialID`.**
-> Grain = one row per `CenterID`. All center counts are `COUNT(DISTINCT CenterID)`; `F2P_CENTER`
-> segment is excluded by the app. `latitude`/`longitude` drive the map (only ~3,428 populated today).
+`CenterID`, center name, `city`, `state`, `pin` (was bare `pin`, now `PinCode`),
+`deploymentdate`, `deactivationdate`, `Status`, `Spoke_Center_Segment`, `Current_MRR`,
+`Device_Rental`, **`DeviceID`/`MacSerialID`/`MachineType`** (arrived with the 2026-07-07
+reload — the "requested" ask below is fulfilled; `deviceCenterMap_()` in `Numbers.js` uses
+them as a fallback serial→center source).
+> ⚠️ **`latitude`/`longitude` no longer exist** — the same 2026-07-07 reload that added the
+> serial columns REMOVED the coordinate columns. The pin-geocode store (`server/Geo.js`,
+> `runGeocodeBatch()`) is now the *only* coordinate source; centers without a stored geocode
+> simply don't plot on the map.
+> Grain = one row per `CenterID` (duplicate rows exist; center counts always use
+> `COUNT(DISTINCT CenterID)`). No segment is excluded by the app — the old F2P-exclusion
+> baseline was removed 2026-07-22; `Status` is now a user-facing global filter (defaults to
+> `ACTIVE`, removable).
 
 ### `cloud_devices` — one row per device (device master + latest telemetry)
 `DeviceID`, `CenterID`, `Centername`, `HubName`, `IMSI`, `CSQ`, `LastTimeStamp` (TIMESTAMP,

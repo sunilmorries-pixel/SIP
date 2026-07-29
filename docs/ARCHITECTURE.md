@@ -26,7 +26,7 @@ See `docs/SOURCES.md` for the full source-of-truth table. Summary of current rol
 
 | Source | Rows | Role in the dashboard |
 |---|---|---|
-| `center_details` (BQ) | ~55.7k (28,299 F2P-excluded) | **Sole center source** — counts, uptime/MTBF/health, geo, deployment age |
+| `center_details` (BQ) | ~35.8k rows / 27,410 distinct centers (dup rows per center; no F2P-exclusion — full universe) | **Sole center source** — counts, uptime/MTBF/health, geo, deployment age |
 | Jira devices Google Sheet | ~43.8k | **Devices/fleet count**; serial (from `Summary`) → center via `cloud_devices` |
 | `cloud_devices` (BQ) | ~11.3k | Fleet-status donut, device explorer, serial→center bridge |
 | `zoho_data` (BQ) | ~84.5k | Support tickets, SLA compliance, uptime-downtime proxy. Date strings via `SAFE.PARSE_DATETIME('%d-%b-%Y %I:%M:%S %p', …)` |
@@ -44,7 +44,7 @@ with full-table CSV export. `swap` tickets are now classified as technical in
 ## Key design decisions
 
 ### 1. One payload, parallel queries
-`apiGetDashboard()` fans ~14 aggregate queries out through `UrlFetchApp.fetchAll`,
+`apiGetDashboardCD()` fans ~14 aggregate queries out through `UrlFetchApp.fetchAll`,
 so total latency ≈ the slowest single query rather than the sum. One failed panel
 returns `null` and the UI shows an empty state for that card only — a single bad
 query never sinks the whole dashboard.
@@ -55,11 +55,18 @@ ever leave BigQuery for the device explorer, which is paginated server-side
 (`LIMIT @limit OFFSET @offset` + `COUNT(*) OVER()` for total).
 
 ### 3. Caching
-`CacheService` stores each payload JSON for 5 minutes, keyed by an MD5 of the
-filter set (current keys `dashcd_v1`/`execcd_v1`/`numbers_v2`/`topcustcd` + an
-`_a` suffix when the Active-centers toggle is on). The Refresh button passes
-`bypassCache: true`. Bump the version suffix when changing query shapes to invalidate
-everything; `clearDashboardCache()` in `Setup.js` clears the current key set.
+Every filter-aware endpoint (`apiGetDashboardCD`, `apiGetMapDataCD`, `apiGetTopCustomersCD`,
+`apiGetExecOverviewCD`, …) keys its `CacheService`/large-cache entry on a version tag
+(currently `_v6_`) + the current cache epoch (`getCacheEpoch_()`, a counter in Script
+Properties) + a hash of the active 5-dimension filter set (`filterHash_(filters)`) — e.g.
+`dashcd_v6_<epoch>_<filterHash>_<hub>`. `clearDashboardCache()` in `Setup.js` bumps
+`CACHE_EPOCH` by one, instantly invalidating every existing filtered variant at once
+instead of enumerating segment values one by one; the handful of caches that don't vary
+by filter (Center-360 base fetch, Numbers, raw-sheet snapshots) are removed directly.
+TTL is `CONFIG.CACHE_TTL_SECONDS` (900s / 15 min) for the main dashboard payload, and 1800s
+for the larger shared caches (Center-360, map) — both longer than `Warm.js`'s 10-minute
+warm-trigger interval, so a warmed value never expires before the next warm pass. The
+Refresh button passes `bypassCache: true`.
 
 ### 4. Injection safety
 - Untrusted values (search text, hub, status, paging) → **named query parameters**.
@@ -98,8 +105,8 @@ shipped tokens in `Styles.html` are the source of truth.)
 ## Request lifecycles
 
 **Dashboard load**
-1. `App.init()` → skeletons on, `gsCall('apiGetDashboard', {hub})`
-2. `Api.apiGetDashboard` → cache hit? return : build specs → `runQueriesParallel`
+1. `App.init()` → skeletons on, `gsCall(ep('apiGetDashboard'), {filters, bypassCache})` (`ep()` appends `CD` — the live edition)
+2. `apiGetDashboardCD` → cache hit (epoch + filterHash key)? return : build specs → `runQueriesParallel`
 3. Client renders KPIs (count-up), stages chart options, flushes visible ones.
 
 **Device explorer**
@@ -115,6 +122,7 @@ Toggle state persists in `localStorage`.
 - **New chart**: add a query spec in `Queries.js` → add a builder in `Charts.html`
   → add a card in `Index.html` → wire it in `renderDashboard()`.
 - **New filter**: add a named parameter to the relevant specs, thread it through
-  `apiGetDashboard(options)`, include it in the cache key.
+  `apiGetDashboardCD(options)` (and the sibling `*CD` endpoints), include it in the cache key
+  (`filterHash_`).
 - **Per-page design overrides**: create `design-system/sip-insights/pages/<page>.md`;
   it takes precedence over MASTER.md (see design-system README section in MASTER).

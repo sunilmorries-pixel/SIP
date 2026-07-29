@@ -12,16 +12,17 @@ dataset plus two Google Sheets: center reliability, revenue-at-risk, support-tic
 
 | Tab | Insights |
 |---|---|
-| **Overview** | Executive rollup: narrative hero, device-age ring, KPI strip, **Fleet status (Jira)** lifecycle donut, ticket flow, centers-needing-attention + reliability tables |
-| **Asset** | Fleet health (uptime/MTBF/health M-A1/A2/A6), fleet-status donut, asset health-score table, failure-analysis cohort (M-A3/A5), reliability watchlist, device explorer (search/sort/paginate/CSV) |
-| **Centers / Customers** | Geo, deployment age, active-vs-ended, top hubs, Center-360 table (clickable rows → drawer) |
+| **Overview** | Executive rollup: narrative hero, device-age ring, KPI strip, **Device status (Jira)** lifecycle donut, ticket flow, centers-needing-attention + reliability tables |
+| **Centers / Customers** | Geo, deployment age, active-vs-ended, top hubs, reliability watchlist (uptime M-A1 / MTBF M-A2 / health M-A6), Center-360 table (clickable rows → drawer) |
 | **Support / CS** | Zoho KPIs, ticket flow, **SLA-compliance suite** (within% + Tech/Non-Tech + breach-by-type), backlog, categories; CS-sheet TAT/machines/owners |
+| **Asset** | Device age (executive summary), fleet-status donut, firmware spread, asset lifecycle/type breakdown, failure-analysis cohort (M-A3/A5), device explorer (search/sort/paginate/CSV) |
 | **Map** | Leaflet map of located centers, clustered, colored by open tickets, clickable ticket-bucket legend |
 | **Top Customers** | Curated 27 "Top LE" hubs: KPIs, map, ranked bars, leaderboard (→ customer drawer) |
 | **Numbers** | Source-reconciliation counts + raw paginated `center_details` table (Devices + Mapped columns) |
 | **Raw Data** | All 8 underlying sources (6 BQ tables + 2 Sheets) as paginated, unfiltered tables with pill-selector and full CSV export. No site filters apply |
 
-Interactive everywhere: global search/hub/segment filters, **Active-centers toggle**, light/dark
+Interactive everywhere: global search, a **Filters** drawer (Segment / Status / State / Hub
+multi-select + date range, with Status defaulting to `ACTIVE` as a removable chip), light/dark
 theme, a shared center-detail drawer (KPIs + Zoho ticket links + Jira-devices table), **ⓘ
 metric-explanation tooltips** on every KPI and card (formula + data source), flowing animations,
 auto-refresh every 5 minutes, skeleton loading, graceful error/empty states. **Responsive** down
@@ -50,7 +51,8 @@ demo-sip/
 │   │   ├── Geo.js            # progressive geocoder
 │   │   ├── Join.js           # Apps Script hash-join utils
 │   │   ├── WebApp.js         # doGet router + HTML includes
-│   │   └── Setup.js          # one-time key setup + diagnostics
+│   │   ├── Setup.js          # one-time key setup + diagnostics
+│   │   └── Warm.js           # cache-warming trigger (installWarmTrigger(), every 10 min)
 │   └── client/               # HTML-service frontend
 │       ├── Index.html        # page shell (8 tabs, shared drawer)
 │       ├── Styles.html       # Tricog design tokens + components + motion

@@ -11,7 +11,7 @@ for column semantics.
 
 | Table | Grain | Powers | Watch out |
 |---|---|---|---|
-| `center_details` | 1 row / center (~55.7k; **28,299** after F2P-exclusion) | **SOLE center source** — all center counts, uptime/MTBF/health, geo, deployment age | `COUNT(DISTINCT CenterID)` always; F2P via `CD_SEG_FILTER`; `Status='ACTIVE'` via the toggle; has `Current_MRR`/`Device_Rental`/`Status`/`Spoke_Center_Segment` but **NO serial/`DeviceID`/`MacSerialID`** |
+| `center_details` | dup rows per center (~35.8k rows; **27,410** distinct centers) | **SOLE center source** — all center counts, uptime/MTBF/health, geo, deployment age | `COUNT(DISTINCT CenterID)` always; no F2P baseline (`cdFilter_()` unconditionally returns `1=1`, removed 2026-07-22); `Status` is one of the 5 global-filter dimensions (multi-select, defaults to `ACTIVE` as a removable chip), not a toggle; has `Current_MRR`/`Device_Rental`/`Status`/`Spoke_Center_Segment`, and (since the 2026-07-07 reload) `DeviceID`/`MacSerialID`/`MachineType` too — `deviceCenterMap_()` in `Numbers.js` uses them as a fallback serial→center source behind `cloud_devices` |
 | `cloud_devices` | 1 row / device (~11.3k) | Fleet-status donut, device explorer, **serial→center bridge** | `LastTimeStamp` is **IST wall-time** (+330 min at load — see `sql/cloud_devices.lineage.sql:9`); `BatteryLevel` can be `"Charging"`; epoch-1970 = never seen |
 | `zoho_data` | 1 row / ticket (~84.5k) | Support view: ticket analytics, SLA compliance, uptime downtime proxy | `CreatedAt`/`ClosedAt` are **strings** `02-Jul-2026 04:59:16 PM` → `SAFE.PARSE_DATETIME('%d-%b-%Y %I:%M:%S %p', …)`; priority often empty; **lacks** business-hours SLA fields (blocks FCR/FRT/CHI) |
 | `device_metrics` | device rows, duplicated | Reliability watchlist (downtime index) | Dedupe with `GROUP BY deviceid`; AVG/MAX only, never SUM |
@@ -60,7 +60,7 @@ for column semantics.
 A dedicated "Raw Data" tab exposes all **8** sources this app has ever touched — the 6
 BigQuery tables above plus both Google Sheets — each as its own paginated, full-column
 table with a full-table CSV export. Unlike every other page, **no site filter applies
-here** (no F2P exclusion, no Active-centers toggle, no hub/segment/search, and — unlike
+here** (no global Segment/Status/State/Hub/date-range filter, no search, and — unlike
 the rest of the app — the Jira Issue-Type restriction above does *not* apply to this
 page's raw Jira-sheet table either). It exists purely for source reconciliation and data
 export, straight from each source. Server layer: `src/server/RawData.js`
@@ -110,8 +110,9 @@ combining happens in Apps Script via `src/server/Join.js` (hash-join utilities):
 1. Each side is **pre-aggregated in its own query** to one row per join key
    (e.g. `centerDevices`, `centerGeo`, `centerTickets` — each ≤ ~5k rows).
 2. The sources are fetched in parallel, then `leftJoin()`-ed in JS
-   (see `getCenter360Rows_` in `Api.js`); filtering/sorting/paging run over
-   the joined rows, and the result is cached (chunked gzip, 10 min).
+   (see `getCenter360RowsCD_` in `EditionCD.js` — the live path; `Api.js`'s
+   `getCenter360Rows_` is the retired legacy equivalent); filtering/sorting/paging
+   run over the joined rows, and the result is cached (chunked gzip, 30 min).
 3. This is also the ONLY way to join **Google Sheet ⋈ BigQuery** data
    (the CS tracker is not in BigQuery), so one pattern covers everything.
 

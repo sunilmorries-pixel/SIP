@@ -62,6 +62,7 @@ contents 1:1 (clasp Path A does this automatically — prefer it). Current file 
 | `Join` (script) | `src/server/Join.js` |
 | `WebApp` (script) | `src/server/WebApp.js` |
 | `Setup` (script) | `src/server/Setup.js` |
+| `Warm` (script) | `src/server/Warm.js` — **cache-warming trigger (`installWarmTrigger()`, every 10 min)** |
 | `Index` (HTML) | `src/client/Index.html` |
 | `Styles` (HTML) | `src/client/Styles.html` |
 | `Charts` (HTML) | `src/client/Charts.html` |
@@ -82,7 +83,7 @@ Also mirror `src/appsscript.json` (editor → Project Settings → check
    `credentials/abi_team_sip_bq_access_service_account.json`.
 3. Run the function once → log should say *saved*.
 4. **Delete the pasted JSON** from the file and save again. The key now lives
-   only in Script Properties (`SA_KEY`).
+   only in Script Properties (`SA_KEY_DWH`).
 
 ### 2. Verify
 Run `diagnostics()` in the editor. Expected log output: `Health check: {"ok":true…}`
@@ -97,8 +98,8 @@ followed by row counts per panel (`kpis: 1 rows`, `fleetStatus: 6 rows`, …).
 ### 4. Redeploying after changes
 - `clasp push` (or paste changes), then **Deploy → Manage deployments →
   ✏️ edit → Version: New version → Deploy**. The URL stays stable.
-- If you changed queries, either wait 5 minutes (cache TTL) or hit Refresh in
-  the UI (it bypasses the cache).
+- If you changed queries, either wait 15 minutes (`CONFIG.CACHE_TTL_SECONDS`, cache TTL)
+  or hit Refresh in the UI (it bypasses the cache).
 
 ---
 
@@ -111,4 +112,4 @@ followed by row counts per panel (`kpis: 1 rows`, `fleetStatus: 6 rows`, …).
 | Panels empty, log shows `Query "x" failed` | Run the SQL from `Queries.js` in the BigQuery console to see the real error |
 | Charts blank on a tab | Hard-refresh; charts flush when a tab first becomes visible — a JS error earlier in the console is the usual culprit |
 | `Logging output too large` in editor | Expected for big payloads — use `diagnostics()` which logs row counts only |
-| Stale numbers | Cache is 5 min; Refresh button forces bypass |
+| Stale numbers | Cache is 15 min; Refresh button forces bypass |

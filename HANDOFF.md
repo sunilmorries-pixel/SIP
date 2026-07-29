@@ -6,16 +6,13 @@ Apps Script **version 39** deployed to the stable production URL
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always).
 The **live deployment still serves version 39** (pre-dates this work) — git and the live
 deployment have deliberately diverged; see the callout immediately below.
-**⚠️ The Apps Script editor content is ALSO now behind git HEAD:** the 2026-07-29 `clasp push`
-matched HEAD byte-for-byte at the time, but the final-review fix wave committed afterwards has
-**not** been pushed (the fix-wave session was explicitly scoped to exclude `clasp push`/`clasp
-deploy`). Three states to keep straight: **git HEAD** (newest — includes the fix wave) →
-**editor** (pre-fix-wave) → **live deployment v39** (oldest). A `clasp push` is needed before any
-deploy.
+**The Apps Script editor content matches git HEAD byte-for-byte** (re-verified after the
+fix-wave commits via a scratch `clasp pull` + diff, 2026-07-29) — only the **live deployment**
+(v39) is behind; a version cut + redeploy is needed to ship any of this.
 
 > **2026-07-29 global nav + universal filter (built via Subagent-Driven Development, all 13
-> tasks + preview verification + final whole-branch-review fix wave complete — editor pushed at
-> Task 13 but NOT since the fix wave, PRODUCTION NOT REDEPLOYED):**
+> tasks + preview verification + final whole-branch-review fix wave complete — editor pushed and
+> verified byte-identical to HEAD, PRODUCTION NOT REDEPLOYED):**
 > - **Nav reorder**: Overview is now the first tab (was after Top Customers); the other 7 tabs
 >   keep their prior relative order.
 > - **Universal filter**: one global selection (Segment · Status · State · Hub, all multi-select,
@@ -155,21 +152,20 @@ deploy.
 >   errors** across the whole sequence. Mobile-viewport (375×812) still could not be live-exercised
 >   in this session's browser-automation environment (a tooling limitation, not an app issue) —
 >   verified instead via static review of `Styles.html`'s 820px/560px responsive rules.
-> - **`clasp push --force` done and verified** at the end of Task 13: re-pulled into a scratch dir
->   and diffed against `src/` — byte-for-byte identical **as of that commit**. ⚠️ **The
->   final-review fix wave landed AFTER that push and has not been pushed** — the editor is
->   currently behind git HEAD by exactly that fix-wave commit; run `clasp push --force` before
->   deploying. **`clasp deploy`/production redeploy was deliberately NOT run** — per this
->   session's established, twice-reinforced convention, that step waits for the user's explicit
->   go-ahead. To ship: `clasp push --force`, then
->   `clasp deploy -i <stable-deployment-id> -d "<description>"`
->   (or Deploy → Manage deployments → ✏️ edit → New version → Deploy in the editor UI).
+> - **`clasp push --force` done and verified twice**: once at the end of Task 13, and again after
+>   the final-review fix wave landed — both times re-pulled into a scratch dir and diffed against
+>   `src/`, byte-for-byte identical. The editor now matches git HEAD exactly (commit `19830d5`).
+>   **`clasp deploy`/production redeploy was deliberately NOT run** — per this session's
+>   established, twice-reinforced convention, that step waits for the user's explicit go-ahead. To
+>   ship: `clasp deploy -i <stable-deployment-id> -d "<description>"` (or Deploy → Manage
+>   deployments → ✏️ edit → New version → Deploy in the editor UI) — no `clasp push` needed first,
+>   the editor is already current.
 > - Plan: `docs/superpowers/plans/2026-07-28-global-nav-and-universal-filter.md` (13 tasks, all
 >   complete). Spec: `docs/superpowers/specs/2026-07-28-global-nav-and-universal-filter-design.md`.
-> - **Still open**: `clasp push --force` (editor is one fix-wave commit behind git HEAD) then
->   `clasp deploy` to production (waiting on user go-ahead); the
->   `BQ_SERVICE_ACCOUNT_KEY` GitHub secret for CI's reconciliation tier (pre-existing open item,
->   unrelated to this feature — see item 11 in section 6 below).
+> - **Still open**: `clasp deploy` to production (waiting on user go-ahead) — that's the only
+>   remaining step for this feature; separately, the `BQ_SERVICE_ACCOUNT_KEY` GitHub secret for
+>   CI's reconciliation tier is still missing (pre-existing open item, unrelated to this feature —
+>   see item 11 in section 6 below).
 
 > **2026-07-28 deploy note:** this single deploy promotes EVERYTHING that had accumulated since
 > v5.9 (@34) in one shot — the connection layer swap to the real `tricogde-dwh.abi_tables`

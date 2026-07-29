@@ -194,7 +194,8 @@
       return Promise.resolve({
         centers: pts, assets: asset, assetTypes: types, assetCats: cats,
         unlocatedCenters: 2412, matchedAssets: 1430,
-        geo: { located: 5210, failed: 64, pending: 2790, total: 8064 }
+        geo: { located: 5210, failed: 64, pending: 2790, total: 8064 },
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], dateFrom: '', dateTo: '' }
       });
     }
     if (fn === 'apiGetExecOverview') {
@@ -219,7 +220,8 @@
           age_bands: [{ k: '<1y', n: 3566 }, { k: '1-2y', n: 3343 }, { k: '2-3y', n: 7072 }, { k: '3-5y', n: 6358 }, { k: '5y+', n: 8105 }],
           by_status: [{ k: 'Deployed', n: 5210 }, { k: 'Store', n: 1180 }, { k: 'Hardware', n: 640 },
             { k: 'Decommissioned', n: 410 }, { k: 'Field', n: 260 }, { k: 'Exported', n: 90 }] },
-        cs: { total_cases: 1284, avg_tat_days: 3.4 }
+        cs: { total_cases: 1284, avg_tat_days: 3.4 },
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], dateFrom: '', dateTo: '' }
       });
     }
     if (fn === 'apiGetTopCustomers') {
@@ -242,7 +244,8 @@
             rnd(1, 12), rnd(0, 8), rnd(0, 5), rnd(0, 6), nm, 1000 + i, ['Enterprise', 'SMB'][i % 2], 'Karnataka']);
         }
       });
-      return Promise.resolve({ customers: custs, mapCenters: mapc, totals: totals });
+      return Promise.resolve({ customers: custs, mapCenters: mapc, totals: totals,
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], dateFrom: '', dateTo: '' } });
     }
     if (fn === 'apiGetCenterDetail') {
       return Promise.resolve({
@@ -1168,7 +1171,7 @@
 
   function loadMapData() {
     $('geoProgress').textContent = 'Loading map data…';
-    gsCall(ep('apiGetMapData'), {})
+    gsCall(ep('apiGetMapData'), { filters: state.globalFilters })
       .then(function (payload) {
         state.mapLoaded = true;
         state.mapBundle = payload;
@@ -1362,6 +1365,7 @@
     if (sharesPayload) loadDashboard(false);
     if (state.activeTab === 'tab-map') { state.mapLoaded = false; loadMapData(); }
     if (state.activeTab === 'tab-topcust') { state.topLoaded = false; loadTopCustomers(); }
+    if (state.activeTab === 'tab-overview') { state.execLoaded = false; loadExec(); }
   }
 
   /** Applies the global filters to the map centers + assets, then redraws. */
@@ -1667,7 +1671,7 @@
   function loadExec() {
     // Silent refresh: only show skeletons before the first successful load.
     if (!state.execLoaded) Charts.setLoading(['execFleet', 'execTrend', 'execTopCust', 'execGeo']);
-    gsCall(ep('apiGetExecOverview'), {})
+    gsCall(ep('apiGetExecOverview'), { filters: state.globalFilters })
       .then(function (data) { state.execLoaded = true; state.execData = data; renderExec(data); })
       .catch(function (err) {
         $('execNarrative').textContent = 'Could not load the overview: ' + err.message;
@@ -1763,7 +1767,7 @@
 
   /* ── Top Customers page ──────────────────────────────────────── */
   function loadTopCustomers() {
-    gsCall(ep('apiGetTopCustomers'), {})
+    gsCall(ep('apiGetTopCustomers'), { filters: state.globalFilters })
       .then(function (payload) {
         state.topLoaded = true;
         state.topBundle = payload;

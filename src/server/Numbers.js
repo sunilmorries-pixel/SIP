@@ -53,13 +53,15 @@ function isTrackedJiraDeviceType_(issueTypeName) {
 /**
  * Fleet/device stats shared by the Numbers page, Asset "Total fleet" and
  * Overview "Devices" KPI. Devices = Jira issues (dedup by Key). A device's
- * serial resolves to a center via deviceCenterMap_ for segment filtering only
- * (see below) — device→center coverage itself is not surfaced as a stat. Cached.
+ * serial resolves to a center via deviceCenterMap_ for global-filter matching
+ * only (see below) — device→center coverage itself is not surfaced as a stat.
+ * Cached.
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array}=} filters
  * @return {{total,by_status,source,center_source}}
  */
-function jiraDeviceStats_(segment) {
-  segment = segClean_(segment);
-  return withCache('jiradev_v5_' + segSlug_(segment), function () {
+function jiraDeviceStats_(filters) {
+  filters = filters || {};
+  return withCache('jiradev_v6_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
     var jiraRows = readJiraSheet();
     if (jiraRows) {
       jiraRows = jiraRows.filter(function (row) { return isTrackedJiraDeviceType_(row.issuetype_name); });
@@ -80,14 +82,17 @@ function jiraDeviceStats_(segment) {
             cid: (cid == null ? NaN : cid), age: assetAgeDays_(row.ticket_created) };
         }
       });
-      // Segment filter: keep only devices mapped to a center in the selected
-      // segment (center lookup via the cached Center-360 rows). Unmapped
-      // devices drop out when a segment is selected — by design.
-      if (segment) {
-        var segMap = centerSegmentMap_();
+      // Global filter: keep only devices mapped to a center passing the
+      // filter set (center lookup via the cached Center-360 rows). Unmapped
+      // devices drop out whenever ANY of Segment/Status/State/Hub is active —
+      // by design, matching the existing v5.8 segment-only behavior.
+      var hasCenterFilter = (filters.segments || []).length || (filters.statuses || []).length ||
+        (filters.states || []).length || (filters.hubs || []).length;
+      if (hasCenterFilter) {
+        var cfMap = centerFilterMap_();
         Object.keys(byIssue).forEach(function (ik) {
           var o = byIssue[ik];
-          if (!isFinite(o.cid) || segMap[o.cid] !== segment) delete byIssue[ik];
+          if (!isFinite(o.cid) || !centerPassesFilters_(cfMap[o.cid] || {}, filters)) delete byIssue[ik];
         });
       }
       var dTotal = 0, dStatus = {};

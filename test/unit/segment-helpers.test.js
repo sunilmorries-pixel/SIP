@@ -2,16 +2,23 @@
 
 /**
  * Unit tests for the page-level Segment dropdown's SQL-fragment helpers in
- * src/server/Queries.js (segClean_, segSlug_, cdSegCond_, devSegCond_).
+ * src/server/Queries.js (segClean_, segSlug_, cdSegCond_).
  * These are pure string transforms — no BigQuery, no network — so they're
  * exercised directly against the loaded Apps Script sandbox.
+ *
+ * devSegCond_ (cloud_devices' old single-segment CenterID-subquery bridge)
+ * was retired 2026-07-28 by the universal-filter migration (Task 7) in favor
+ * of centerFilterSubqueryCond_ (EditionCD.js), which generalizes the same
+ * bridge to all 4 center-attribute dimensions at once — see
+ * buildDeviceExplorerQuery. Its dedicated test block was removed along with
+ * the function; centerFilterSubqueryCond_ is exercised by
+ * global-filter-helpers.test.js / the device-explorer live-BQ verification
+ * instead.
  *
  * Loaded via loadGas(['Config.js', 'SlaCatalog.js', 'Queries.js']): Queries.js
  * references CONFIG/T()/cdFilter_ at call time in other functions in the same
  * file, so all three files are loaded for a stable, reusable sandbox — even
- * though these four functions specifically only need CONFIG (segClean_,
- * segSlug_, cdSegCond_) or T()+cdFilter_ (devSegCond_, and even then only for
- * the non-empty branch).
+ * though these three functions specifically only need CONFIG.
  */
 
 const { loadGas } = require('../helpers/loadGas');
@@ -87,27 +94,6 @@ describe('segment filter helpers (Queries.js)', function () {
       const cleaned = sandbox.segClean_(raw); // 'Govt'
       expect(result).toBe(" AND TRIM(IFNULL(hub_master_segment,'')) = '" + cleaned + "'");
       expect(result).not.toContain("Gov't");
-    });
-  });
-
-  describe('devSegCond_', function () {
-    test('returns "" for an empty/falsy segment', function () {
-      expect(sandbox.devSegCond_('')).toBe('');
-      expect(sandbox.devSegCond_(null)).toBe('');
-    });
-
-    test('non-empty segment yields a CenterID subquery referencing cdFilter_() and cdSegCond_()', function () {
-      // cdFilter_ lives in EditionCD.js, so load a sandbox that includes it
-      // here rather than baking today's '1=1' value into this test.
-      const sandboxWithCd = loadGas(['Config.js', 'SlaCatalog.js', 'Queries.js', 'EditionCD.js']);
-      const cdFilterValue = sandboxWithCd.cdFilter_();
-      const cleaned = sandboxWithCd.segClean_('Government');
-
-      const result = sandboxWithCd.devSegCond_('Government');
-
-      expect(result).toContain('CenterID IN (');
-      expect(result).toContain(cleaned);
-      expect(result).toContain(cdFilterValue);
     });
   });
 });

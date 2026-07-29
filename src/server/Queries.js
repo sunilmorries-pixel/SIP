@@ -50,8 +50,12 @@ var HUB_FILTER_SQL = "(@hub = '' OR HubName = @hub)";
 /* ── Segment filter helpers (page-level Segment dropdown, 2026-07-10) ──
  * The segment value is user input → sanitize before inlining as a SQL literal.
  * hub_master_segment exists on BOTH center_details and zoho_data, so cdSegCond_
- * works for either table; cloud_devices has no segment → devSegCond_ bridges
- * via CenterID against the baseline-filtered center universe. */
+ * works for either table. cloud_devices has no segment column of its own; its
+ * old single-segment CenterID-subquery bridge was retired by the universal-
+ * filter migration (Task 7, 2026-07-28) in favor of centerFilterSubqueryCond_
+ * (EditionCD.js), which generalizes the same subquery bridge to all 4
+ * center-attribute dimensions (segment/status/state/hub) at once — see
+ * buildDeviceExplorerQuery. */
 function segClean_(segment) {
   return String(segment || '').slice(0, 80).replace(/['"\\]/g, '');
 }
@@ -62,12 +66,6 @@ function segSlug_(segment) {
 function cdSegCond_(segment) {
   var s = segClean_(segment);
   return s ? " AND TRIM(IFNULL(hub_master_segment,'')) = '" + s + "'" : '';
-}
-function devSegCond_(segment) {
-  var s = segClean_(segment);
-  if (!s) return '';
-  return " AND CenterID IN (SELECT DISTINCT CenterID FROM " + T('center_details') +
-    " WHERE " + cdFilter_() + cdSegCond_(segment) + ")";
 }
 
 /**
@@ -457,21 +455,27 @@ var DEVICE_SORT_COLUMNS = {
 
 /**
  * Paginated, filterable device explorer query.
- * @param {{search:string, hub:string, status:string, segment:string,
+ * @param {{search:string, hub:string, status:string,
+ *          filters:{segments:Array,statuses:Array,states:Array,hubs:Array},
  *          sortBy:string, sortDir:string, page:number, pageSize:number}} opts
- *          sanitised by Api.js
+ *          sanitised by Api.js. `filters` is the new global filter (Segment/
+ *          Status/State/Hub multi-select) — a SEPARATE concept from the
+ *          device explorer's OWN `hub` (free-text HubName equality) and
+ *          `status` (device heartbeat bucket) params below; never conflate
+ *          the two. No date-range field: cloud_devices has no "created"
+ *          column to range against.
  * @return {{sql:string, params:Object}}
  */
 function buildDeviceExplorerQuery(opts) {
   var FLEET_BUCKET_SQL = fleetBucketSql_();
   var sortCol = DEVICE_SORT_COLUMNS[opts.sortBy] || 'LastTimeStamp';
   var sortDir = opts.sortDir === 'asc' ? 'ASC' : 'DESC';
-  var segD = devSegCond_(opts.segment);
+  var globalCond = centerFilterSubqueryCond_(opts.filters || {});
   var sql =
     "WITH d AS (SELECT DeviceID, Centername, HubName, LastTimeStamp, " +
     " BatteryLevel, CSQ, UnsyncedData, SpaceAvailable, FirmwareName, ServiceProvider, " +
     " " + FLEET_BUCKET_SQL + " AS status_bucket " +
-    " FROM " + T('cloud_devices') + " WHERE TRUE" + segD + ") " +
+    " FROM " + T('cloud_devices') + " WHERE TRUE" + globalCond + ") " +
     "SELECT DeviceID AS device, IFNULL(Centername,'') AS center, IFNULL(HubName,'') AS hub, " +
     " CAST(LastTimeStamp AS STRING) AS last_seen, " +
     " IFNULL(BatteryLevel,'') AS battery, SAFE_CAST(CSQ AS INT64) AS csq, " +

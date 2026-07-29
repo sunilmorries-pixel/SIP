@@ -420,9 +420,10 @@ function centerPassesFilters_(row, filters) {
 
 /**
  * Narrows an outer table (zoho_data, cloud_devices) to rows whose CenterID
- * passes the center_details filter set. Generalizes the old devSegCond_
- * (segment-only) to all 4 center-attribute dimensions uniformly — one code
- * path instead of mixing native-column and subquery access per dimension.
+ * passes the center_details filter set. Generalizes the old single-segment,
+ * device-only CenterID-subquery bridge (retired by Task 7) to all 4
+ * center-attribute dimensions uniformly — one code path instead of mixing
+ * native-column and subquery access per dimension.
  * @param {{segments:Array,statuses:Array,states:Array,hubs:Array}} filters
  * @return {string}
  */
@@ -506,17 +507,11 @@ function apiGetDashboardCD(options) {
     results.csTracker = readCsTracker();
     results.appName = CONFIG.APP_NAME;
     results.appVersion = CONFIG.APP_VERSION;
-    // NOT jiraDeviceStats_(filters): jiraDeviceStats_ (Numbers.js) still has the
-    // OLD (segment:string) signature — segClean_(filters) on a non-null object
-    // always yields the truthy string "[object Object]", which would
-    // unconditionally hit Numbers.js's still-dangling centerSegmentMap_() call
-    // (removed by Task 3, not yet replaced — see its report) and throw on
-    // EVERY call, not just filtered ones, turning the whole payload into an
-    // error envelope via respond_'s catch. jiraDeviceStats_ is out of this
-    // task's file scope (Numbers.js) — Task 7 ("jiraDeviceStats_ + device
-    // explorer filter threading") owns rewriting it to accept `filters` and
-    // must update this call site to jiraDeviceStats_(filters) at that time.
-    results.fleet = jiraDeviceStats_();
+    // jiraDeviceStats_ (Numbers.js) now accepts a `filters` object directly
+    // (Task 7 — "jiraDeviceStats_ + device explorer filter threading") and
+    // applies the same centerFilterMap_/centerPassesFilters_ narrowing as the
+    // rest of this payload.
+    results.fleet = jiraDeviceStats_(filters);
     results.filters = filters;
     results.edition = 'center_details';
     results.flags = FLAGS_CD;
@@ -763,12 +758,9 @@ function apiGetExecOverviewCD(options) {
         avgAgeDays: age.avg_age_days != null ? age.avg_age_days : null,
         uptimeFleet: (r.uptimeFleet && r.uptimeFleet[0]) || null,
         slaKpis: (r.slaKpis && r.slaKpis[0]) || null, cs: cs,
-        // NOT jiraDeviceStats_(filters): jiraDeviceStats_ (Numbers.js) still has the
-        // OLD (segment:string) signature — see apiGetDashboardCD's identical comment
-        // above for why passing `filters` here would throw on every call. Task 7
-        // ("jiraDeviceStats_ + device explorer filter threading") owns rewriting it
-        // to accept `filters` and must update this call site to jiraDeviceStats_(filters).
-        fleet: jiraDeviceStats_(),
+        // jiraDeviceStats_ now accepts `filters` directly (Task 7) — see
+        // apiGetDashboardCD's identical call site above.
+        fleet: jiraDeviceStats_(filters),
         edition: 'center_details', flags: FLAGS_CD
       };
     }, options.bypassCache === true);

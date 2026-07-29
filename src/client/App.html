@@ -14,10 +14,10 @@
   var REFRESH_SECONDS = 300;
 
   var state = {
-    // Global filters live in the top bar and apply across every page.
     search: '',
-    pageSegment: { asset: '', centers: '', support: '' },
-    dashSegment: '',      // segment the current dashboard payload was fetched with
+    globalFilters: { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], dateFrom: '', dateTo: '' },
+    globalFiltersPending: null, // staged edits inside the open drawer; null when drawer is closed
+    dashFilters: null,          // the filter set the CURRENT dashboard payload was fetched with
     ticketBucket: '', // '' | none | low | high — clickable map legend
     activeTab: 'tab-overview',
     devices: { status: '', sortBy: 'last_seen', sortDir: 'desc', page: 0, pageSize: 15 },
@@ -53,17 +53,6 @@
    * Map still uses device_center_mapping internally (center_details has no
    * serial) — the only remaining internal use of that table. */
   function ep(name) { return name + 'CD'; }
-
-  /** Which pageSegment drives the shared dashboard payload for this tab.
-   *  Returns '' for Overview (always unsegmented), null for tabs that don't
-   *  read the dashboard payload (map, top customers, numbers, raw data). */
-  function dashSegmentFor(tabId) {
-    if (tabId === 'tab-asset') return state.pageSegment.asset;
-    if (tabId === 'tab-centers') return state.pageSegment.centers;
-    if (tabId === 'tab-support') return state.pageSegment.support;
-    if (tabId === 'tab-overview') return '';
-    return null;
-  }
 
   /* ── server bridge (with local-preview mock) ─────────────────── */
   function gsCall(fn, args) {
@@ -328,7 +317,7 @@
       // tricogde-dwh). devices/cities/active_deployments dropped: dead since
       // the Centers KPI rebuild removed their tiles, nothing reads them.
       centerKpis: [{ centers: 28482, states: 357 }],
-      segment: (args && args.segment) || '',
+      filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], dateFrom: '', dateTo: '' },
       geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
       hubs: Array.from({ length: 10 }, function (_, i) { return { hub: 'Demo Hub ' + (i + 1), spokes: rnd(20, 400) }; }),
       deploymentAge: ['<3 mo', '3-6 mo', '6-12 mo', '1-2 yr', '2+ yr'].map(function (b) { return { band: b, devices: rnd(400, 3200) }; }),
@@ -532,9 +521,9 @@
 
   var dashboardRequestId = 0;
   function loadDashboard(bypassCache) {
-    // Latest-wins: a segment change (or manual refresh) mid-flight supersedes
+    // Latest-wins: a filter change (or manual refresh) mid-flight supersedes
     // the in-flight request instead of being dropped, so KPIs/charts can never
-    // stay pinned to a stale segment. Mirrors loadDevices/loadCenters.
+    // stay pinned to a stale filter set. Mirrors loadDevices/loadCenters.
     var requestId = ++dashboardRequestId;
     state.loading = true;
     $('refreshBtn').classList.add('is-busy');
@@ -545,7 +534,7 @@
     // (the latest-wins requestId above already guards against races).
     if (!state.lastDashboard) Charts.setLoading(CHART_IDS);
 
-    gsCall(ep('apiGetDashboard'), { segment: dashSegmentFor(state.activeTab) || '', bypassCache: !!bypassCache })
+    gsCall(ep('apiGetDashboard'), { filters: state.globalFilters, bypassCache: !!bypassCache })
       .then(function (data) {
         if (requestId !== dashboardRequestId) return;
         renderDashboard(data);
@@ -568,7 +557,7 @@
 
   function renderDashboard(data) {
     state.lastDashboard = data; // kept so theme changes can re-render charts offline
-    state.dashSegment = data.segment || '';
+    state.dashFilters = data.filters || null; // the filter set this payload was fetched with
     /* Asset KPIs (device grain) */
     var kpi = (data.kpis && data.kpis[0]) || {};
     var fleet = data.fleet || {};
@@ -644,19 +633,8 @@
       renderCsOwners([]);
     }
 
-    var segOpts = (data.segmentOptions || []).map(function (s) { return s.segment; })
-      .filter(function (x) { return x && x !== 'Unknown'; });
-    ['assetSegment', 'centersSegment', 'supportSegment'].forEach(function (id) {
-      var sel = $(id);
-      if (!sel) return;
-      var keep = sel.value;
-      fillSelect(id, segOpts, 'All segments');
-      sel.value = keep; // preserve the user's selection across refreshes
-    });
-
     $('statusStrip').classList.remove('is-stale');
-    $('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString() +
-      (state.dashSegment ? ' · segment: ' + state.dashSegment : '');
+    $('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
   }
 
   /** Builds .exec-flag chip HTML from [{cls, icon, text}] (icon optional). */
@@ -1000,7 +978,7 @@
   function loadDevices() {
     var requestId = ++devicesRequestId;
     $('deviceTableInfo').textContent = 'Loading…';
-    var query = Object.assign({}, state.devices, { search: state.search, segment: state.pageSegment.asset });
+    var query = Object.assign({}, state.devices, { search: state.search, filters: state.globalFilters });
     gsCall('apiGetDevices', query)
       .then(function (result) {
         if (requestId !== devicesRequestId) return;
@@ -1085,7 +1063,7 @@
   function loadCenters() {
     var requestId = ++centersRequestId;
     $('centerTableInfo').textContent = 'Loading…';
-    var query = Object.assign({}, state.centers, { search: state.search, segment: state.pageSegment.centers });
+    var query = Object.assign({}, state.centers, { search: state.search, filters: state.globalFilters });
     gsCall(ep('apiGetCenters'), query)
       .then(function (result) {
         if (requestId !== centersRequestId) return;
@@ -1215,6 +1193,175 @@
     el.innerHTML = '<option value="">' + allLabel + '</option>' +
       values.map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
     el.value = cur;
+  }
+
+  /* ── Global filter drawer: state helpers, chips, badge ─────────
+   * A single state.globalFilters object (segments/statuses/states/hubs/
+   * dateFrom/dateTo) replaces the old v5.8-era per-page/per-tab segment
+   * system and applies across every page (Numbers/Raw Data are exempt). */
+
+  /** Deep-enough equality for two filter objects (arrays + strings only). */
+  function filtersEqual_(a, b) {
+    if (!a || !b) return a === b;
+    function arrEq(x, y) {
+      if (x.length !== y.length) return false;
+      var sx = x.slice().sort(), sy = y.slice().sort();
+      return sx.every(function (v, i) { return v === sy[i]; });
+    }
+    return arrEq(a.segments, b.segments) && arrEq(a.statuses, b.statuses) &&
+      arrEq(a.states, b.states) && arrEq(a.hubs, b.hubs) &&
+      a.dateFrom === b.dateFrom && a.dateTo === b.dateTo;
+  }
+
+  function filterActiveCount_(f) {
+    return f.segments.length + f.statuses.length + f.states.length + f.hubs.length +
+      (f.dateFrom ? 1 : 0) + (f.dateTo ? 1 : 0);
+  }
+
+  function renderFilterBadge_() {
+    var n = filterActiveCount_(state.globalFilters);
+    var badge = $('filterBadge');
+    badge.textContent = String(n);
+    badge.hidden = false; // ALWAYS visible per the design spec — a default Status:Active still counts
+  }
+
+  /** Renders one removable chip per active filter VALUE (not per dimension). */
+  function renderFilterChips_() {
+    var f = state.globalFilters;
+    var chips = [];
+    f.segments.forEach(function (v) { chips.push({ dim: 'segments', label: 'Segment: ' + v, value: v }); });
+    f.statuses.forEach(function (v) { chips.push({ dim: 'statuses', label: 'Status: ' + (v === 'ACTIVE' ? 'Active' : v), value: v }); });
+    f.states.forEach(function (v) { chips.push({ dim: 'states', label: 'State: ' + v, value: v }); });
+    f.hubs.forEach(function (v) { chips.push({ dim: 'hubs', label: 'Hub: ' + v, value: v }); });
+    if (f.dateFrom || f.dateTo) chips.push({ dim: 'date', label: 'Date: ' + (f.dateFrom || '…') + '–' + (f.dateTo || '…'), value: null });
+
+    $('filterChips').innerHTML = chips.map(function (c, i) {
+      return '<span class="filter-chip-item" data-i="' + i + '">' + escapeHtml(c.label) +
+        '<button type="button" aria-label="Remove ' + escapeHtml(c.label) + '">×</button></span>';
+    }).join('');
+
+    Array.prototype.forEach.call($('filterChips').querySelectorAll('.filter-chip-item button'), function (btn, i) {
+      btn.addEventListener('click', function () {
+        var c = chips[i];
+        if (c.dim === 'date') { state.globalFilters.dateFrom = ''; state.globalFilters.dateTo = ''; }
+        else state.globalFilters[c.dim] = state.globalFilters[c.dim].filter(function (v) { return v !== c.value; });
+        commitGlobalFilters_();
+      });
+    });
+  }
+
+  var FILTER_DIM_LABELS = { segments: 'segment', statuses: 'status', states: 'state', hubs: 'hub' };
+
+  function openFilterDrawer_(preserveStaged) {
+    // preserveStaged: true when the caller (Clear all) already staged the
+    // pending edits it wants shown — a plain open must still snapshot the
+    // LIVE filters into pending, but Clear must not have that snapshot
+    // clobber the cleared values it just set.
+    if (!preserveStaged) state.globalFiltersPending = JSON.parse(JSON.stringify(state.globalFilters));
+    renderFilterChecklist_('filterSegment', 'segments', state.lastDashboard ? (state.lastDashboard.segmentOptions || []).map(function (s) { return s.segment; }) : []);
+    renderFilterChecklist_('filterStatus', 'statuses', ['ACTIVE', 'DEACTIVATED']);
+    renderFilterCombo_('filterState', 'states', $('filterState').getAttribute('data-options') ? JSON.parse($('filterState').getAttribute('data-options')) : []);
+    renderFilterCombo_('filterHub', 'hubs', $('filterHub').getAttribute('data-options') ? JSON.parse($('filterHub').getAttribute('data-options')) : []);
+    $('filterDateFrom').value = state.globalFiltersPending.dateFrom;
+    $('filterDateTo').value = state.globalFiltersPending.dateTo;
+    $('filterScrim').hidden = false;
+    $('filterDrawer').hidden = false;
+    $('globalFilterBtn').setAttribute('aria-expanded', 'true');
+  }
+
+  function closeFilterDrawer_() {
+    state.globalFiltersPending = null;
+    $('filterScrim').hidden = true;
+    $('filterDrawer').hidden = true;
+    $('globalFilterBtn').setAttribute('aria-expanded', 'false');
+  }
+
+  /** Plain checkbox list (Segment/Status — small, known value sets). */
+  function renderFilterChecklist_(containerId, dim, options) {
+    var el = $(containerId);
+    var current = state.globalFiltersPending[dim];
+    el.innerHTML = options.map(function (opt) {
+      var label = dim === 'statuses' && opt === 'ACTIVE' ? 'Active' : (dim === 'statuses' ? 'Deactivated' : opt);
+      var checked = current.indexOf(opt) !== -1 ? ' checked' : '';
+      return '<label><input type="checkbox" value="' + escapeHtml(opt) + '"' + checked + '> ' + escapeHtml(label) + '</label>';
+    }).join('');
+    Array.prototype.forEach.call(el.querySelectorAll('input'), function (cb) {
+      cb.addEventListener('change', function () {
+        var v = cb.value;
+        var arr = state.globalFiltersPending[dim];
+        if (cb.checked && arr.indexOf(v) === -1) arr.push(v);
+        else if (!cb.checked) state.globalFiltersPending[dim] = arr.filter(function (x) { return x !== v; });
+      });
+    });
+  }
+
+  /** Searchable multi-select combobox (State/Hub — large, unbounded value sets). */
+  function renderFilterCombo_(containerId, dim, allOptions) {
+    var container = $(containerId);
+    container.setAttribute('data-options', JSON.stringify(allOptions));
+    container.innerHTML =
+      '<input type="text" class="input filter-combo-input" placeholder="Search ' + FILTER_DIM_LABELS[dim] + 's…">' +
+      '<div class="filter-combo-list" hidden></div>' +
+      '<div class="filter-combo-selected"></div>';
+    var input = container.querySelector('.filter-combo-input');
+    var list = container.querySelector('.filter-combo-list');
+    var selectedEl = container.querySelector('.filter-combo-selected');
+
+    function renderSelected() {
+      var arr = state.globalFiltersPending[dim];
+      selectedEl.innerHTML = arr.map(function (v, i) {
+        return '<span class="filter-chip-item" data-v="' + escapeHtml(v) + '">' + escapeHtml(v) +
+          '<button type="button" aria-label="Remove ' + escapeHtml(v) + '">×</button></span>';
+      }).join('');
+      Array.prototype.forEach.call(selectedEl.querySelectorAll('button'), function (btn) {
+        btn.addEventListener('click', function () {
+          var v = btn.parentElement.getAttribute('data-v');
+          state.globalFiltersPending[dim] = state.globalFiltersPending[dim].filter(function (x) { return x !== v; });
+          renderSelected();
+        });
+      });
+    }
+
+    function renderList(query) {
+      var q = query.toLowerCase();
+      var matches = allOptions.filter(function (v) { return v.toLowerCase().indexOf(q) !== -1; }).slice(0, 50);
+      list.innerHTML = matches.map(function (v) {
+        var checked = state.globalFiltersPending[dim].indexOf(v) !== -1 ? ' checked' : '';
+        return '<label><input type="checkbox" value="' + escapeHtml(v) + '"' + checked + '> ' + escapeHtml(v) + '</label>';
+      }).join('');
+      Array.prototype.forEach.call(list.querySelectorAll('input'), function (cb) {
+        cb.addEventListener('change', function () {
+          var v = cb.value, arr = state.globalFiltersPending[dim];
+          if (cb.checked && arr.indexOf(v) === -1) arr.push(v);
+          else if (!cb.checked) state.globalFiltersPending[dim] = arr.filter(function (x) { return x !== v; });
+          renderSelected();
+        });
+      });
+    }
+
+    input.addEventListener('focus', function () { list.hidden = false; renderList(input.value); });
+    input.addEventListener('input', function () { renderList(input.value); });
+    document.addEventListener('click', function (e) {
+      if (!container.contains(e.target)) list.hidden = true;
+    });
+    renderSelected();
+  }
+
+  /** Copies the staged (pending) edits into the live filter, closes the drawer, reapplies. */
+  function commitGlobalFilters_() {
+    renderFilterBadge_();
+    renderFilterChips_();
+    // Reset every lazy-load flag so every page refetches fresh under the new
+    // filter set — mirrors the old v5.7/5.8 Active-only toggle's invalidation
+    // (Numbers is intentionally excluded — exempt from all filtering).
+    state.execLoaded = false; state.mapLoaded = false; state.topLoaded = false;
+    state.lastDashboard = null; state.cdRaw.total = 0;
+    if (state.activeTab === 'tab-centers') { state.centers.page = 0; loadCenters(); }
+    if (state.activeTab === 'tab-asset') { state.devices.page = 0; loadDevices(); }
+    var sharesPayload = ['tab-asset', 'tab-centers', 'tab-support', 'tab-overview'].indexOf(state.activeTab) !== -1;
+    if (sharesPayload) loadDashboard(false);
+    if (state.activeTab === 'tab-map') { state.mapLoaded = false; loadMapData(); }
+    if (state.activeTab === 'tab-topcust') { state.topLoaded = false; loadTopCustomers(); }
   }
 
   /** Applies the global filters to the map centers + assets, then redraws. */
@@ -1777,11 +1924,13 @@
     }
     if (tabId === 'tab-rawdata' && !state.rawData.total) loadRawTable();
 
-    // Shared-payload rule: the dashboard payload is always fetched with the
-    // ACTIVE page's segment; refetch when switching to a tab whose stored
-    // segment differs from what's rendered.
-    var dsg = dashSegmentFor(tabId);
-    if (dsg !== null && state.lastDashboard && dsg !== state.dashSegment) loadDashboard(false);
+    // Shared-payload rule: the dashboard payload is fetched once under the
+    // current global filters and shared by Asset/Centers/Support/Overview;
+    // refetch when switching into one of those tabs and the payload on hand
+    // was fetched under a different filter set (flat comparison — no more
+    // per-tab segment branching now that the filter is global).
+    var sharesDashboardPayload = ['tab-asset', 'tab-centers', 'tab-support', 'tab-overview'].indexOf(tabId) !== -1;
+    if (sharesDashboardPayload && state.lastDashboard && !filtersEqual_(state.dashFilters, state.globalFilters)) loadDashboard(false);
 
     updateHash();
   }
@@ -2255,17 +2404,30 @@
       reloadActiveList();
     }, 350));
 
-    // Per-page Segment dropdowns — each drives every KPI/chart/table on its page.
-    ['assetSegment', 'centersSegment', 'supportSegment'].forEach(function (id) {
-      var sel = $(id);
-      if (!sel) return;
-      sel.addEventListener('change', function (event) {
-        var page = sel.getAttribute('data-page');
-        state.pageSegment[page] = event.target.value;
-        if (page === 'centers') { state.centers.page = 0; loadCenters(); }
-        if (page === 'asset') { state.devices.page = 0; loadDevices(); }
-        loadDashboard(false); // shared payload refetches with the active page's segment
-      });
+    // Global filter drawer (Segment/Status/State/Hub/Date range) — replaces
+    // the old per-page Segment dropdowns; one filter set drives every page.
+    $('globalFilterBtn').addEventListener('click', function () {
+      if ($('filterDrawer').hidden) openFilterDrawer_(); else closeFilterDrawer_();
+    });
+    $('filterDrawerClose').addEventListener('click', closeFilterDrawer_);
+    $('filterScrim').addEventListener('click', function () {
+      // Clicking the scrim (not the Apply button) discards pending edits.
+      if (!$('filterDrawer').hidden) closeFilterDrawer_();
+    });
+    $('filterApplyBtn').addEventListener('click', function () {
+      state.globalFiltersPending.dateFrom = $('filterDateFrom').value || '';
+      state.globalFiltersPending.dateTo = $('filterDateTo').value || '';
+      var changed = !filtersEqual_(state.globalFilters, state.globalFiltersPending);
+      state.globalFilters = state.globalFiltersPending;
+      closeFilterDrawer_();
+      if (changed) commitGlobalFilters_();
+    });
+    $('filterClearBtn').addEventListener('click', function () {
+      state.globalFiltersPending = { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], dateFrom: '', dateTo: '' };
+      openFilterDrawer_(true); // re-render the checklists/combos to reflect the cleared state (don't re-snapshot over it)
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && !$('filterDrawer').hidden) closeFilterDrawer_();
     });
 
     // Reliability/health watchlist sort toggle — re-renders from the already-
@@ -2351,6 +2513,12 @@
       if (state.rawData.page < maxPage) { state.rawData.page += 1; loadRawTable(); }
     });
     $('rawExportBtn').addEventListener('click', exportRawFull);
+
+    // Shows the default filter count ("1" for Status:Active) before the
+    // first dashboard load completes — visibility into what's filtering,
+    // including defaults the user didn't explicitly set.
+    renderFilterBadge_();
+    renderFilterChips_();
 
     updateSearchPlaceholder();
     refreshAll(false);

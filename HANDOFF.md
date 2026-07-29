@@ -4,12 +4,18 @@
 universal-filter (git HEAD, **NOT YET DEPLOYED** — see callout below) · **Status:** LIVE —
 Apps Script **version 39** deployed to the stable production URL
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always).
-The Apps Script **editor content** (via `clasp push`) matches git HEAD byte-for-byte, but the
-**live deployment still serves version 39** (pre-dates this work) — git/editor and the live
+The **live deployment still serves version 39** (pre-dates this work) — git and the live
 deployment have deliberately diverged; see the callout immediately below.
+**⚠️ The Apps Script editor content is ALSO now behind git HEAD:** the 2026-07-29 `clasp push`
+matched HEAD byte-for-byte at the time, but the final-review fix wave committed afterwards has
+**not** been pushed (the fix-wave session was explicitly scoped to exclude `clasp push`/`clasp
+deploy`). Three states to keep straight: **git HEAD** (newest — includes the fix wave) →
+**editor** (pre-fix-wave) → **live deployment v39** (oldest). A `clasp push` is needed before any
+deploy.
 
 > **2026-07-29 global nav + universal filter (built via Subagent-Driven Development, all 13
-> tasks + preview verification complete — editor pushed, PRODUCTION NOT REDEPLOYED):**
+> tasks + preview verification + final whole-branch-review fix wave complete — editor pushed at
+> Task 13 but NOT since the fix wave, PRODUCTION NOT REDEPLOYED):**
 > - **Nav reorder**: Overview is now the first tab (was after Top Customers); the other 7 tabs
 >   keep their prior relative order.
 > - **Universal filter**: one global selection (Segment · Status · State · Hub, all multi-select,
@@ -20,6 +26,16 @@ deployment have deliberately diverged; see the callout immediately below.
 >   deployment date, Support → Zoho ticket created date, Asset → Jira created date; Top
 >   Customers/Overview get Segment/Status/State/Hub only (no date — an explicit, documented
 >   exemption); Numbers/Raw Data are exempt from every dimension (unchanged, diagnostic pages).
+> - **⚠️ EXPECTED VISIBLE NUMBER CHANGE — read this before reporting a regression.** Because
+>   Status defaults to `ACTIVE`, every center-grain figure now shows the ACTIVE-ONLY universe on
+>   first load: **27,410 centers unfiltered → 18,370 with the default filter** (sandbox
+>   measurement, 2026-07-29; the ~9,038 DEACTIVATED + 2 OFFBOARDED/blank centers are excluded
+>   until the user unticks Active). This is a **drop**, and it moves in the OPPOSITE direction
+>   from the "**19,143 → 28,482**" *increase* quoted in the 2026-07-28 deploy note immediately
+>   below — those two numbers are unrelated and do not contradict each other: the v5.10 entry
+>   describes *removing* a hardcoded Active+Paid baseline (which raised the count), whereas this
+>   entry describes *adding back* a user-visible, user-removable Active default (which lowers it
+>   again, but only as a filter the user can see in the chip row and clear at will).
 > - **Architecture deviation from the original design spec (documented, not silent)**:
 >   `getCenter360RowsCD_()` fetches the FULL unfiltered center universe once (a single global
 >   cache entry) and every page (Map/Top Customers/Overview/Centers-table) filters that one
@@ -42,27 +58,116 @@ deployment have deliberately diverged; see the callout immediately below.
 >   populated (only ever written back as `'[]'`), so they were permanently empty and
 >   unsearchable — fixed by adding `stateOptions`/`hubOptions` BigQuery specs (analogous to the
 >   existing `segmentOptions`) and reading them from `state.lastDashboard`, matching the
->   established `segmentOptions` pattern.
-> - **Verification**: `npm test` 49/49 unit tests pass. `npm run test:reconcile` 14/14 live
->   reconciliation tests pass against the **`magnaquest-sand-box.abi_team_sip_devtest_poc`**
+>   established `segmentOptions` pattern. **Both halves of that fix were superseded on
+>   2026-07-29** by the final-review fix wave below: the `hubOptions` spec is gone entirely (Hub
+>   is now server-side-searched) and the option lists are read from sticky `state.*` fields
+>   instead of `state.lastDashboard`.
+> - **Final whole-branch-review fix wave (2026-07-29, after all 13 tasks passed their own
+>   per-task reviews).** A review of the complete branch found 1 critical + 7 important
+>   cross-task integration issues that no single task's narrow review could see. All fixed in
+>   this wave:
+>   - **C1 — Hub/State option lists were silently truncated.** `State` was capped at
+>     `maxRows: 200` against **451** real values (list cut off mid-alphabet, dropping
+>     Maharashtra/Tamil Nadu/UP); raised to 1000. `Hub` is far worse — **13,721** distinct
+>     `HubName` values, where the alphabetically-first 500 are punctuation-heavy junk, so no
+>     static cap can work. Per user decision, **Hub is now a server-side search** rather than a
+>     shipped list: the `hubOptions` spec was deleted and a new `apiSearchHubsCD` endpoint
+>     answers per keystroke (client debounces ~275ms). Empty/1-char query returns the **top 50
+>     hubs by center count** (what the combobox shows on focus); 2+ chars returns up to 50 name
+>     matches. Same checkbox-multi-select UI and same removable-chip behaviour as State, so the
+>     two controls still look and behave identically. Input is `segClean_`'d then `likeEscape_`'d
+>     (new helper — `%`/`_` are LIKE wildcards) and passed as a **named query parameter**, never
+>     concatenated.
+>   - **I2 + I3 — stale numbers after a filter change, and empty drawer option lists.** Same
+>     root cause: `commitGlobalFilters_` set `state.lastDashboard = null`, which permanently
+>     disarmed `activateTab`'s refetch guard (`state.lastDashboard && !filtersEqual_(...)`) on the
+>     4 tabs that never repopulate that payload (Map/Top Customers/Numbers/Raw Data) — so
+>     filtering from one of those and tabbing back to Asset/Centers/Support showed **stale
+>     pre-filter numbers** until the 300s auto-refresh. Now it clears `state.dashFilters` instead
+>     (guard stays armed, mismatch guaranteed). The two paginated tables had no invalidation path
+>     at all; they now record the filter set their rows were fetched under
+>     (`state.centerFilters`/`state.deviceFilters`) and `activateTab` refetches + resets to page 0
+>     on a mismatch. Drawer option lists moved to **sticky** `state.segmentOptions`/
+>     `state.stateOptions`, captured by `renderDashboard` and never cleared.
+>   - **I4 + I8 — the SQL and JS filter paths could silently disagree.** Filtering happens two
+>     ways by design (see the architecture-deviation note above): `multiCond_` SQL fragments, and
+>     the `centerPassesFilters_` JS predicate over the cached Center-360 array. `multiCond_`
+>     emitted a bare `column IN (...)` while the JS path compared TRIM'd values — and **2,806
+>     sandbox rows carry a whitespace-padded `HubName`**, so the same filter could return
+>     different counts per path. `multiCond_` now emits `TRIM(IFNULL(col,'')) IN (...)`, and
+>     `centerBase`'s SELECT now TRIMs `State`/`HubName` (it already TRIMmed segment/status). The
+>     4-condition chain that had been duplicated verbatim at **4** call sites is now one shared
+>     `centerAttrCond_(filters)` helper, so a normalization change can't land in only 3 of 4.
+>   - **I5 — Top Customers mixed filtered and unfiltered numbers in one tile.**
+>     `topCustomerTicketStats_()` took no filters, so `ticket_count`/`sla_breach` were unfiltered
+>     headline numbers sitting above a filtered sub-label. It now takes `filters` and threads
+>     `centerFilterSubqueryCond_`. (Judgment call: the global **date** range is deliberately still
+>     not applied there — its companion number `open_tickets` is date-unaware too, so adding it to
+>     only one would re-create the same mixed-scope tile in a new way. Documented in the function.)
+>   - **I6 — the cache-warming trigger warmed keys no client would ever request.** `Warm.js`
+>     called the 4 filter-aware endpoints with no filters, hashing under `filterHash_({})`, but
+>     every real first load hashes `{statuses:['ACTIVE']}` — so warming did nothing for those 4
+>     caches and every first load paid the ~40s cold cost. `Warm.js` now passes the client's
+>     default explicitly via a new `warmDefaultFilters_()`; that function and App.html's
+>     `state.globalFilters` initializer each carry a comment pointing at the other (server `.js`
+>     and client `.html` can't share a constant in Apps Script).
+>   - Also fixed, found by the fix wave's own preview pass: closing the drawer **while a Hub
+>     search was in flight** threw a `TypeError` (the late callback painted against the
+>     already-cleared staged state). Late results are now dropped.
+>   - **Parked, logged, NOT fixed** (non-load-bearing, from the same review): Status option list
+>     is hardcoded to ACTIVE/DEACTIVATED so it misses the 2 OFFBOARDED/blank centers;
+>     `renderFilterCombo_` leaks a `document` click listener per drawer open; `apiGetDevices`'s
+>     cache key doesn't fold in the epoch (pre-existing); filter-value sanitization is uneven
+>     across endpoints (only reachable by hand-crafted calls); dead code (`segSlug_`/`cdSegCond_`/
+>     `fillSelect`) still present; the filter drawer has `aria-modal` but no real focus trap
+>     (pre-existing pattern, shared with the center drawer); `apiGetExecOverviewCD` still uses
+>     `withCache`'s 100KB path for a >1MB payload (pre-existing at `execcd_v5`).
+> - **Verification** (updated 2026-07-29 after the fix wave): `npm test` **61/61** unit tests pass
+>   (was 49 — the wave added `centerAttrCond_`, `likeEscape_`, Hub-search-SQL and
+>   TRIM-normalization coverage, and updated the tests that asserted the old un-TRIMmed SQL
+>   shape). `npm run test:reconcile` **16/16** live reconciliation tests pass against the
+>   **`magnaquest-sand-box.abi_team_sip_devtest_poc`**
 >   sandbox project (the only BigQuery project the local
 >   `credentials/abi_team_sip_bq_access_service_account.json` key can access — it does NOT have
 >   `bigquery.jobs.create` on `tricogde-dwh`; use `QA_BQ_PROJECT_OVERRIDE=magnaquest-sand-box
 >   QA_BQ_DATASET_OVERRIDE=magnaquest-sand-box.abi_team_sip_devtest_poc` to point the harness at
 >   it, per `test/helpers/bq.js`'s override mechanism — the app's real `Config.js` still points
->   at `tricogde-dwh` and that is NOT changed by this work). Full local preview pass: 0 console
->   errors across all 8 tabs, drawer open/apply/chip-remove/reopen-state all verified correct in
->   both light and dark themes. Mobile-viewport (375×812) could not be live-exercised in this
->   session's browser-automation environment (a tooling limitation, not an app issue) — verified
->   instead via static review of `Styles.html`'s 820px/560px responsive rules.
-> - **`clasp push --force` done and verified**: re-pulled into a scratch dir and diffed against
->   `src/` — byte-for-byte identical. **`clasp deploy`/production redeploy was deliberately NOT
->   run** — per this session's established, twice-reinforced convention, that step waits for the
->   user's explicit go-ahead. To ship: `clasp deploy -i <stable-deployment-id> -d "<description>"`
+>   at `tricogde-dwh` and that is NOT changed by this work). The 2 new reconciliation tests are
+>   the permanent guard for I4: they run the SQL path and the JS `centerPassesFilters_` predicate
+>   over the same universe and assert identical center counts — once for `Status:['ACTIVE']`, and
+>   once for a deliberately **whitespace-padded** `HubName` (asserting `> 0`, since an untrimmed
+>   comparison on either side makes a padded hub select nothing at all and would otherwise satisfy
+>   equality vacuously).
+> - **Preview verification — CORRECTED 2026-07-29.** The original Task-12 pass claimed "drawer
+>   open/apply/chip-remove/reopen-state all verified correct", but that pass only exercised tabs
+>   that **share the dashboard payload**, which is exactly where bugs I2/I3 do not show. On the
+>   other 4 tabs (Map/Top Customers/Numbers/Raw Data) the reopened drawer showed **empty**
+>   Segment/State lists after any filter change, and tabbing back to Asset/Centers/Support showed
+>   stale numbers — so that claim was wrong for 4 of 8 tabs when it was written. The fix wave
+>   fixed both and **re-verified directly** in the local preview (mock-data mode, fresh build):
+>   drawer opened on **all 8 tabs** after applying a filter → Segment 7 / State 7 / Hub 12 options
+>   present on every one; applying a filter from Map and from Top Customers then tabbing into
+>   Centers/Asset visibly refetched all three of the shared dashboard payload, the Center-360 table
+>   and the device table (confirmed by the mock's per-call randomized values changing); Hub
+>   combobox showed its default set on focus and narrowed to the correct 2 matches while typing,
+>   with the debounce verified as suppressing intermediate lookups during rapid typing; select →
+>   Apply → chip → chip-remove round-trip updated badge (1→2→1) and chips correctly; **0 console
+>   errors** across the whole sequence. Mobile-viewport (375×812) still could not be live-exercised
+>   in this session's browser-automation environment (a tooling limitation, not an app issue) —
+>   verified instead via static review of `Styles.html`'s 820px/560px responsive rules.
+> - **`clasp push --force` done and verified** at the end of Task 13: re-pulled into a scratch dir
+>   and diffed against `src/` — byte-for-byte identical **as of that commit**. ⚠️ **The
+>   final-review fix wave landed AFTER that push and has not been pushed** — the editor is
+>   currently behind git HEAD by exactly that fix-wave commit; run `clasp push --force` before
+>   deploying. **`clasp deploy`/production redeploy was deliberately NOT run** — per this
+>   session's established, twice-reinforced convention, that step waits for the user's explicit
+>   go-ahead. To ship: `clasp push --force`, then
+>   `clasp deploy -i <stable-deployment-id> -d "<description>"`
 >   (or Deploy → Manage deployments → ✏️ edit → New version → Deploy in the editor UI).
 > - Plan: `docs/superpowers/plans/2026-07-28-global-nav-and-universal-filter.md` (13 tasks, all
 >   complete). Spec: `docs/superpowers/specs/2026-07-28-global-nav-and-universal-filter-design.md`.
-> - **Still open**: `clasp deploy` to production (waiting on user go-ahead); the
+> - **Still open**: `clasp push --force` (editor is one fix-wave commit behind git HEAD) then
+>   `clasp deploy` to production (waiting on user go-ahead); the
 >   `BQ_SERVICE_ACCOUNT_KEY` GitHub secret for CI's reconciliation tier (pre-existing open item,
 >   unrelated to this feature — see item 11 in section 6 below).
 

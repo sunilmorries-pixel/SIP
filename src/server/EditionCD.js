@@ -184,11 +184,22 @@ function buildDashboardQuerySpecsCD(hub, filters) {
     if (s.key === 'reliability' || s.key === 'assetHealth') s.maxRows = 60000;
   });
 
-  // Distinct real segment values (hub_master_segment), for the topbar segment filter.
+  // Distinct real segment/state/hub values, for the global filter drawer's
+  // Segment checklist and State/Hub searchable comboboxes.
   specs.push({
     key: 'segmentOptions', maxRows: 200,
     sql: "SELECT DISTINCT TRIM(hub_master_segment) AS segment FROM " + CD +
       " WHERE " + F + " AND NULLIF(TRIM(hub_master_segment), '') IS NOT NULL ORDER BY segment"
+  });
+  specs.push({
+    key: 'stateOptions', maxRows: 200,
+    sql: "SELECT DISTINCT TRIM(State) AS state FROM " + CD +
+      " WHERE " + F + " AND NULLIF(TRIM(State), '') IS NOT NULL ORDER BY state"
+  });
+  specs.push({
+    key: 'hubOptions', maxRows: 500,
+    sql: "SELECT DISTINCT TRIM(HubName) AS hub FROM " + CD +
+      " WHERE " + F + " AND NULLIF(TRIM(HubName), '') IS NOT NULL ORDER BY hub"
   });
   // Per-center Zoho failure aggregate (Zoho only — no jira) feeding the JS cohort.
   var P = "SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', ";

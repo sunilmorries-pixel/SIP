@@ -344,6 +344,8 @@
       zohoChannel: ['Email', 'Phone', 'Web', 'Chat', 'Forums'].map(function (ch) { return { channel: ch, cnt: rnd(80, 2400) }; }),
       zohoSegment: ['Enterprise', 'SMB', 'Government', 'Distributor', 'Direct'].map(function (sg) { return { segment: sg, cnt: rnd(120, 1900) }; }),
       segmentOptions: ['Private - SME', 'Government', 'LE - Cath Lab', 'LE - Diagnostic Chain', 'ECHO', 'LE - Large Hospital', 'Project'].map(function (sg) { return { segment: sg }; }),
+      stateOptions: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Delhi', 'Gujarat', 'Uttar Pradesh', 'West Bengal'].map(function (s) { return { state: s }; }),
+      hubOptions: ['Bengaluru Hub', 'Mumbai Hub', 'Chennai Hub', 'Delhi Hub', 'Ahmedabad Hub', 'Lucknow Hub', 'Kolkata Hub'].map(function (h) { return { hub: h }; }),
       csTracker: {
         kpis: { total_cases: 1284, avg_tat_days: 3.4, owners: 9 },
         tatByMonth: months.map(function (mo) { return { month: mo, cases: rnd(40, 160), avg_tat: rnd(2, 7) }; }),
@@ -1263,8 +1265,8 @@
     if (!preserveStaged) state.globalFiltersPending = JSON.parse(JSON.stringify(state.globalFilters));
     renderFilterChecklist_('filterSegment', 'segments', state.lastDashboard ? (state.lastDashboard.segmentOptions || []).map(function (s) { return s.segment; }) : []);
     renderFilterChecklist_('filterStatus', 'statuses', ['ACTIVE', 'DEACTIVATED']);
-    renderFilterCombo_('filterState', 'states', $('filterState').getAttribute('data-options') ? JSON.parse($('filterState').getAttribute('data-options')) : []);
-    renderFilterCombo_('filterHub', 'hubs', $('filterHub').getAttribute('data-options') ? JSON.parse($('filterHub').getAttribute('data-options')) : []);
+    renderFilterCombo_('filterState', 'states', state.lastDashboard ? (state.lastDashboard.stateOptions || []).map(function (s) { return s.state; }) : []);
+    renderFilterCombo_('filterHub', 'hubs', state.lastDashboard ? (state.lastDashboard.hubOptions || []).map(function (s) { return s.hub; }) : []);
     $('filterDateFrom').value = state.globalFiltersPending.dateFrom;
     $('filterDateTo').value = state.globalFiltersPending.dateTo;
     $('filterScrim').hidden = false;
@@ -1301,7 +1303,6 @@
   /** Searchable multi-select combobox (State/Hub — large, unbounded value sets). */
   function renderFilterCombo_(containerId, dim, allOptions) {
     var container = $(containerId);
-    container.setAttribute('data-options', JSON.stringify(allOptions));
     container.innerHTML =
       '<input type="text" class="input filter-combo-input" placeholder="Search ' + FILTER_DIM_LABELS[dim] + 's…">' +
       '<div class="filter-combo-list" hidden></div>' +
@@ -2268,7 +2269,10 @@
     topLe: { name: 'Top LE customers', formula: 'The curated 27 large-enterprise accounts, ranked by devices.', source: 'TopCustomers.js hub list.' },
     topLeDevices: { name: 'Top LE devices', formula: 'Devices run by the 27 curated “Top LE” hub accounts.', source: 'TopCustomers hub list ⋈ device mapping.' },
     centersPerCust: { name: 'Centers per customer', formula: 'Distinct centers per top account.', source: 'center_details grouped by hub.' },
-    leaderboard: { name: 'Customer leaderboard', formula: 'Top accounts ranked, with devices / centers / open tickets.', source: 'aggregated from center_details + devices + zoho_data.' }
+    leaderboard: { name: 'Customer leaderboard', formula: 'Top accounts ranked, with devices / centers / open tickets.', source: 'aggregated from center_details + devices + zoho_data.' },
+
+    // ── Product ──
+    about: { name: 'SIP Insights', about: 'SIP Insights is Tricog’s live operations dashboard — one view into device health, center uptime, ticket SLAs, and where the business needs attention right now, drawn directly from BigQuery, Zoho, and Jira.' }
   };
 
   // KPI tile id → metric key
@@ -2338,10 +2342,12 @@
     function showPop(dot) {
       var m = METRIC_INFO[dot.getAttribute('data-metric')];
       if (!m) return;
-      pop.innerHTML =
-        '<div class="info-pop-head">' +
+      var head = '<div class="info-pop-head">' +
           (m.code ? '<span class="metric-tag">' + escapeHtml(m.code) + '</span>' : '') +
-          '<span class="info-pop-name">' + escapeHtml(m.name) + '</span></div>' +
+          '<span class="info-pop-name">' + escapeHtml(m.name) + '</span></div>';
+      pop.innerHTML = m.about ?
+        head + '<div class="info-pop-row">' + escapeHtml(m.about) + '</div>' :
+        head +
         '<div class="info-pop-row"><span class="info-pop-label">How it’s calculated</span>' +
           '<span class="info-pop-formula">' + escapeHtml(m.formula) + '</span></div>' +
         '<div class="info-pop-row"><span class="info-pop-label">Source</span>' + escapeHtml(m.source) + '</div>' +

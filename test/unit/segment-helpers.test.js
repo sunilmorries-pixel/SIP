@@ -11,9 +11,10 @@
  * of centerFilterSubqueryCond_ (EditionCD.js), which generalizes the same
  * bridge to all 4 center-attribute dimensions at once — see
  * buildDeviceExplorerQuery. Its dedicated test block was removed along with
- * the function; centerFilterSubqueryCond_ is exercised by
- * global-filter-helpers.test.js / the device-explorer live-BQ verification
- * instead.
+ * the function; centerFilterSubqueryCond_ now has its own dedicated test
+ * block below (`describe('centerFilterSubqueryCond_ ...')`), which is the
+ * actual replacement coverage for that same "narrow an outer table via a
+ * CenterID subquery" pattern.
  *
  * Loaded via loadGas(['Config.js', 'SlaCatalog.js', 'Queries.js']): Queries.js
  * references CONFIG/T()/cdFilter_ at call time in other functions in the same
@@ -95,5 +96,73 @@ describe('segment filter helpers (Queries.js)', function () {
       expect(result).toBe(" AND TRIM(IFNULL(hub_master_segment,'')) = '" + cleaned + "'");
       expect(result).not.toContain("Gov't");
     });
+  });
+});
+
+/**
+ * centerFilterSubqueryCond_ (src/server/EditionCD.js) is the generalized
+ * replacement for the retired devSegCond_ (see file header above): it narrows
+ * an outer table (cloud_devices, zoho_data) to rows whose CenterID passes the
+ * center_details filter set, across all 4 center-attribute dimensions
+ * (segment/status/state/hub) instead of just segment. It calls multiCond_/T()
+ * (Queries.js) and cdFilter_ (EditionCD.js), so this needs its own sandbox
+ * loading EditionCD.js in addition to Config.js/SlaCatalog.js/Queries.js.
+ */
+describe('centerFilterSubqueryCond_ (EditionCD.js)', function () {
+  let sandboxWithCd;
+
+  beforeAll(function () {
+    sandboxWithCd = loadGas(['Config.js', 'SlaCatalog.js', 'Queries.js', 'EditionCD.js']);
+  });
+
+  test('returns "" for an empty filters object', function () {
+    expect(sandboxWithCd.centerFilterSubqueryCond_({})).toBe('');
+  });
+
+  test('returns "" when every dimension array is present but empty', function () {
+    expect(sandboxWithCd.centerFilterSubqueryCond_({ segments: [], statuses: [], states: [], hubs: [] })).toBe('');
+  });
+
+  test('returns "" for undefined/null filters', function () {
+    expect(sandboxWithCd.centerFilterSubqueryCond_(undefined)).toBe('');
+    expect(sandboxWithCd.centerFilterSubqueryCond_(null)).toBe('');
+  });
+
+  test('a single-dimension filter yields a CenterID subquery referencing cdFilter_() and the cleaned literal', function () {
+    // cdFilter_ lives in EditionCD.js too, so call it directly rather than
+    // hardcoding today's '1=1' value — this test shouldn't drift if that changes.
+    const cdFilterValue = sandboxWithCd.cdFilter_();
+    const cleaned = sandboxWithCd.segClean_('Government');
+
+    const result = sandboxWithCd.centerFilterSubqueryCond_({ segments: ['Government'] });
+
+    expect(result).toContain('CenterID IN (');
+    expect(result).toContain(cleaned);
+    expect(result).toContain(cdFilterValue);
+    expect(result).toContain("hub_master_segment IN ('" + cleaned + "')");
+  });
+
+  test('multiple dimensions are ANDed together inside ONE subquery, not one per dimension', function () {
+    const result = sandboxWithCd.centerFilterSubqueryCond_({ statuses: ['ACTIVE'], hubs: ['SomeHub'] });
+    expect(result).toContain("Status IN ('ACTIVE')");
+    expect(result).toContain("HubName IN ('SomeHub')");
+    const subqueryCount = (result.match(/CenterID IN \(/g) || []).length;
+    expect(subqueryCount).toBe(1);
+  });
+
+  test('all 4 dimensions (segments/statuses/states/hubs) can combine in a single call', function () {
+    const result = sandboxWithCd.centerFilterSubqueryCond_({
+      segments: ['Government'], statuses: ['ACTIVE'], states: ['Karnataka'], hubs: ['SomeHub']
+    });
+    expect(result).toContain("hub_master_segment IN ('Government')");
+    expect(result).toContain("Status IN ('ACTIVE')");
+    expect(result).toContain("State IN ('Karnataka')");
+    expect(result).toContain("HubName IN ('SomeHub')");
+  });
+
+  test('the emitted literal is sanitized (quotes stripped) the same way multiCond_/segClean_ do', function () {
+    const result = sandboxWithCd.centerFilterSubqueryCond_({ segments: ["Gov't"] });
+    expect(result).not.toContain("Gov't");
+    expect(result).toContain("hub_master_segment IN ('Govt')");
   });
 });

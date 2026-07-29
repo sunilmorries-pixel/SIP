@@ -51,6 +51,34 @@ var FLAGS_CD = [
   'Jira from the Google Sheet only (jira_data BQ ignored); serial→center = cloud_devices first, center_details fallback.'
 ];
 
+/* ═══════════════ Shared center-attribute filter chain ═══════════════════ */
+
+/**
+ * The "center attribute" half of the global filter, as one SQL fragment:
+ * segment + status + state + hub, ANDed, each via multiCond_.
+ *
+ * ONE definition on purpose. This exact 4-line chain used to be duplicated
+ * verbatim at 4 call sites (centerFilterSubqueryCond_, centerUptimeSqlCD_,
+ * buildDashboardQuerySpecsCD, and apiGetExecOverviewCD's deviceAge spec), so
+ * changing how a dimension is compared — e.g. adding multiCond_'s TRIM
+ * normalization, finding I4 — risked landing in 3 of 4 places and leaving the
+ * SQL path disagreeing with the JS path (centerPassesFilters_). Extracted by
+ * the whole-branch-review fix wave, 2026-07-29 (finding I8).
+ *
+ * The DATE range is deliberately NOT part of this helper: its column differs
+ * per call site (center_details.deploymentdate vs the SAFE.PARSE_DATETIME of
+ * zoho_data.CreatedAt), so callers add their own dateRangeCond_.
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array}=} filters
+ * @return {string} '' when no center-attribute dimension is active
+ */
+function centerAttrCond_(filters) {
+  var f = filters || {};
+  return multiCond_('hub_master_segment', f.segments) +
+    multiCond_('Status', f.statuses) +
+    multiCond_('State', f.states) +
+    multiCond_('HubName', f.hubs);
+}
+
 /* ═══════════════ Uptime / MTBF / Health (birth = deploymentdate) ═════════ */
 
 /**
@@ -71,10 +99,7 @@ function centerUptimeSqlCD_(tailSelect, filters) {
     "  AND " + P + "CreatedAt) IS NOT NULL), " +
     "birth AS (SELECT CenterID AS center_id, MIN(DATETIME(deploymentdate)) AS b " +
     "  FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_() +
-    multiCond_('hub_master_segment', ff.segments) +
-    multiCond_('Status', ff.statuses) +
-    multiCond_('State', ff.states) +
-    multiCond_('HubName', ff.hubs) +
+    centerAttrCond_(ff) +
     dateRangeCond_('deploymentdate', ff.dateFrom, ff.dateTo) +
     " GROUP BY CenterID), " +
     "flagged AS (SELECT center_id, s, e, " +
@@ -113,10 +138,7 @@ function buildDashboardQuerySpecsCD(hub, filters) {
   var CD = T('center_details');
   var F = cdFilter_();
   var ff = filters || {};
-  var filterCond = multiCond_('hub_master_segment', ff.segments) +
-    multiCond_('Status', ff.statuses) +
-    multiCond_('State', ff.states) +
-    multiCond_('HubName', ff.hubs);
+  var filterCond = centerAttrCond_(ff);
   var dateCond = dateRangeCond_('deploymentdate', ff.dateFrom, ff.dateTo);
   var cd = {
     centerKpis:
@@ -184,22 +206,28 @@ function buildDashboardQuerySpecsCD(hub, filters) {
     if (s.key === 'reliability' || s.key === 'assetHealth') s.maxRows = 60000;
   });
 
-  // Distinct real segment/state/hub values, for the global filter drawer's
-  // Segment checklist and State/Hub searchable comboboxes.
+  // Distinct real segment/state values, for the global filter drawer's Segment
+  // checklist and State combobox. Both ship WHOLE (the client filters them in
+  // JS as the user types) because both are small: ~7 segments and 451 distinct
+  // states on the sandbox.
+  //
+  // There is deliberately NO hubOptions spec: HubName has 13,721 distinct real
+  // values, so no static list can be both complete and cheap (a 500-row cap
+  // returned only the alphabetically-first punctuation-heavy junk — whole-branch
+  // review finding C1). Hub is served by apiSearchHubsCD instead, a debounced
+  // server-side search; see its docblock.
   specs.push({
     key: 'segmentOptions', maxRows: 200,
     sql: "SELECT DISTINCT TRIM(hub_master_segment) AS segment FROM " + CD +
       " WHERE " + F + " AND NULLIF(TRIM(hub_master_segment), '') IS NOT NULL ORDER BY segment"
   });
   specs.push({
-    key: 'stateOptions', maxRows: 200,
+    // 1000, not 200: there are 451 distinct real State values on the sandbox, so
+    // the old 200 cap silently truncated the list mid-alphabet (dropping
+    // Maharashtra/Tamil Nadu/Uttar Pradesh…). ~1000 short strings is cheap.
+    key: 'stateOptions', maxRows: 1000,
     sql: "SELECT DISTINCT TRIM(State) AS state FROM " + CD +
       " WHERE " + F + " AND NULLIF(TRIM(State), '') IS NOT NULL ORDER BY state"
-  });
-  specs.push({
-    key: 'hubOptions', maxRows: 500,
-    sql: "SELECT DISTINCT TRIM(HubName) AS hub FROM " + CD +
-      " WHERE " + F + " AND NULLIF(TRIM(HubName), '') IS NOT NULL ORDER BY hub"
   });
   // Per-center Zoho failure aggregate (Zoho only — no jira) feeding the JS cohort.
   var P = "SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', ";
@@ -297,6 +325,41 @@ function cohortFromIndex_(assets, zohoFail) {
 /* ═══════════════ Center-360 rows from center_details ═════════════════════ */
 
 /**
+ * The center-dimension source spec behind getCenter360RowsCD_ — the row shape
+ * the JS filter predicate (centerPassesFilters_) runs over.
+ *
+ * Its OWN function (rather than inline in getCenter360RowsCD_) so the
+ * reconciliation suite can generate exactly this SQL and cross-check the JS
+ * predicate's row count against the SQL path's COUNT(DISTINCT CenterID) for the
+ * same filter set — the permanent guard for finding I4 (SQL-vs-JS drift).
+ * @return {{key:string, maxRows:number, sql:string}}
+ */
+function centerBaseSpecCD_() {
+  return {
+    key: 'centerBase', maxRows: 60000,
+    sql:
+      // DISTINCT: the 2026-07-07 reload has exact duplicate rows per center.
+      // PinCode/Spoke_Country replace the removed pin/Country columns; the
+      // reload dropped latitude/longitude entirely → NULL here, coordinates
+      // come from the pin-geocode store fallback (coordsForCD_).
+      //
+      // state/hub are TRIM'd for the same reason segment/status already were:
+      // centerPassesFilters_ compares these fields against the filter values
+      // with ===, while multiCond_ compares TRIM(IFNULL(col,'')) in SQL. Both
+      // sides must normalize identically or the two paths disagree on the 2,806
+      // sandbox rows with a padded HubName (review finding I4, 2026-07-29).
+      "SELECT DISTINCT CenterID AS center_id, Centername AS center, HubID AS hub_id, " +
+      " IFNULL(TRIM(HubName), '') AS hub, " +
+      " City AS city, IFNULL(TRIM(State), '') AS state, PinCode AS pin, Spoke_Country AS country, " +
+      " IFNULL(TRIM(hub_master_segment), '') AS segment, " +   // segment = hub_master_segment (per user)
+      " IFNULL(TRIM(Status), '') AS status, " +                // NEW: needed for the global Status filter
+      " CAST(NULL AS FLOAT64) AS lat, CAST(NULL AS FLOAT64) AS lng, " +
+      " CAST(deploymentdate AS STRING) AS deployment_date " +
+      "FROM " + T('center_details') + " WHERE " + cdFilter_()
+  };
+}
+
+/**
  * center_details center dimension ⟕ live telemetry ⟕ open tickets (by CenterID).
  * @param {boolean=} bypassCache force a rebuild (used by the warm trigger)
  */
@@ -308,22 +371,8 @@ function getCenter360RowsCD_(bypassCache) {
   }
 
   var specs = buildCenterSourceSpecs().map(function (s) {
-    if (s.key !== 'centerBase') return s; // telemetry + tickets are center-table-agnostic
-    return {
-      key: 'centerBase', maxRows: 60000,
-      sql:
-        // DISTINCT: the 2026-07-07 reload has exact duplicate rows per center.
-        // PinCode/Spoke_Country replace the removed pin/Country columns; the
-        // reload dropped latitude/longitude entirely → NULL here, coordinates
-        // come from the pin-geocode store fallback (coordsForCD_).
-        "SELECT DISTINCT CenterID AS center_id, Centername AS center, HubID AS hub_id, HubName AS hub, " +
-        " City AS city, State AS state, PinCode AS pin, Spoke_Country AS country, " +
-        " IFNULL(TRIM(hub_master_segment), '') AS segment, " +   // segment = hub_master_segment (per user)
-        " IFNULL(TRIM(Status), '') AS status, " +                // NEW: needed for the global Status filter
-        " CAST(NULL AS FLOAT64) AS lat, CAST(NULL AS FLOAT64) AS lng, " +
-        " CAST(deploymentdate AS STRING) AS deployment_date " +
-        "FROM " + T('center_details') + " WHERE " + cdFilter_()
-    };
+    // telemetry + tickets are center-table-agnostic; only the center dimension swaps
+    return s.key === 'centerBase' ? centerBaseSpecCD_() : s;
   });
   var sources = runQueriesParallel(specs);
 
@@ -439,11 +488,7 @@ function centerPassesFilters_(row, filters) {
  * @return {string}
  */
 function centerFilterSubqueryCond_(filters) {
-  var f = filters || {};
-  var cond = multiCond_('hub_master_segment', f.segments) +
-             multiCond_('Status', f.statuses) +
-             multiCond_('State', f.states) +
-             multiCond_('HubName', f.hubs);
+  var cond = centerAttrCond_(filters);
   if (!cond) return '';
   return ' AND CenterID IN (SELECT DISTINCT CenterID FROM ' + T('center_details') +
     ' WHERE ' + cdFilter_() + cond + ')';
@@ -569,6 +614,55 @@ function apiGetCentersCD(options) {
   });
 }
 
+/**
+ * Server-side Hub search for the global filter drawer's Hub combobox.
+ *
+ * Why an endpoint instead of an option list: center_details holds 13,721
+ * distinct real HubName values (live sandbox count), so shipping them with the
+ * dashboard payload the way segmentOptions/stateOptions do is neither cheap nor
+ * completable — any static cap truncates mid-alphabet (whole-branch review
+ * finding C1; user decision was "search endpoint, not a bigger list"). The
+ * client debounces keystrokes and renders whatever comes back.
+ *
+ * Two modes:
+ *   query < 2 chars → the top 50 hubs BY CENTER COUNT. This is the default set
+ *     the combobox shows on focus, before the user types — the alphabetically
+ *     first 50 would be punctuation-heavy junk, the biggest 50 are useful.
+ *   query >= 2 chars → up to 50 hubs whose name contains it (case-insensitive).
+ *
+ * Sanitisation: segClean_ (quotes/length, as every other filter input) then
+ * likeEscape_ for the LIKE wildcards, passed as a named parameter — never
+ * concatenated into the SQL. Values come back TRIM'd, matching multiCond_'s
+ * TRIM(IFNULL(...)) comparison so a selected hub actually matches (finding I4).
+ * @param {{query:string}=} options
+ * @return {Object} envelope with { hubs:Array<string>, query:string, mode:string }
+ */
+function apiSearchHubsCD(options) {
+  options = options || {};
+  var q = segClean_(String(options.query || '')).toLowerCase();
+  return respond_(function () {
+    return withCache('hubsrch_v1_' + getCacheEpoch_() + '_' + shortHash(q), function () {
+      var CD = T('center_details');
+      var base = " WHERE " + cdFilter_() + " AND NULLIF(TRIM(HubName), '') IS NOT NULL";
+      var sql, params = null;
+      if (q.length < 2) {
+        sql = "SELECT TRIM(HubName) AS hub, COUNT(DISTINCT CenterID) AS centers FROM " + CD +
+          base + " GROUP BY hub ORDER BY centers DESC, hub LIMIT 50";
+      } else {
+        sql = "SELECT DISTINCT TRIM(HubName) AS hub FROM " + CD + base +
+          " AND LOWER(TRIM(HubName)) LIKE @like ORDER BY hub LIMIT 50";
+        params = { like: '%' + likeEscape_(q) + '%' };
+      }
+      var rows = runQuery(sql, params, { maxRows: 50 }) || [];
+      return {
+        hubs: rows.map(function (r) { return r.hub; }),
+        query: q, mode: q.length < 2 ? 'top' : 'search',
+        edition: 'center_details'
+      };
+    }, options.bypassCache === true);
+  });
+}
+
 function apiGetMapDataCD(options) {
   options = options || {};
   var filters = {
@@ -685,8 +779,11 @@ function computeTopCustomersCD_(filters) {
   });
 
   // Ticket count + SLA breach are hub-scoped (Zoho by HubID) — identical to the
-  // default edition; reuse the shared helper.
-  var sla = topCustomerTicketStats_();
+  // default edition; reuse the shared helper. `filters` MUST be threaded: every
+  // other number on this page is filtered, so an unfiltered ticket_count put a
+  // filtered sub-label next to an unfiltered headline in the same tile
+  // (whole-branch review finding I5, 2026-07-29).
+  var sla = topCustomerTicketStats_(filters);
   totals.ticket_count = sla.total_tickets;
   totals.sla_breach = sla.sla_breach;
   totals.sla_within_pct = sla.sla_within_pct;
@@ -734,8 +831,7 @@ function apiGetExecOverviewCD(options) {
         sql: "SELECT ROUND(AVG(age_days), 0) AS avg_age_days, MAX(age_days) AS max_age_days FROM (" +
              " SELECT DATE_DIFF(CURRENT_DATE(), DATE(deploymentdate), DAY) AS age_days" +
              " FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_() +
-             multiCond_('hub_master_segment', filters.segments) + multiCond_('Status', filters.statuses) +
-             multiCond_('State', filters.states) + multiCond_('HubName', filters.hubs) +
+             centerAttrCond_(filters) +
              dateRangeCond_('deploymentdate', filters.dateFrom, filters.dateTo) + ")"
       });
       var r = runQueriesParallel(specs);

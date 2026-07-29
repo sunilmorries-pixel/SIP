@@ -72,6 +72,17 @@ function cdSegCond_(segment) {
  * column IN ('v1','v2',...) for a sanitized, non-empty array; '' otherwise.
  * Segment/Status/State/Hub all reuse this — structurally identical dimensions
  * ("match this column against a list of values").
+ *
+ * The column is wrapped in TRIM(IFNULL(...,'')) — not compared bare — because
+ * the app filters the SAME dimensions through TWO paths that must agree: this
+ * SQL fragment, and the JS predicate centerPassesFilters_ (EditionCD.js) over
+ * the cached Center-360 rows, whose segment/status/state/hub fields all come
+ * from TRIM'd SELECT expressions. Live sandbox measurement: 2,806
+ * center_details rows carry a padded HubName, so a bare `column IN (...)`
+ * made the two paths silently disagree (whole-branch review finding I4,
+ * 2026-07-29). The literals emitted here are already trimmed at the source —
+ * every option list is a SELECT DISTINCT TRIM(...) and the Hub search endpoint
+ * returns TRIM(HubName).
  * @param {string} column
  * @param {Array<string>=} values
  * @return {string}
@@ -79,7 +90,24 @@ function cdSegCond_(segment) {
 function multiCond_(column, values) {
   var clean = (values || []).map(segClean_).filter(Boolean);
   if (!clean.length) return '';
-  return ' AND ' + column + ' IN (' + clean.map(function (v) { return "'" + v + "'"; }).join(',') + ')';
+  return " AND TRIM(IFNULL(" + column + ",'')) IN (" +
+    clean.map(function (v) { return "'" + v + "'"; }).join(',') + ')';
+}
+
+/**
+ * Escapes a value for use INSIDE a BigQuery LIKE pattern. '%' and '_' are
+ * wildcards there, so a user typing "50%" or "a_b" would otherwise match far
+ * more than they asked for. BigQuery's LIKE escape character is backslash and
+ * the operator takes no ESCAPE clause, so the escaped value must travel as a
+ * NAMED QUERY PARAMETER (inside a SQL string literal the backslash would need
+ * doubling). Pair with segClean_ for quote/length sanitisation — see
+ * apiSearchHubsCD (EditionCD.js), the only LIKE over free user text whose
+ * pattern isn't already a bare substring match.
+ * @param {string} value
+ * @return {string}
+ */
+function likeEscape_(value) {
+  return String(value == null ? '' : value).replace(/([\\%_])/g, '\\$1');
 }
 
 /**

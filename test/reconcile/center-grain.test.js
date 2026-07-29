@@ -116,6 +116,67 @@ maybeDescribe('center-grain invariants (live BigQuery)', function () {
     expect(rBoth[0].centers).toBe(eachTotal); // a center holds exactly one segment value — no overlap possible
   });
 
+  /**
+   * The permanent guard for finding I4 (2026-07-29 whole-branch review).
+   *
+   * This app filters the SAME dimensions through TWO independent paths, by
+   * design (see the "Center-360 JS-predicate architecture" note in the SDD
+   * ledger): SQL — multiCond_ fragments inside the center_details queries — and
+   * JS — centerPassesFilters_ over the cached Center-360 row array. Nothing in
+   * the type system makes them agree; a normalization difference in either one
+   * silently skews or zeroes out results. These two tests make the two paths
+   * count the same universe and assert they land on the same number.
+   */
+  test('SQL filter path and JS centerPassesFilters_ predicate agree on the same filter set', async function () {
+    const filters = { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], dateFrom: '', dateTo: '' };
+    const kpiSpec = sandbox.buildDashboardQuerySpecsCD('', filters)
+      .find(function (s) { return s.key === 'centerKpis'; });
+    const [baseRows, kpiRows] = await Promise.all([
+      runQuery(sandbox.centerBaseSpecCD_().sql), // the exact rows the JS predicate runs over
+      runQuery(kpiSpec.sql),
+    ]);
+
+    // Dedupe to center grain on the JS side too — centerKpis is
+    // COUNT(DISTINCT CenterID), and center_details has duplicate rows per center.
+    const passing = {};
+    baseRows.forEach(function (r) {
+      if (sandbox.centerPassesFilters_(r, filters)) passing[r.center_id] = true;
+    });
+
+    expect(kpiRows[0].centers).toBeGreaterThan(0); // guard against a vacuous 0 === 0 pass
+    expect(Object.keys(passing).length).toBe(kpiRows[0].centers);
+  });
+
+  test('a whitespace-padded HubName matches identically in SQL and JS (the exact I4 failure mode)', async function () {
+    // 2,806 sandbox rows carry a padded HubName. Pre-fix, the SQL path compared
+    // the raw column while the JS path compared an untrimmed field, so selecting
+    // one of these hubs could silently return a different count per path.
+    const CD = sandbox.T('center_details');
+    const paddedRows = await runQuery(
+      "SELECT TRIM(HubName) AS hub, COUNT(*) AS n FROM " + CD +
+      " WHERE HubName != TRIM(HubName) AND NULLIF(TRIM(HubName), '') IS NOT NULL" +
+      " GROUP BY hub ORDER BY n DESC LIMIT 1");
+    if (!paddedRows.length) return; // dataset has no padded values — nothing to guard here
+
+    const filters = { segments: [], statuses: [], states: [], hubs: [paddedRows[0].hub], dateFrom: '', dateTo: '' };
+    const kpiSpec = sandbox.buildDashboardQuerySpecsCD('', filters)
+      .find(function (s) { return s.key === 'centerKpis'; });
+    const [baseRows, kpiRows] = await Promise.all([
+      runQuery(sandbox.centerBaseSpecCD_().sql),
+      runQuery(kpiSpec.sql),
+    ]);
+
+    const passing = {};
+    baseRows.forEach(function (r) {
+      if (sandbox.centerPassesFilters_(r, filters)) passing[r.center_id] = true;
+    });
+
+    // > 0 is the load-bearing half: an untrimmed comparison on either side makes
+    // a padded hub select nothing at all, which would still satisfy equality.
+    expect(kpiRows[0].centers).toBeGreaterThan(0);
+    expect(Object.keys(passing).length).toBe(kpiRows[0].centers);
+  });
+
   test('date-range filter narrows deploymentAge band totals versus unfiltered', async function () {
     var unfiltered = sandbox.buildDashboardQuerySpecsCD('', {});
     var uRows = await runQuery(unfiltered.find(function (s) { return s.key === 'deploymentAge'; }).sql);

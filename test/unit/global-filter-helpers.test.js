@@ -26,7 +26,7 @@ describe('multiCond_', function () {
   });
 
   test('single value emits an IN-list of one', function () {
-    expect(sandbox.multiCond_('Status', ['ACTIVE'])).toBe(" AND Status IN ('ACTIVE')");
+    expect(sandbox.multiCond_('Status', ['ACTIVE'])).toBe(" AND TRIM(IFNULL(Status,'')) IN ('ACTIVE')");
   });
 
   test('multiple values are all included, sanitized', function () {
@@ -34,6 +34,42 @@ describe('multiCond_', function () {
     expect(cond).toContain("'Karnataka'");
     expect(cond).toContain("'TamilNadu'"); // quote stripped by segClean_
     expect(cond).not.toMatch(/"/);
+  });
+
+  test('the column is TRIM(IFNULL(...))-normalized, never compared bare (finding I4 guard)', function () {
+    // The JS filter path (centerPassesFilters_) compares against TRIM'd values
+    // from centerBase's SELECT. If this fragment ever reverts to a bare
+    // `column IN (...)`, the SQL and JS paths silently disagree on the 2,806
+    // sandbox rows with a padded HubName. Assert the normalization explicitly,
+    // for every dimension the global filter drives.
+    ['hub_master_segment', 'Status', 'State', 'HubName'].forEach(function (col) {
+      var cond = sandbox.multiCond_(col, ['x']);
+      expect(cond).toBe(" AND TRIM(IFNULL(" + col + ",'')) IN ('x')");
+      expect(cond).not.toBe(' AND ' + col + " IN ('x')");
+    });
+  });
+});
+
+describe('likeEscape_', function () {
+  let sandbox;
+  beforeAll(function () { sandbox = loadGas(['Config.js', 'SlaCatalog.js', 'Queries.js']); });
+
+  test('a plain string passes through unchanged', function () {
+    expect(sandbox.likeEscape_('metropolis')).toBe('metropolis');
+  });
+
+  test("LIKE wildcards % and _ are escaped so they match literally", function () {
+    expect(sandbox.likeEscape_('50%')).toBe('50\\%');
+    expect(sandbox.likeEscape_('a_b')).toBe('a\\_b');
+  });
+
+  test('a backslash is escaped first, so an escape marker cannot be forged', function () {
+    expect(sandbox.likeEscape_('a\\%b')).toBe('a\\\\\\%b');
+  });
+
+  test('null/undefined collapse to an empty string', function () {
+    expect(sandbox.likeEscape_(null)).toBe('');
+    expect(sandbox.likeEscape_(undefined)).toBe('');
   });
 });
 

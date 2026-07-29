@@ -139,13 +139,13 @@ describe('centerFilterSubqueryCond_ (EditionCD.js)', function () {
     expect(result).toContain('CenterID IN (');
     expect(result).toContain(cleaned);
     expect(result).toContain(cdFilterValue);
-    expect(result).toContain("hub_master_segment IN ('" + cleaned + "')");
+    expect(result).toContain("TRIM(IFNULL(hub_master_segment,'')) IN ('" + cleaned + "')");
   });
 
   test('multiple dimensions are ANDed together inside ONE subquery, not one per dimension', function () {
     const result = sandboxWithCd.centerFilterSubqueryCond_({ statuses: ['ACTIVE'], hubs: ['SomeHub'] });
-    expect(result).toContain("Status IN ('ACTIVE')");
-    expect(result).toContain("HubName IN ('SomeHub')");
+    expect(result).toContain("TRIM(IFNULL(Status,'')) IN ('ACTIVE')");
+    expect(result).toContain("TRIM(IFNULL(HubName,'')) IN ('SomeHub')");
     const subqueryCount = (result.match(/CenterID IN \(/g) || []).length;
     expect(subqueryCount).toBe(1);
   });
@@ -154,15 +154,99 @@ describe('centerFilterSubqueryCond_ (EditionCD.js)', function () {
     const result = sandboxWithCd.centerFilterSubqueryCond_({
       segments: ['Government'], statuses: ['ACTIVE'], states: ['Karnataka'], hubs: ['SomeHub']
     });
-    expect(result).toContain("hub_master_segment IN ('Government')");
-    expect(result).toContain("Status IN ('ACTIVE')");
-    expect(result).toContain("State IN ('Karnataka')");
-    expect(result).toContain("HubName IN ('SomeHub')");
+    expect(result).toContain("TRIM(IFNULL(hub_master_segment,'')) IN ('Government')");
+    expect(result).toContain("TRIM(IFNULL(Status,'')) IN ('ACTIVE')");
+    expect(result).toContain("TRIM(IFNULL(State,'')) IN ('Karnataka')");
+    expect(result).toContain("TRIM(IFNULL(HubName,'')) IN ('SomeHub')");
   });
 
   test('the emitted literal is sanitized (quotes stripped) the same way multiCond_/segClean_ do', function () {
     const result = sandboxWithCd.centerFilterSubqueryCond_({ segments: ["Gov't"] });
     expect(result).not.toContain("Gov't");
-    expect(result).toContain("hub_master_segment IN ('Govt')");
+    expect(result).toContain("TRIM(IFNULL(hub_master_segment,'')) IN ('Govt')");
+  });
+});
+
+/**
+ * centerAttrCond_ (src/server/EditionCD.js) is the ONE definition of the
+ * segment+status+state+hub condition chain, extracted 2026-07-29 (finding I8)
+ * from 4 verbatim duplicates. These tests pin the contract every one of those
+ * call sites now depends on — in particular that it emits nothing at all when
+ * no dimension is active (callers concatenate it straight after a WHERE clause,
+ * so a stray fragment would be a syntax error) and that it does NOT smuggle in
+ * a date condition (its column differs per call site).
+ */
+describe('centerAttrCond_ (EditionCD.js)', function () {
+  let sandboxWithCd;
+
+  beforeAll(function () {
+    sandboxWithCd = loadGas(['Config.js', 'SlaCatalog.js', 'Queries.js', 'EditionCD.js']);
+  });
+
+  test('returns "" for empty / absent filter sets', function () {
+    expect(sandboxWithCd.centerAttrCond_({})).toBe('');
+    expect(sandboxWithCd.centerAttrCond_(undefined)).toBe('');
+    expect(sandboxWithCd.centerAttrCond_(null)).toBe('');
+    expect(sandboxWithCd.centerAttrCond_({ segments: [], statuses: [], states: [], hubs: [] })).toBe('');
+  });
+
+  test('emits exactly the 4 dimensions, in the documented order, all TRIM-normalized', function () {
+    const result = sandboxWithCd.centerAttrCond_({
+      segments: ['Government'], statuses: ['ACTIVE'], states: ['Karnataka'], hubs: ['SomeHub']
+    });
+    expect(result).toBe(
+      " AND TRIM(IFNULL(hub_master_segment,'')) IN ('Government')" +
+      " AND TRIM(IFNULL(Status,'')) IN ('ACTIVE')" +
+      " AND TRIM(IFNULL(State,'')) IN ('Karnataka')" +
+      " AND TRIM(IFNULL(HubName,'')) IN ('SomeHub')"
+    );
+  });
+
+  test('ignores dateFrom/dateTo — the date column differs per call site, callers add it', function () {
+    const result = sandboxWithCd.centerAttrCond_({ statuses: ['ACTIVE'], dateFrom: '2026-01-01', dateTo: '2026-03-31' });
+    expect(result).toBe(" AND TRIM(IFNULL(Status,'')) IN ('ACTIVE')");
+    expect(result).not.toContain('2026-01-01');
+    expect(result).not.toContain('deploymentdate');
+  });
+
+  test('every dimension is independently optional', function () {
+    expect(sandboxWithCd.centerAttrCond_({ hubs: ['OnlyHub'] })).toBe(" AND TRIM(IFNULL(HubName,'')) IN ('OnlyHub')");
+    expect(sandboxWithCd.centerAttrCond_({ states: ['OnlyState'] })).toBe(" AND TRIM(IFNULL(State,'')) IN ('OnlyState')");
+  });
+});
+
+/**
+ * The Hub filter's server-side search (finding C1) replaced a static option
+ * list, so the SQL it builds is worth pinning: 13,721 distinct HubName values
+ * means the LIMIT and the two modes (default top-by-center-count vs name search)
+ * are the whole point. apiSearchHubsCD itself needs the Apps Script runtime
+ * (CacheService/UrlFetchApp), so these assert the pieces it composes.
+ */
+describe('Hub search SQL pieces (EditionCD.js / Queries.js)', function () {
+  let sandboxWithCd;
+
+  beforeAll(function () {
+    sandboxWithCd = loadGas(['Config.js', 'SlaCatalog.js', 'Queries.js', 'EditionCD.js']);
+  });
+
+  test('buildDashboardQuerySpecsCD no longer ships a static hubOptions list', function () {
+    const keys = sandboxWithCd.buildDashboardQuerySpecsCD('', {}).map(function (s) { return s.key; });
+    expect(keys).not.toContain('hubOptions');
+    // …but the two small-cardinality lists still ship whole.
+    expect(keys).toContain('segmentOptions');
+    expect(keys).toContain('stateOptions');
+  });
+
+  test('stateOptions maxRows covers the real 451-value cardinality (was capped at 200)', function () {
+    const spec = sandboxWithCd.buildDashboardQuerySpecsCD('', {})
+      .find(function (s) { return s.key === 'stateOptions'; });
+    expect(spec.maxRows).toBeGreaterThanOrEqual(1000);
+  });
+
+  test('a user query with LIKE wildcards is escaped before becoming a pattern', function () {
+    // The endpoint builds '%' + likeEscape_(segClean_(q)) + '%' as a NAMED
+    // PARAMETER; the wrapping %s stay wildcards, the user's own do not.
+    const pattern = '%' + sandboxWithCd.likeEscape_(sandboxWithCd.segClean_('lab%_x')) + '%';
+    expect(pattern).toBe('%lab\\%\\_x%');
   });
 });

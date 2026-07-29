@@ -111,7 +111,10 @@ function computeTopCustomers_() {
         if (c.centers > 0) totals.withData += 1;
       });
 
-      // Ticket count + SLA breach scoped to the curated top-customer hubs.
+      // Ticket count + SLA breach scoped to the curated top-customer hubs. No
+      // `filters` argument on purpose: this is the legacy (device_center_mapping)
+      // edition, which predates the global filter — computeTopCustomersCD_ is
+      // the one that threads it.
       var sla = topCustomerTicketStats_();
       totals.ticket_count = sla.total_tickets;
       totals.sla_breach = sla.sla_breach;
@@ -123,13 +126,29 @@ function computeTopCustomers_() {
 /**
  * Total Zoho tickets and SLA breach for the curated top-customer hubs only.
  * Breach = open tickets whose age exceeds the per-type SLA (SlaCatalog).
+ *
+ * The curated HubID list is the page's own scope and always applies. On top of
+ * that, `filters` narrows to tickets whose CENTER passes the global filter
+ * (segment/status/state/hub) via centerFilterSubqueryCond_ — without it this
+ * helper returned unfiltered totals into an otherwise fully-filtered payload,
+ * so one tile showed an unfiltered headline above a filtered sub-label
+ * (whole-branch review finding I5, 2026-07-29).
+ *
+ * The global DATE range is deliberately NOT applied here: the companion number
+ * in that tile (open_tickets, summed from the Center-360 rows) counts a center's
+ * open tickets regardless of when they were raised, so date-filtering only the
+ * headline would re-create the same mixed-scope tile in a new way. Date
+ * narrowing of ticket metrics lives on the Support page, where it applies to
+ * every ticket number on screen at once.
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array}=} filters
  * @return {{total_tickets:number, sla_breach:number, sla_within_pct:(number|null)}}
  */
-function topCustomerTicketStats_() {
+function topCustomerTicketStats_(filters) {
   var ids = TOP_CUSTOMERS.map(function (c) { return c.hub_id; }).join(', ');
+  var centerCond = centerFilterSubqueryCond_(filters || {});
   var sql =
     "WITH t AS (SELECT status, " + slaDaysCaseSql_("IFNULL(IssueCategory,'')") + " AS sla_days, " +
-    zohoParsedDates_() + " FROM " + T('zoho_data') + " WHERE HubID IN (" + ids + ")), " +
+    zohoParsedDates_() + " FROM " + T('zoho_data') + " WHERE HubID IN (" + ids + ")" + centerCond + "), " +
     "s AS (SELECT sla_days, " +
     " (status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL) AS resolved, " +
     " CASE WHEN status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL " +

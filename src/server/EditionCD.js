@@ -729,7 +729,8 @@ function apiGetExecOverviewCD(options) {
              " SELECT DATE_DIFF(CURRENT_DATE(), DATE(deploymentdate), DAY) AS age_days" +
              " FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_() +
              multiCond_('hub_master_segment', filters.segments) + multiCond_('Status', filters.statuses) +
-             multiCond_('State', filters.states) + multiCond_('HubName', filters.hubs) + ")"
+             multiCond_('State', filters.states) + multiCond_('HubName', filters.hubs) +
+             dateRangeCond_('deploymentdate', filters.dateFrom, filters.dateTo) + ")"
       });
       var r = runQueriesParallel(specs);
       enrichCenterNamesCD_(r.reliability);

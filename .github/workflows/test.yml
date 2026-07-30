@@ -63,20 +63,23 @@ jobs:
       # mechanism from this repo's ad hoc `bq` CLI scripts, which read
       # CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE instead (see test/helpers/bq.js).
       - name: Decode BigQuery service account key
-        # secrets.* (not env.*) — a step's own `env:` block isn't in scope
-        # for its own `if:` evaluation, so checking env.BQ_SERVICE_ACCOUNT_KEY
-        # here would always read empty and this step would never run, even
-        # after the secret is added. secrets.* IS available to `if:`.
-        if: ${{ secrets.BQ_SERVICE_ACCOUNT_KEY != '' }}
+        # The `secrets` context is not a recognized named-value inside a
+        # step's `if:` — GitHub rejects the whole workflow file as invalid
+        # when it's used there (not just this job's runs; every job in the
+        # file fails to be scheduled). So the empty-secret check has to
+        # happen in the shell, after `secrets` has already been lowered to
+        # a plain env var below.
         env:
           BQ_SERVICE_ACCOUNT_KEY: ${{ secrets.BQ_SERVICE_ACCOUNT_KEY }}
         run: |
-          echo "$BQ_SERVICE_ACCOUNT_KEY" | base64 --decode > "$RUNNER_TEMP/bq-service-account.json"
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/bq-service-account.json" >> "$GITHUB_ENV"
+          if [ -n "$BQ_SERVICE_ACCOUNT_KEY" ]; then
+            echo "$BQ_SERVICE_ACCOUNT_KEY" | base64 --decode > "$RUNNER_TEMP/bq-service-account.json"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/bq-service-account.json" >> "$GITHUB_ENV"
+          fi
 
       # No `if` guard needed here: when the secret is absent, the step above
-      # never set GOOGLE_APPLICATION_CREDENTIALS (it didn't run), so
-      # hasCredentials() returns false and every reconciliation test skips
-      # itself — this still exits 0.
+      # never sets GOOGLE_APPLICATION_CREDENTIALS (its shell `if` skips the
+      # body), so hasCredentials() returns false and every reconciliation
+      # test skips itself — this still exits 0.
       - name: Run reconciliation tests
         run: npm run test:reconcile

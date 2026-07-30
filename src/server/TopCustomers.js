@@ -3,8 +3,9 @@
  *
  * A customer here = a HUB. The list is a business-curated set (provided by the
  * team). It's embedded so the page needs no extra data source; if it starts
- * changing often, move it to a Google Sheet (read the same way as the Jira
- * devices Sheet, SheetSource.js) and read it in loadTopCustomers_().
+ * changing often, move it to its own small BigQuery table (the app has no
+ * Google Sheets integration left — see docs/SOURCES.md) and read it in
+ * loadTopCustomers_().
  */
 
 var TOP_CUSTOMERS = [

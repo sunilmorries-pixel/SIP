@@ -45,14 +45,6 @@ var CONFIG = {
   IST_OFFSET_MINUTES: 330,
 
   /**
-   * Devices (Jira) source: the BQ table jira_data is commented out in favour of
-   * this Google Sheet (same columns). Read via Sheets REST API in SheetSource.js
-   * (readJiraSheet). Requires the Sheets API enabled + Viewer access for the
-   * deploying user. Only the "Devices" section of the Numbers page uses it.
-   */
-  JIRA_SHEET_ID: '1FgLl1HJIE8kpM8R1_mgAFaUyGcDTzieYQ0i5LdoZekc',
-
-  /**
    * Permanent restriction (per user request, 2026-07-07): only these Jira
    * "Issue Type" values count as a tracked device everywhere in the app
    * (Numbers page, Fleet/Devices KPIs, the Overview Jira-status donut).

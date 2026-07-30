@@ -89,11 +89,6 @@ function diagnostics() {
       sk.breached_open + ' open breached, ' + sk.atrisk_open + ' at-risk');
   }
 
-  // Devices source = Google Sheet (jira_data BQ commented out) + raw center table.
-  var jiraSheet = readJiraSheet();
-  Logger.log(jiraSheet
-    ? 'Jira sheet: ' + jiraSheet.length + ' rows read (devices source)'
-    : 'Jira sheet UNREADABLE — enable Sheets API on the project + share the sheet with the deploying user');
   var raw = apiGetCenterDetailsRaw({ page: 0, pageSize: 5 });
   Logger.log(raw.ok
     ? 'center_details raw table: ' + raw.data.totalRows + ' rows (F2P excluded)'
@@ -140,7 +135,7 @@ function getCacheEpoch_() {
  * Clears cached payloads so the next load recomputes. Bumps CACHE_EPOCH
  * (invalidates every filter-varying key at once) and removes the small
  * number of keys that DON'T vary by filter (Numbers, Center-360 base fetch,
- * raw-sheet snapshots) directly, since those never had a combinatorial
+ * the Jira asset index) directly, since those never had a combinatorial
  * enumeration problem to begin with.
  */
 function clearDashboardCache() {
@@ -151,8 +146,7 @@ function clearDashboardCache() {
   var cache = CacheService.getScriptCache();
   cache.removeAll(['exec_v4', 'numbers_v4']);
   // Large (gzip-chunked) caches with NO filter variant: remove #meta + each chunk.
-  ['ctr360cd_v6', 'map_v3', 'assets_v3',
-    'rawsheet_v1_' + CONFIG.JIRA_SHEET_ID].forEach(function (base) {
+  ['ctr360cd_v6', 'map_v3', 'assets_v3'].forEach(function (base) {
     var meta = cache.get(base + '#meta');
     var n = meta ? parseInt(meta, 10) : 40;
     var keys = [base + '#meta'];

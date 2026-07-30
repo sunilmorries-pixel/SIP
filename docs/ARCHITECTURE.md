@@ -27,19 +27,25 @@ See `docs/SOURCES.md` for the full source-of-truth table. Summary of current rol
 | Source | Rows | Role in the dashboard |
 |---|---|---|
 | `center_details` (BQ) | ~35.8k rows / 27,410 distinct centers (dup rows per center; no F2P-exclusion — full universe) | **Sole center source** — counts, uptime/MTBF/health, geo, deployment age |
-| Jira devices Google Sheet | ~43.8k | **Devices/fleet count**; serial (from `Summary`) → center via `cloud_devices` |
+| `jira_data` (BQ) | ~49.9k rows / ~45.4k distinct devices (changelog grain, `GROUP BY issue_key`) | **Devices/fleet count, asset lifecycle, cohort/FTF analysis**; serial (from `summary`) → center via `cloud_devices`/`center_details` |
 | `cloud_devices` (BQ) | ~11.3k | Fleet-status donut, device explorer, serial→center bridge |
 | `zoho_data` (BQ) | ~84.5k | Support tickets, SLA compliance, uptime-downtime proxy. Date strings via `SAFE.PARSE_DATETIME('%d-%b-%Y %I:%M:%S %p', …)` |
 | `device_metrics` (BQ) | dup rows | Reliability watchlist — deduped with `GROUP BY deviceid` |
-| `device_center_mapping`, `jira_data` (BQ) | — | **Retired as user-facing sources** (legacy serial-linking / asset spec only); still surfaced read-only on the Raw Data page |
+| `device_center_mapping` (BQ) | — | **Retired as a user-facing source** (legacy serial-linking only, read internally by `Geo.js` history) |
 
-The CS/Service tracker Google Sheet (TAT/machine/issue-type/owner panels on Support/CS, plus
-Overview's field-TAT KPI) was removed 2026-07-29 — the Sheets API was disabled on the GCP
-project, so it was already failing in production, and there was no BigQuery equivalent to fall
-back to. No replacement; those panels are gone.
+**No Google Sheets remain as data sources.** The CS/Service tracker Sheet was removed
+2026-07-29 (TAT/machine/issue-type/owner panels on Support/CS, plus Overview's field-TAT KPI —
+no replacement, those panels are gone; the Sheets API was disabled on the GCP project, so it
+was already failing in production and there was no BigQuery equivalent to fall back to). The
+Jira devices Sheet was removed 2026-07-30 — same underlying problem (Sheets API disabled), but
+this one *did* have a BigQuery equivalent (`jira_data`, confirmed live and actively loaded —
+most recent row 2 days old at the time of the switch — so it replaced the Sheet directly, with
+no functionality lost). `SheetSource.js`, `JiraDump.js`, and the `spreadsheets.readonly` OAuth
+scope were all deleted as a result.
 
-**v5.2:** the Jira devices Google Sheet's fleet count is permanently restricted to Issue
-Type = Connector or ECG Machine (`CONFIG.JIRA_DEVICE_TYPES`, applied in `jiraDeviceStats_()`).
+**v5.2:** the devices/fleet count is permanently restricted to Issue Type = Connector or ECG
+Machine (`CONFIG.JIRA_DEVICE_TYPES`, applied in `jiraDeviceStats_()`) — true regardless of
+which underlying source (Sheet, then `jira_data`) has fed it over time.
 A **Raw Data** view (`src/server/RawData.js`) exposes all 8 sources unfiltered, paginated,
 with full-table CSV export. `swap` tickets are now classified as technical in
 `TECH_FALLBACK_REGEX`. The Overview's fleet donut is a Jira lifecycle-status donut

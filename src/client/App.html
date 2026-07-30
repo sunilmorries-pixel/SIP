@@ -165,8 +165,8 @@
           gen: function (i) { return ['H4-DEMO' + i, 10000 + i, 'Demo Hub 1', '404550000' + i, String(rnd(20, 95)), new Date().toISOString()]; } },
         zoho_data: { columns: ['ticketNumber', 'CenterID', 'status', 'CreatedAt', 'ClosedAt', 'IssueCategory'],
           gen: function (i) { return [149000 + i, 10000 + i, 'Closed', '02-Jul-2026 04:59:16 PM', '03-Jul-2026 10:12:00 AM', 'Lead cable']; } },
-        jira_sheet: { columns: ['Key', 'Issue Type', 'Summary', 'Status', 'Created', 'Customer ID'],
-          gen: function (i) { return ['TA-' + (45000 + i), 'ECG Machine', 'H4-DEMO' + i + ' swap request', 'Deployed', '2024-01-01', 10000 + i]; } }
+        jira_data: { columns: ['issue_key', 'issuetype_name', 'summary', 'status_name', 'ticket_created', 'customerid'],
+          gen: function (i) { return ['TA-' + (45000 + i), 'ECG Machine', 'H4-DEMO' + i + ' swap request', 'Deployed', '2024-01-01 00:00:00+00', 10000 + i]; } }
       };
       var srcKey = (args && args.source) || 'center_details';
       var srcDef = mockRaw[srcKey] || mockRaw.center_details;
@@ -195,7 +195,7 @@
         hubs: { total: 14577,
           by_status: kv([['ACTIVE', 12100], ['DEACTIVATED', 2430], ['(blank)', 47]]),
           by_segment: kv([['(blank)', 14428], ['Diagnostic centre', 149]]) },
-        devices: { total: 43794, source: 'dump-snapshot', center_source: 'cloud_devices',
+        devices: { total: 43794, source: 'jira_data', center_source: 'cloud_devices+center_details',
           by_status: kv([['Deployed', 23165], ['Delivered', 6085], ['Hardware', 3997], ['Decommissioned', 3361], ['Store', 2873], ['Field', 2089], ['Exported', 1734]]) },
         tickets: { total: 84545, tech: 28100, nontech: 56445,
           by_status: kv([['Closed', 77678], ['Duplicate', 6308], ['Open', 211], ['Pending on Logistics Team', 82], ['Pending on Customer Success Team', 70]]) }
@@ -2218,7 +2218,7 @@
     $('numHubsStatus').innerHTML = numTable('By center status', d.hubs.by_status);
     $('numHubsSegment').innerHTML = numTable('By master segment', d.hubs.by_segment);
 
-    var devSrc = { 'google-sheet': 'live Google Sheet', 'dump-snapshot': 'offline dump (Sheets API pending)', 'sheet-unavailable': 'unavailable' }[d.devices.source] || '';
+    var devSrc = { 'jira_data': 'jira_data (BigQuery)' }[d.devices.source] || '';
     var mapSrc = { 'center_details': 'center_details serial', 'cloud_devices': 'serial→cloud_devices' }[d.devices.center_source] || 'serial';
     $('numDevicesKpi').innerHTML = numCompare([
       { label: 'Devices', value: d.devices.total, hi: true }
@@ -2313,10 +2313,10 @@
       source: 'center_details.deploymentdate. True TRD dwell needs the Jira changelog — not yet in the sandbox.' },
     assetLifecycle: { name: 'Asset lifecycle / types',
       formula: 'Distinct Jira assets grouped by lifecycle status or hardware type — COUNT(DISTINCT issue_key).',
-      source: 'Jira devices Google Sheet (Connector + ECG only, deduped by Key).' },
+      source: 'jira_data (BigQuery), Connector + ECG only, deduped by issue_key.' },
     assetAge: { name: 'Asset lifecycle age',
-      formula: 'Device age = today − Created (per sheet row), averaged; 5y+ devices are past the expected life.',
-      source: 'Jira devices Google Sheet (Created column).' },
+      formula: 'Device age = today − Created (per device), averaged; 5y+ devices are past the expected life.',
+      source: 'jira_data.ticket_created (BigQuery).' },
 
     // ── Pillar 3 · Service ──
     sla: { code: 'SLA', name: 'SLA compliance',
@@ -2355,10 +2355,10 @@
       source: 'cloud_devices.LastTimeStamp (stored as IST wall-time).' },
     jiraFleetStatus: { name: 'Device status (Jira)',
       formula: 'Jira devices grouped by lifecycle status (Deployed, Store, Hardware, Decommissioned, …). Restricted to Issue Type = Connector or ECG Machine.',
-      source: 'Jira devices Google Sheet (issuetype_name filtered to CONFIG.JIRA_DEVICE_TYPES).' },
+      source: 'jira_data (BigQuery), issuetype_name filtered to CONFIG.JIRA_DEVICE_TYPES.' },
     devicesCount: { name: 'Devices',
-      formula: 'Count of Jira-sheet devices (deduped by Key), restricted to Connector + ECG Machine.',
-      source: 'Jira devices Google Sheet.' },
+      formula: 'Count of jira_data devices (deduped by issue_key), restricted to Connector + ECG Machine.',
+      source: 'jira_data (BigQuery).' },
     poorSignal: { name: 'Poor signal', formula: 'Devices reporting signal quality CSQ < 10.', source: 'cloud_devices.CSQ.' },
     unsynced: { name: 'Unsynced ECGs', formula: 'Devices with data still waiting to upload.', source: 'cloud_devices.UnsyncedData > 0.' },
     firmware: { name: 'Firmware spread', formula: 'Devices grouped by firmware version.', source: 'cloud_devices.FirmwareName.' },
@@ -2371,7 +2371,7 @@
     geo: { name: 'Geographic spread', formula: 'Centers / devices grouped by state (or city).', source: 'center_details.state / city.' },
     statesReach: { name: 'States', formula: 'Distinct states with at least one center.', source: 'center_details.state.' },
     deployStatus: { name: 'Deployment / lifecycle status', formula: 'Centers (or assets) grouped by status — active vs ended / lifecycle stage.', source: 'center_details.Status / jira_data.status_name.' },
-    center360: { name: 'Center 360', formula: 'One row per center: devices (cloud_devices + Jira sheet), online, lifecycle (today − deploymentdate), downtime (merged technical-ticket hours), uptime %, tickets (total + open) — joined in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data ⋈ Jira sheet asset index (hash-joined).' },
+    center360: { name: 'Center 360', formula: 'One row per center: devices (cloud_devices + jira_data), online, lifecycle (today − deploymentdate), downtime (merged technical-ticket hours), uptime %, tickets (total + open) — joined in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data ⋈ jira_data asset index (hash-joined).' },
     centersRaw: { name: 'center_details · raw data', formula: 'Raw center_details rows (no baseline filter), paginated, with a per-center device count and mapped flag.', source: 'center_details + LEFT JOIN cloud_devices.' },
 
     // ── Customers ──

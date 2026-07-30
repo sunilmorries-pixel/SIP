@@ -2,10 +2,11 @@
 
 **Updated:** 2026-07-07 (v5.0 data model)
 
-The dashboard reads from `tricogde-dwh.abi_tables` (BigQuery; migrated 2026-07-22 from the
-`magnaquest-sand-box.abi_team_sip_devtest_poc` dev/test copy described below — see
-`docs/superpowers/specs/2026-07-22-tricogde-dwh-migration-design.md`) plus two Google Sheets.
-The rest of this doc's gap analysis (written 2026-07-07, against the sandbox copy) has not
+The dashboard reads **entirely from** `tricogde-dwh.abi_tables` (BigQuery; migrated 2026-07-22
+from the `magnaquest-sand-box.abi_team_sip_devtest_poc` dev/test copy described below — see
+`docs/superpowers/specs/2026-07-22-tricogde-dwh-migration-design.md`). No Google Sheets remain
+as data sources (the last one, Jira devices, was replaced by `jira_data` 2026-07-30 — see
+`docs/SOURCES.md`). The rest of this doc's gap analysis (written 2026-07-07, against the sandbox copy) has not
 been re-verified against `tricogde-dwh` and may be stale — re-run `diagnostics()`/the column
 comparison in `Diag.js` before treating any row below as still accurate. Reloading a table with
 the **same schema + more rows/columns** is picked up automatically — no code change, no
@@ -18,7 +19,7 @@ redeploy. Row caps in the app support 50–80k per source.
 | `zoho_data` | ~84,545 tickets | (full) | **add the business-hours SLA-quality fields** (see below) |
 | `device_metrics` | dup rows | (full) | reload if partial |
 | `device_center_mapping` | ~56k | — | legacy; no longer a user-facing source |
-| `jira_data` | ~12.8k assets | — | legacy; devices now come from the Jira Sheet |
+| `jira_data` | ~49.9k rows / ~45.4k devices (changelog grain) | (full) | **THE live devices/fleet source** (since 2026-07-30, replacing a Google Sheet) — confirmed actively loaded, most recent row 2 days old at switch time |
 
 ## Priority asks (these unlock currently-blocked features)
 
@@ -70,13 +71,17 @@ them as a fallback serial→center source).
 ### `device_metrics` — reliability (may repeat per device)
 `deviceid`, `centerid`, `down_time_percentage`, `total_no_of_tickets`, `mean_time_between_failures_hrs`
 
-## Google Sheets (not BigQuery)
-- **Jira devices export** (`CONFIG.JIRA_SHEET_ID`) — the devices/fleet source (~43,794 rows).
-  Columns: `Key`, `Issue Type`, `Summary` (holds serial, e.g. `H4-F79C6E22`), `Status`, `Created`,
-  `Customer ID`, `Customer Name`, `Tricog Device Type`. **Needs the Sheets API enabled** on GCP
-  project 218180702013 + Viewer share; until then the app uses the offline `JiraDump.js` snapshot.
-  (The CS tracker Sheet, formerly the second source here, was removed 2026-07-29 — no BQ
-  equivalent existed, and it was already failing since the Sheets API is disabled.)
+## Google Sheets — none remain (both removed)
+Both Sheets this app ever used depended on the Sheets API, which was disabled on GCP project
+218180702013 — Jira devices (replaced by `jira_data` 2026-07-30, no functionality lost) and the
+CS/Service tracker (removed 2026-07-29, no BigQuery equivalent existed, so those Support/CS
+panels have no replacement). Re-enabling the Sheets API is no longer needed for this app.
+
+## `jira_data` — required columns (do not drop or rename)
+`issue_key`, `summary` (holds serial, e.g. `H4-F79C6E22`), `issuetype_name`, `status_name`,
+`ticket_created`, `customerid` (ignored by the app, kept for shape parity). Changelog columns
+(`author`, `field_changed`, `from_value`, `to_value`, `last_field_updated`) exist upstream (see
+`sql/jira_data.lineage.sql`) but nothing in the app reads them yet — see the M-A4 ask above.
 
 ## After a reload — 3 steps
 1. **Wait ≤10 min** (cache TTL) or run `clearDashboardCache()` in the editor.

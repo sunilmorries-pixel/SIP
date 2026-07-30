@@ -2,9 +2,10 @@
  * Join.js — Apps Script-level join utilities.
  *
  * Why joins live here: every BigQuery statement in Queries.js is a
- * single-table read; multi-source combining happens in JS. This also lets
- * BigQuery results join against non-BigQuery sources (the Jira devices
- * Google Sheet) — something SQL alone can't do.
+ * single-table read; multi-source combining happens in JS. This also covers
+ * cases a single SQL JOIN can't express — e.g. a Jira device's center is
+ * resolved by matching a serial parsed from `summary` against `cloud_devices`/
+ * `center_details` (see deviceCenterMap_, Numbers.js), not a shared key column.
  *
  * Pattern: keep each side PRE-AGGREGATED in its source query (one row per
  * join key), then hash-join here. Never pull raw fact tables into Apps

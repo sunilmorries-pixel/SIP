@@ -2,8 +2,8 @@
 
 A production-ready, **Tricog-branded**, interactive analytics dashboard built on **Google
 Apps Script + BigQuery**. It surfaces live insights from the `tricogde-dwh.abi_tables`
-dataset plus the Jira devices Google Sheet: center reliability, support-ticket flow (Zoho),
-SLA compliance, device fleet, and asset reliability.
+dataset (no other data source — see `docs/SOURCES.md`): center reliability, support-ticket
+flow (Zoho), SLA compliance, device fleet, and asset reliability.
 
 ![stack](https://img.shields.io/badge/stack-Apps%20Script%20%C2%B7%20BigQuery%20%C2%B7%20ECharts-E5344F)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-black?logo=github)](https://github.com/sunilmorries-pixel/SIP)
@@ -14,12 +14,12 @@ SLA compliance, device fleet, and asset reliability.
 |---|---|
 | **Overview** | Executive rollup: narrative hero, device-age ring, KPI strip, **Device status (Jira)** lifecycle donut, ticket flow, centers-needing-attention + reliability tables |
 | **Centers / Customers** | Geo, deployment age, active-vs-ended, top hubs, reliability watchlist (uptime M-A1 / MTBF M-A2 / health M-A6), Center-360 table (clickable rows → drawer) |
-| **Support / CS** | Zoho KPIs, ticket flow, **SLA-compliance suite** (within% + Tech/Non-Tech + breach-by-type), backlog, categories; CS-sheet TAT/machines/owners |
+| **Support / CS** | Zoho KPIs, ticket flow, **SLA-compliance suite** (within% + Tech/Non-Tech + breach-by-type), backlog, categories, priority, channel, segment |
 | **Asset** | Device age (executive summary), fleet-status donut, firmware spread, asset lifecycle/type breakdown, failure-analysis cohort (M-A3/A5), device explorer (search/sort/paginate/CSV) |
 | **Map** | Leaflet map of located centers, clustered, colored by open tickets, clickable ticket-bucket legend |
 | **Top Customers** | Curated 27 "Top LE" hubs: KPIs, map, ranked bars, leaderboard (→ customer drawer) |
 | **Numbers** | Source-reconciliation counts + raw paginated `center_details` table (Devices + Mapped columns) |
-| **Raw Data** | All 5 underlying sources (3 BQ tables + 2 Sheets) as paginated, unfiltered tables with pill-selector and full CSV export. No site filters apply |
+| **Raw Data** | All 4 underlying BigQuery sources as paginated, unfiltered tables with pill-selector and full CSV export. No site filters apply |
 
 Interactive everywhere: global search, a **Filters** drawer (Segment / Status / State / Hub
 multi-select + date range, with Status defaulting to `ACTIVE` as a removable chip), light/dark
@@ -41,10 +41,8 @@ demo-sip/
 │   │   ├── Queries.js        # base SQL statements, parameterised
 │   │   ├── EditionCD.js      # center_details data layer — LIVE client endpoints
 │   │   ├── SlaCatalog.js     # SLA catalog + Tech/Non-Tech classification
-│   │   ├── Numbers.js         # Numbers page + Jira-sheet device stats (Connector/ECG Machine only)
-│   │   ├── SheetSource.js    # reads Jira + CS Google Sheets (REST API) + raw sheet reader
-│   │   ├── RawData.js        # Raw Data page: all 5 sources, paginated, CSV export
-│   │   ├── JiraDump.js       # offline device snapshot (Sheets-API fallback)
+│   │   ├── Numbers.js         # Numbers page + jira_data device stats (Connector/ECG Machine only)
+│   │   ├── RawData.js        # Raw Data page: all 4 BQ sources, paginated, CSV export
 │   │   ├── Api.js            # legacy endpoints (retained; CD versions are live)
 │   │   ├── TopCustomers.js   # curated 27 "Top LE" hubs
 │   │   ├── ExecOverview.js   # legacy exec endpoint

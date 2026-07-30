@@ -1,11 +1,11 @@
 # Data Sources — SIP Insights
 
-The dashboard is powered by BigQuery tables in
-`tricogde-dwh.abi_tables` (migrated 2026-07-22 from the `magnaquest-sand-box.abi_team_sip_devtest_poc`
-dev/test dataset — same six table names, byte-identical schema, live-verified) plus **one
-Google Sheet** (a Jira devices export — the CS/Service tracker Sheet was removed 2026-07-29,
-see below). The `sql/*.lineage.sql` files describe the upstream DWH queries that originally
-produced these tables — read them for column semantics.
+The dashboard is powered **entirely by BigQuery tables** in `tricogde-dwh.abi_tables`
+(migrated 2026-07-22 from the `magnaquest-sand-box.abi_team_sip_devtest_poc` dev/test dataset
+— same six table names, byte-identical schema, live-verified). **No Google Sheets remain as
+data sources** — the CS/Service tracker Sheet was removed 2026-07-29, and the Jira devices
+Sheet was removed 2026-07-30 (see below for both). The `sql/*.lineage.sql` files describe the
+upstream DWH queries that originally produced these tables — read them for column semantics.
 
 ## BigQuery tables
 
@@ -16,54 +16,64 @@ produced these tables — read them for column semantics.
 | `zoho_data` | 1 row / ticket (~84.5k) | Support view: ticket analytics, SLA compliance, uptime downtime proxy | `CreatedAt`/`ClosedAt` are **strings** `02-Jul-2026 04:59:16 PM` → `SAFE.PARSE_DATETIME('%d-%b-%Y %I:%M:%S %p', …)`; priority often empty; **lacks** business-hours SLA fields (blocks FCR/FRT/CHI) |
 | `device_metrics` | device rows, duplicated | Reliability watchlist (downtime index) | Dedupe with `GROUP BY deviceid`; AVG/MAX only, never SUM |
 | `device_center_mapping` | 1 row / device-center window (~56k) | **Retired as a user-facing source** — retained only for legacy Jira-asset serial linking | Was the old centers/geo source before the center_details migration (v4.4) |
-| `jira_data` | issue × changelog rows | **Retired as the devices source** — devices now come from the Jira Google Sheet | Still used by the legacy asset-lifecycle spec; `COUNT(DISTINCT issue_key)` if queried |
+| `jira_data` | issue × changelog rows (~49.9k rows; ~45.4k distinct `issue_key`) | **THE devices/fleet source** (`readJiraData_()` in `Numbers.js`, since 2026-07-30) — devices/fleet count, asset lifecycle, cohort/FTF analysis, map/drawer asset lists | `GROUP BY issue_key` + `ANY_VALUE`/`MIN` — issue-level fields (`summary`/`status_name`/`issuetype_name`/`ticket_created`/`customerid`) come from the issue side of the upstream LEFT JOIN and are constant per `issue_key`, so no "latest changelog row" logic is needed |
 
-## Google Sheet — Jira devices export
+## jira_data — the devices/fleet source (switched from a Google Sheet, 2026-07-30)
 
-- **ID:** `1FgLl1HJIE8kpM8R1_mgAFaUyGcDTzieYQ0i5LdoZekc` (see `CONFIG.JIRA_SHEET_ID`)
-- **Grain:** ~1 row / Jira issue (~**43,794** rows; deduped by `Key`)
-- **Columns:** `Key`, `Issue Type`, `Summary`, `Status`, `Created`, `Updated`, `Assignee`,
-  `Customer ID`, `Customer Name`, `Ticket ID`, `Tricog Device Type`
-- **Powers:** the **fleet/devices count** everywhere (`jiraDeviceStats_()` in `Numbers.js`).
-  A device's center is resolved by its **serial** parsed from `Summary`
-  (regex `[A-Za-z0-9]{2}-[A-Za-z0-9]{6,}`) → bridged via `cloud_devices.DeviceID`→CenterID
-  (9,888 of 43,794 map to a center). The Jira **`Customer ID` column is ignored** (per user).
-- **Permanent restriction (v5.2):** `jiraDeviceStats_()` only counts rows
-  whose `Issue Type` is `Connector` or `ECG Machine` (`CONFIG.JIRA_DEVICE_TYPES`, matched
-  case-insensitively via `isTrackedJiraDeviceType_()`) — every other Issue Type is excluded
-  from the fleet/devices count and from the Numbers-page devices section. This does **not**
-  affect the separate legacy `getAssetIndex_()` path (Map asset markers, the center drawer's
-  Jira-devices list, the Asset-lifecycle chart, or the batch-cohort analysis) — those still
-  read the `jira_data` BQ table unfiltered.
-- **Read via** `SheetSource.readJiraSheet()` (Sheets REST API, tolerant header mapping).
-- **Offline fallback:** while the Sheets API is disabled, `JiraDump.js` supplies a static
-  pre-aggregated snapshot; the live read auto-resumes once the API is enabled.
+- **Grain:** issue × changelog rows (~49.9k rows; ~45.4k distinct `issue_key`) — the upstream
+  ETL LEFT JOINs a Jira issues table against a changelog table (see
+  `sql/jira_data.lineage.sql`), so an issue with N field-change history entries gets N rows.
+  Issue-level fields (`summary`, `status_name`, `issuetype_name`, `ticket_created`,
+  `customerid`) all come from the issue side of that join and are constant across every row
+  for a given `issue_key` — `readJiraData_()` (`Numbers.js`) collapses this correctly with a
+  plain `GROUP BY issue_key` + `ANY_VALUE`/`MIN(ticket_created)`, no "pick the latest
+  changelog row" logic needed.
+- **Powers:** the **fleet/devices count** everywhere (`jiraDeviceStats_()` in `Numbers.js`),
+  the Map/drawer asset lists and Asset-lifecycle/cohort analysis (`getAssetIndex_()` in
+  `Api.js`). A device's center is resolved by its **serial** parsed from `summary`
+  (regex `[A-Za-z0-9]{2}-[A-Za-z0-9]{6,}`) → bridged via `deviceCenterMap_()`
+  (`cloud_devices.DeviceID` first, `center_details.DeviceID`/`MacSerialID` fallback). The Jira
+  **`customerid` column is ignored** (per user).
+- **Permanent restriction (v5.2, unchanged by the source switch):** `jiraDeviceStats_()` only
+  counts rows whose Issue Type is `Connector` or `ECG Machine` (`CONFIG.JIRA_DEVICE_TYPES`,
+  matched case-insensitively via `isTrackedJiraDeviceType_()`) — every other Issue Type is
+  excluded from the fleet/devices count and the Numbers-page devices section. `getAssetIndex_()`
+  applies the same restriction (unlike the old Sheet-era docs' claim that it didn't — that was
+  never actually true; both consumers have always filtered to Connector + ECG Machine).
+- **Why the switch:** the Jira devices Google Sheet depended on the Sheets API, which was
+  disabled on the GCP project — the app was silently falling back to a frozen `JiraDump.js`
+  snapshot (~3 weeks stale) for the devices count, and getting nothing at all for the asset
+  index (no fallback existed there, so those panels were rendering empty). `jira_data` was
+  confirmed live and actively loaded (most recent row 2 days old at the time of the switch) —
+  fresher than the Sheet ever was for most users, with no functionality lost. `SheetSource.js`
+  and `JiraDump.js` were deleted entirely; the `spreadsheets.readonly` OAuth scope was removed.
 
-## Google Sheet — CS/Service tracker (REMOVED 2026-07-29)
+## CS/Service tracker Sheet (REMOVED 2026-07-29)
 
 This Sheet (a manual field-team log — TAT/machine/issue-type/owner cases) previously powered
 Support/CS's TAT trend, machines-in-the-field, field-issue-types, and case-owners panels, plus
 Overview's field-TAT KPI. It was removed as a data source: the Sheets API was disabled on the
 GCP project, so it was already failing in production, and — unlike the Jira devices Sheet
-above — there was no BigQuery table to fall back to. Those panels have no replacement; they're
-gone from the UI. `CONFIG.CS_SHEET_ID`, `SheetSource.readCsTracker()`, and the `cs_tracker` Raw
-Data source were all deleted.
+(which had `jira_data` to fall back to, see above) — there was no BigQuery table for this one.
+Those panels have no replacement; they're gone from the UI. `CONFIG.CS_SHEET_ID`,
+`readCsTracker()`, and the `cs_tracker` Raw Data source were all deleted.
 
-## Raw Data page (v5.2)
+## Raw Data page
 
-A dedicated "Raw Data" tab exposes **5** live sources (`rawSources_()` in `RawData.js`) —
-`center_details`/`cloud_devices`/`zoho_data` plus both Google Sheets — each as its own
-paginated, full-column table with a full-table CSV export. `device_metrics` and `jira_data`
-were deliberately dropped as user-facing raw sources in earlier releases (the BQ tables
-still exist; nothing in the app queries either one anymore). Unlike every other page,
-**no site filter applies
-here** (no global Segment/Status/State/Hub/date-range filter, no search, and — unlike
-the rest of the app — the Jira Issue-Type restriction above does *not* apply to this
-page's raw Jira-sheet table either). It exists purely for source reconciliation and data
-export, straight from each source. Server layer: `src/server/RawData.js`
-(`rawSources_()`, `apiGetRawPage()`, `apiGetRawExport()`); the two Sheets are read via a
-new generic `readRawSheetRows_()` in `SheetSource.js` (unlike `readJiraSheet()`/
-`readCsTracker()`, it returns every column under the sheet's own header names).
+A dedicated "Raw Data" tab exposes **4** live BigQuery sources (`rawSources_()` in
+`RawData.js`) — `center_details`, `cloud_devices`, `zoho_data`, `jira_data` — each as its own
+paginated, full-column table with a full-table CSV export. `device_metrics` and
+`device_center_mapping` are deliberately excluded as user-facing raw sources (the BQ tables
+still exist; nothing else in the app queries `device_metrics` at all, and
+`device_center_mapping` is only read internally by `Geo.js`). Unlike every other page, **no
+site filter applies here** (no global Segment/Status/State/Hub/date-range filter, no search,
+and — unlike the rest of the app — the Jira Issue-Type restriction above does *not* apply to
+this page's raw `jira_data` table either, so raw asset types outside Connector/ECG Machine are
+visible here). It exists purely for source reconciliation and full-table export, straight from
+each source, unaggregated (so the raw `jira_data` table here shows its true changelog grain —
+multiple rows per device — unlike every other consumer, which collapses it to one row per
+device). Server layer: `src/server/RawData.js` (`rawSources_()`, `apiGetRawPage()`,
+`apiGetRawExport()`).
 
 ## Machine Uptime % (TRD M-A1 — North-Star)
 
@@ -110,8 +120,9 @@ combining happens in Apps Script via `src/server/Join.js` (hash-join utilities):
    (see `getCenter360RowsCD_` in `EditionCD.js` — the live path; `Api.js`'s
    `getCenter360Rows_` is the retired legacy equivalent); filtering/sorting/paging
    run over the joined rows, and the result is cached (chunked gzip, 30 min).
-3. This is also the ONLY way to join **Google Sheet ⋈ BigQuery** data
-   (the Jira devices Sheet is not in BigQuery), so one pattern covers everything.
+3. This is also how a Jira device's center gets resolved — `jira_data`'s `summary` column has
+   no shared key with `cloud_devices`/`center_details`, only a serial that must be regex-parsed
+   and matched in JS (`deviceCenterMap_`, `Numbers.js`) — a case SQL alone can't express.
 
 Golden rule: **aggregate first, join small.** Never pull raw fact tables into
 Apps Script — 84k Zoho rows don't fit the runtime; 5k aggregated center rows do.

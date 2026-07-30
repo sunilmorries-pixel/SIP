@@ -11,20 +11,20 @@ var RAW_EXPORT_MAX_ROWS = 100000;
  * Registry of every raw source the page exposes. A function (not a
  * top-level const) because it reads CONFIG — Apps Script loads files
  * alphabetically and this keeps the reference lazy regardless of order.
- * @return {Object<string, {label:string, kind:string, table?:string, orderBy?:string, sheetId?:string}>}
+ * @return {Object<string, {label:string, kind:string, table:string, orderBy:string}>}
  */
 function rawSources_() {
   return {
     center_details: { label: 'Center Details', kind: 'bq', table: 'center_details', orderBy: 'CenterID' },
     cloud_devices: { label: 'Cloud Devices', kind: 'bq', table: 'cloud_devices', orderBy: 'DeviceID' },
     zoho_data: { label: 'Zoho Tickets', kind: 'bq', table: 'zoho_data', orderBy: 'ticketNumber' },
+    jira_data: { label: 'Jira Devices', kind: 'bq', table: 'jira_data', orderBy: 'issue_key' }
     // Removed as user-facing sources: device_metrics (no other app usage),
-    // device_center_mapping (still read internally by Geo.js), jira_data
-    // (Jira is sourced from the Sheet below), the CS tracker Sheet (removed
-    // 2026-07-29 — the Sheets API was disabled on the GCP project, so it was
-    // already failing in production; the TAT/machine/issue-type/owner panels
-    // it fed were dropped, no replacement).
-    jira_sheet: { label: 'Jira Devices (Sheet)', kind: 'sheet', sheetId: CONFIG.JIRA_SHEET_ID }
+    // device_center_mapping (still read internally by Geo.js). No Sheet
+    // sources remain — the CS tracker Sheet was removed 2026-07-29 and the
+    // Jira devices Sheet was removed 2026-07-30 (both replaced/dropped in
+    // favor of live BigQuery data), so the Sheets-reading machinery
+    // (SheetSource.js, the Sheets OAuth scope) was deleted entirely.
   };
 }
 
@@ -42,19 +42,13 @@ function apiGetRawPage(options) {
     var def = rawSources_()[key];
     if (!def) throw new Error('Unknown raw source: ' + key);
 
-    if (def.kind === 'bq') {
-      var sql = 'SELECT *, COUNT(*) OVER() AS total_rows FROM ' + T(def.table) +
-        ' ORDER BY ' + def.orderBy + ' LIMIT ' + pageSize + ' OFFSET ' + (page * pageSize);
-      var rows = runQuery(sql);
-      var total = rows.length ? rows[0].total_rows : 0;
-      var columns = rows.length ? Object.keys(rows[0]).filter(function (c) { return c !== 'total_rows'; }) : [];
-      rows.forEach(function (r) { delete r.total_rows; });
-      return { rows: rows, columns: columns, totalRows: total, page: page, pageSize: pageSize };
-    }
-
-    var sheet = readRawSheetRows_(def.sheetId);
-    var slice = sheet.rows.slice(page * pageSize, page * pageSize + pageSize);
-    return { rows: slice, columns: sheet.columns, totalRows: sheet.rows.length, page: page, pageSize: pageSize };
+    var sql = 'SELECT *, COUNT(*) OVER() AS total_rows FROM ' + T(def.table) +
+      ' ORDER BY ' + def.orderBy + ' LIMIT ' + pageSize + ' OFFSET ' + (page * pageSize);
+    var rows = runQuery(sql);
+    var total = rows.length ? rows[0].total_rows : 0;
+    var columns = rows.length ? Object.keys(rows[0]).filter(function (c) { return c !== 'total_rows'; }) : [];
+    rows.forEach(function (r) { delete r.total_rows; });
+    return { rows: rows, columns: columns, totalRows: total, page: page, pageSize: pageSize };
   });
 }
 
@@ -70,16 +64,11 @@ function apiGetRawExport(options) {
     var def = rawSources_()[key];
     if (!def) throw new Error('Unknown raw source: ' + key);
 
-    if (def.kind === 'bq') {
-      var totalRows = (runQuery('SELECT COUNT(*) AS n FROM ' + T(def.table))[0] || {}).n || 0;
-      var sql = 'SELECT * FROM ' + T(def.table) + ' ORDER BY ' + def.orderBy +
-        ' LIMIT ' + RAW_EXPORT_MAX_ROWS;
-      var rows = runQuery(sql, null, { maxRows: RAW_EXPORT_MAX_ROWS });
-      var columns = rows.length ? Object.keys(rows[0]) : [];
-      return { rows: rows, columns: columns, totalRows: totalRows, truncated: totalRows > rows.length };
-    }
-
-    var sheet = readRawSheetRows_(def.sheetId);
-    return { rows: sheet.rows, columns: sheet.columns, totalRows: sheet.rows.length, truncated: false };
+    var totalRows = (runQuery('SELECT COUNT(*) AS n FROM ' + T(def.table))[0] || {}).n || 0;
+    var sql = 'SELECT * FROM ' + T(def.table) + ' ORDER BY ' + def.orderBy +
+      ' LIMIT ' + RAW_EXPORT_MAX_ROWS;
+    var rows = runQuery(sql, null, { maxRows: RAW_EXPORT_MAX_ROWS });
+    var columns = rows.length ? Object.keys(rows[0]) : [];
+    return { rows: rows, columns: columns, totalRows: totalRows, truncated: totalRows > rows.length };
   });
 }

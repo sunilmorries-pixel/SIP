@@ -207,10 +207,10 @@ function assetMachineModel_(summary) {
 }
 
 /**
- * Jira assets linked to centers — now sourced from the JIRA GOOGLE SHEET
- * (readJiraSheet), NOT the jira_data BQ table (ignored per user 2026-07-08).
- * Restricted to Connector + ECG Machine (isTrackedJiraDeviceType_), 1 row/device
- * (deduped by Key). Per user's field mapping:
+ * Jira assets linked to centers — sourced from the LIVE jira_data BigQuery
+ * table (readJiraData_, Numbers.js). Restricted to Connector + ECG Machine
+ * (isTrackedJiraDeviceType_), 1 row/device (deduped by Key). Per user's field
+ * mapping:
  *   Key = ticket id · Summary = Device ID / Mac Serial ID · Issue Type = device
  *   type · Status = device status · age = today − Created.
  * A device's center: serial parsed from Summary → deviceCenterMap_ (cloud_devices
@@ -221,7 +221,7 @@ function getAssetIndex_() {
   var cached = cacheGetLarge('assets_v3');
   if (cached) return cached;
 
-  var jiraRows = readJiraSheet() || [];
+  var jiraRows = readJiraData_();
   var dev2ctr = jiraRows.length ? deviceCenterMap_().map : {};
   var SERIAL_RE = /([A-Za-z0-9]{2}-[A-Za-z0-9]{6,})/;
   var seen = {}, assets = [];

@@ -40,14 +40,17 @@ function deviceCenterMap_() {
 
 /**
  * Is this Jira "Issue Type" one of the device categories the app tracks?
- * Permanent restriction (2026-07-07): only Connector and ECG Machine count
- * as fleet devices — everywhere jiraDeviceStats_() is consumed.
+ * Every Issue Type counts as a fleet device EXCEPT Jira housekeeping ticket
+ * types (CONFIG.JIRA_NON_DEVICE_TYPES: task/epic/test) — everywhere
+ * jiraDeviceStats_() is consumed (per user request, 2026-07-30; widened
+ * from the prior Connector+ECG-Machine-only restriction, which was
+ * excluding real device categories like SIM Card/UPS/Printer/BP Machine).
  * @param {string} issueTypeName raw Issue Type value
  * @return {boolean}
  */
 function isTrackedJiraDeviceType_(issueTypeName) {
   var key = String(issueTypeName || '').trim().toLowerCase();
-  return CONFIG.JIRA_DEVICE_TYPES.indexOf(key) !== -1;
+  return CONFIG.JIRA_NON_DEVICE_TYPES.indexOf(key) === -1;
 }
 
 /**

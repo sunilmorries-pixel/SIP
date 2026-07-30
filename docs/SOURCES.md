@@ -34,12 +34,13 @@ upstream DWH queries that originally produced these tables — read them for col
   (regex `[A-Za-z0-9]{2}-[A-Za-z0-9]{6,}`) → bridged via `deviceCenterMap_()`
   (`cloud_devices.DeviceID` first, `center_details.DeviceID`/`MacSerialID` fallback). The Jira
   **`customerid` column is ignored** (per user).
-- **Permanent restriction (v5.2, unchanged by the source switch):** `jiraDeviceStats_()` only
-  counts rows whose Issue Type is `Connector` or `ECG Machine` (`CONFIG.JIRA_DEVICE_TYPES`,
-  matched case-insensitively via `isTrackedJiraDeviceType_()`) — every other Issue Type is
-  excluded from the fleet/devices count and the Numbers-page devices section. `getAssetIndex_()`
-  applies the same restriction (unlike the old Sheet-era docs' claim that it didn't — that was
-  never actually true; both consumers have always filtered to Connector + ECG Machine).
+- **Device-type filter (widened 2026-07-30):** `jiraDeviceStats_()` excludes rows whose Issue
+  Type is `Task`, `Epic`, or `Test` (`CONFIG.JIRA_NON_DEVICE_TYPES`, matched case-insensitively
+  via `isTrackedJiraDeviceType_()`) — every other Issue Type counts as a device (ECG Machine,
+  Connector, SIM Card, UPS, Printer, BP Machine, Tab, Mobile, IV Trolley, Laptop, WiFi Dongle,
+  TriCare Assets, etc.). `getAssetIndex_()` applies the same filter. This replaced an earlier
+  restriction to Connector + ECG Machine only (v5.2), which was found to be excluding 12 other
+  real device categories once the full `jira_data` issuetype_name breakdown was checked.
 - **Why the switch:** the Jira devices Google Sheet depended on the Sheets API, which was
   disabled on the GCP project — the app was silently falling back to a frozen `JiraDump.js`
   snapshot (~3 weeks stale) for the devices count, and getting nothing at all for the asset

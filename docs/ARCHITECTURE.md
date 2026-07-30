@@ -43,10 +43,13 @@ most recent row 2 days old at the time of the switch — so it replaced the Shee
 no functionality lost). `SheetSource.js`, `JiraDump.js`, and the `spreadsheets.readonly` OAuth
 scope were all deleted as a result.
 
-**v5.2:** the devices/fleet count is permanently restricted to Issue Type = Connector or ECG
-Machine (`CONFIG.JIRA_DEVICE_TYPES`, applied in `jiraDeviceStats_()`) — true regardless of
-which underlying source (Sheet, then `jira_data`) has fed it over time.
-A **Raw Data** view (`src/server/RawData.js`) exposes all 8 sources unfiltered, paginated,
+**v5.2:** the devices/fleet count excludes Jira housekeeping ticket types (Task, Epic, Test —
+`CONFIG.JIRA_NON_DEVICE_TYPES`, applied in `jiraDeviceStats_()` via `isTrackedJiraDeviceType_()`)
+— true regardless of which underlying source (Sheet, then `jira_data`) has fed it over time.
+This was widened from an earlier Connector+ECG-Machine-only restriction on 2026-07-30, once
+the fuller `jira_data` breakdown showed that filter was excluding real device categories (SIM
+Card, UPS, Printer, BP Machine, Tab, Mobile, IV Trolley, Laptop, WiFi Dongle, TriCare Assets).
+A **Raw Data** view (`src/server/RawData.js`) exposes all 4 sources unfiltered, paginated,
 with full-table CSV export. `swap` tickets are now classified as technical in
 `TECH_FALLBACK_REGEX`. The Overview's fleet donut is a Jira lifecycle-status donut
 (`Charts.jiraStatus()`).

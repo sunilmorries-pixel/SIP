@@ -48,7 +48,7 @@ var FLAGS_CD = [
   'No device grain in center queries: "devices" figures are CENTER counts.',
   'startdatetime→deploymentdate, enddatetime→deactivationdate (active = not deactivated).',
   'No coordinate columns since the reload — pins come from the pin-geocode store only.',
-  'Jira from the Google Sheet only (jira_data BQ ignored); serial→center = cloud_devices first, center_details fallback.'
+  'Jira devices from the live jira_data BQ table; serial→center = cloud_devices first, center_details fallback.'
 ];
 
 /* ═══════════════ Shared center-attribute filter chain ═══════════════════ */

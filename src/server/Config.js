@@ -45,12 +45,15 @@ var CONFIG = {
   IST_OFFSET_MINUTES: 330,
 
   /**
-   * Permanent restriction (per user request, 2026-07-07): only these Jira
-   * "Issue Type" values count as a tracked device everywhere in the app
-   * (Numbers page, Fleet/Devices KPIs, the Overview Jira-status donut).
+   * Non-device Jira "Issue Type" values (per user request, 2026-07-30) —
+   * excluded everywhere a tracked device is counted (Numbers page,
+   * Fleet/Devices KPIs, the Overview Jira-status donut). Every other Issue
+   * Type (ECG Machine, Connector, SIM Card, UPS, Printer, BP Machine, Tab,
+   * Mobile, IV Trolley, Laptop, WiFi Dongle, TriCare Assets, etc.) counts as
+   * a device — only Jira housekeeping ticket types are excluded.
    * Lowercase, trimmed — matched in isTrackedJiraDeviceType_ (Numbers.js).
    */
-  JIRA_DEVICE_TYPES: ['connector', 'ecg machine'],
+  JIRA_NON_DEVICE_TYPES: ['task', 'epic', 'test'],
 
   /** Zoho statuses that mean a ticket is no longer active. */
   ZOHO_TERMINAL_STATUSES: "('Closed','Duplicate','Junk')",

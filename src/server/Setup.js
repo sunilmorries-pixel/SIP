@@ -91,7 +91,7 @@ function diagnostics() {
 
   var raw = apiGetCenterDetailsRaw({ page: 0, pageSize: 5 });
   Logger.log(raw.ok
-    ? 'center_details raw table: ' + raw.data.totalRows + ' rows (F2P excluded)'
+    ? 'center_details raw table: ' + raw.data.totalRows + ' rows (full universe, no baseline filter)'
     : 'raw table FAILED: ' + JSON.stringify(raw.error));
   var nums = apiGetNumbers();
   Logger.log(nums.ok
@@ -99,9 +99,9 @@ function diagnostics() {
       ', devices ' + nums.data.devices.total + ' (' + nums.data.devices.source + ')'
     : 'Numbers FAILED: ' + JSON.stringify(nums.error));
 
-  // Jira device-type filter (Connector + ECG Machine only, permanent).
+  // Jira device-type filter (excludes task/epic/test housekeeping tickets).
   var jiraStats = jiraDeviceStats_();
-  Logger.log('Jira devices (Connector + ECG Machine only): ' + jiraStats.total +
+  Logger.log('Jira devices (excl. task/epic/test): ' + jiraStats.total +
     ' total, source=' + jiraStats.source);
   Logger.log('Jira devices by status: ' + JSON.stringify(jiraStats.by_status));
 

@@ -208,7 +208,7 @@ function assetMachineModel_(summary) {
 
 /**
  * Jira assets linked to centers — sourced from the LIVE jira_data BigQuery
- * table (readJiraData_, Numbers.js). Restricted to Connector + ECG Machine
+ * table (readJiraData_, Numbers.js). Excludes Jira housekeeping ticket types
  * (isTrackedJiraDeviceType_), 1 row/device (deduped by Key). Per user's field
  * mapping:
  *   Key = ticket id · Summary = Device ID / Mac Serial ID · Issue Type = device
@@ -227,7 +227,7 @@ function getAssetIndex_() {
   var seen = {}, assets = [];
 
   jiraRows.forEach(function (row) {
-    if (!isTrackedJiraDeviceType_(row.issuetype_name)) return;   // Connector + ECG Machine only
+    if (!isTrackedJiraDeviceType_(row.issuetype_name)) return;   // excludes task/epic/test housekeeping tickets
     var key = String(row.issue_key || '').trim();
     if (!key || seen[key]) return;                                // dedupe by Key (1 row/device)
     seen[key] = true;

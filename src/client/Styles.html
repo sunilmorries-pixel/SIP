@@ -642,6 +642,7 @@ body[data-theme="light"] .bg-decor {
 
 /* ── Metric info tooltip (ⓘ + popover, "how is this calculated") ──── */
 .info-dot {
+  position: relative; /* anchors the ::before hit-area expansion below */
   display: inline-flex; align-items: center; justify-content: center;
   width: 16px; height: 16px; margin-left: 6px; padding: 0;
   border-radius: 50%; border: 1px solid var(--border-strong);
@@ -650,8 +651,13 @@ body[data-theme="light"] .bg-decor {
   cursor: pointer; vertical-align: middle; flex: none;
   transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
 }
-.info-dot:hover, .info-dot:focus-visible { color: var(--secondary); border-color: var(--secondary); outline: none; }
+/* the visible dot stays small by design, but the tap target expands to the
+   44px accessibility minimum via an invisible pseudo-element — the click
+   still lands on the real button since ::before isn't a separate node. */
+.info-dot::before { content: ''; position: absolute; inset: -14px; }
+.info-dot:hover, .info-dot:focus-visible { color: var(--secondary); border-color: var(--secondary); }
 .kpi-label .info-dot { width: 14px; height: 14px; font-size: 9px; }
+.kpi-label .info-dot::before { inset: -15px; }
 
 .info-pop {
   position: fixed; z-index: 1000; max-width: 320px;
@@ -1054,10 +1060,15 @@ tr.row-flagged > td { background: rgba(248, 113, 113, 0.06); }
 .num-cell.is-hi .num-cell-val { color: var(--primary); }
 .num-cell-label { font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-3); }
 .num-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.num-table { min-width: 0; }
 .num-table h3 {
   margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--text-3);
 }
+/* these are compact 2-column key/value tables — the 640px min-width that
+   keeps wide data tables readable would force this card wider than its grid
+   track and overlap the neighboring column, so it's opted back out here. */
+.num-table .data-table { min-width: 0; }
 .num-table .data-table td { padding: 6px 10px; font-size: 13px; }
 .num-table .data-table td.num { font-family: var(--font-head); font-variant-numeric: tabular-nums; }
 .num-empty { color: var(--text-3); font-size: 13px; }

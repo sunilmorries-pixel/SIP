@@ -174,7 +174,10 @@ var Charts = (function () {
   // Jira lifecycle-status categories are open-ended (Deployed/Store/Hardware/
   // Decommissioned/Field/Exported/…), unlike the fixed 6-bucket FLEET_ORDER —
   // so colors cycle through this palette by rank instead of a name lookup.
-  var STATUS_PALETTE = [C.primary, C.ok, C.warn, C.violet, C.teal, C.orange, C.info, C.danger, C.muted];
+  // ok and teal are both green/turquoise and read as the same color in a
+  // legend at a glance — kept apart here so they don't land in the same
+  // chart together (most lifecycle breakdowns only use the first 5-6).
+  var STATUS_PALETTE = [C.primary, C.ok, C.warn, C.violet, C.info, C.orange, C.teal, C.danger, C.muted];
 
   function jiraStatus(rows, id) {
     id = id || 'execFleet';

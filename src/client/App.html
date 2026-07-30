@@ -166,9 +166,7 @@
         zoho_data: { columns: ['ticketNumber', 'CenterID', 'status', 'CreatedAt', 'ClosedAt', 'IssueCategory'],
           gen: function (i) { return [149000 + i, 10000 + i, 'Closed', '02-Jul-2026 04:59:16 PM', '03-Jul-2026 10:12:00 AM', 'Lead cable']; } },
         jira_sheet: { columns: ['Key', 'Issue Type', 'Summary', 'Status', 'Created', 'Customer ID'],
-          gen: function (i) { return ['TA-' + (45000 + i), 'ECG Machine', 'H4-DEMO' + i + ' swap request', 'Deployed', '2024-01-01', 10000 + i]; } },
-        cs_tracker: { columns: ['T O M', 'Received Date', 'Closed Date', 'Zoho ID', 'Center ID', 'Machine & DeviceType', 'Issue Type', 'TAT (Days)'],
-          gen: function (i) { return ['Demo Owner', '2024-01-01', '2024-01-05', '#' + (149000 + i), 10000 + i, 'MAC600', 'Lead cable', rnd(1, 10)]; } }
+          gen: function (i) { return ['TA-' + (45000 + i), 'ECG Machine', 'H4-DEMO' + i + ' swap request', 'Deployed', '2024-01-01', 10000 + i]; } }
       };
       var srcKey = (args && args.source) || 'center_details';
       var srcDef = mockRaw[srcKey] || mockRaw.center_details;
@@ -255,7 +253,6 @@
           age_bands: [{ k: '<1y', n: 3566 }, { k: '1-2y', n: 3343 }, { k: '2-3y', n: 7072 }, { k: '3-5y', n: 6358 }, { k: '5y+', n: 8105 }],
           by_status: [{ k: 'Deployed', n: 5210 }, { k: 'Store', n: 1180 }, { k: 'Hardware', n: 640 },
             { k: 'Decommissioned', n: 410 }, { k: 'Field', n: 260 }, { k: 'Exported', n: 90 }] },
-        cs: { total_cases: 1284, avg_tat_days: 3.4 },
         filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], dateFrom: '', dateTo: '' }
       });
     }
@@ -381,14 +378,7 @@
       // No hubOptions: Hub is served by the apiSearchHubs mock branch above, the
       // same as the real payload no longer carrying a hub list (finding C1).
       segmentOptions: ['Private - SME', 'Government', 'LE - Cath Lab', 'LE - Diagnostic Chain', 'ECHO', 'LE - Large Hospital', 'Project'].map(function (sg) { return { segment: sg }; }),
-      stateOptions: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Delhi', 'Gujarat', 'Uttar Pradesh', 'West Bengal'].map(function (s) { return { state: s }; }),
-      csTracker: {
-        kpis: { total_cases: 1284, avg_tat_days: 3.4, owners: 9 },
-        tatByMonth: months.map(function (mo) { return { month: mo, cases: rnd(40, 160), avg_tat: rnd(2, 7) }; }),
-        byMachine: ['MAC600', 'V-Cardia', 'MAC400', 'Tab', 'Printer'].map(function (mc) { return { label: mc, cnt: rnd(40, 620) }; }),
-        byIssueType: ['Machine', 'lead cable', 'SIM', 'Battery', 'Network'].map(function (it) { return { label: it, cnt: rnd(30, 520) }; }),
-        byOwner: ['Saidha', 'Prashanth', 'Inayath', 'Ashu', 'Ravi'].map(function (o) { return { owner: o, cases: rnd(60, 320), avg_tat: rnd(2, 6) }; })
-      }
+      stateOptions: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Delhi', 'Gujarat', 'Uttar Pradesh', 'West Bengal'].map(function (s) { return { state: s }; })
     });
   }
 
@@ -478,7 +468,6 @@
       kpiTile('exCenters', 'building', 'var(--info)', 'Centers', 'with devices') +
       kpiTile('exTickets', 'inbox', 'var(--accent)', 'Open tickets', 'active backlog') +
       kpiTile('exTopLe', 'layers', 'var(--primary)', 'Top LE devices', 'key accounts') +
-      kpiTile('exTat', 'clock', 'var(--violet)', 'Field TAT', 'avg days / case') +
       kpiTile('exTicketCount', 'ticket', 'var(--info)', 'Ticket count', 'all tickets') +
       kpiTile('exSlaBreach', 'clock', 'var(--danger)', 'SLA breach', 'open past target');
     $('kpiGrid').innerHTML =
@@ -497,9 +486,7 @@
       kpiTile('kpiZOpen', 'inbox', 'var(--accent)', 'Open tickets', 'active backlog') +
       kpiTile('kpiZIn', 'ticket', 'var(--info)', 'Created · 7d', 'new this week') +
       kpiTile('kpiZOut', 'online', 'var(--ok)', 'Closed · 7d', 'resolved this week') +
-      kpiTile('kpiZAge', 'clock', 'var(--violet)', 'Avg open age', 'days per open ticket') +
-      kpiTile('kpiCsCases', 'wrench', 'var(--primary)', 'Field cases', 'CS tracker sheet') +
-      kpiTile('kpiCsTat', 'clock', 'var(--warn)', 'Avg TAT', 'days per field case');
+      kpiTile('kpiZAge', 'clock', 'var(--violet)', 'Avg open age', 'days per open ticket');
     $('mapKpiGrid').innerHTML =
       kpiTile('mapCenters', 'building', 'var(--secondary)', 'Centers', 'on the map') +
       kpiTile('mapDevices', 'fleet', 'var(--info)', 'Devices', 'at shown centers') +
@@ -557,8 +544,7 @@
   var CHART_IDS = ['chartFleetStatus', 'chartFirmware', 'chartDeviceAges',
     'chartAssetStatus', 'chartAssetTypes', 'chartGeo', 'chartDeploymentAge', 'chartActiveEnded',
     'chartHubs', 'chartZohoTrend', 'chartZohoPriority', 'chartZohoStatus', 'chartZohoCategories',
-    'chartZohoChannel', 'chartZohoSegment', 'chartTatTrend', 'chartCsMachine', 'chartCsIssueType',
-    'chartCohort'];
+    'chartZohoChannel', 'chartZohoSegment', 'chartCohort'];
 
   var dashboardRequestId = 0;
   function loadDashboard(bypassCache) {
@@ -634,10 +620,6 @@
     setKpi('kpiZIn', zoho.created_7d, 'new this week');
     setKpi('kpiZOut', zoho.closed_7d, 'resolved this week');
     setKpi('kpiZAge', zoho.avg_open_age_days, 'days per open ticket');
-    var cs = data.csTracker;
-    setKpi('kpiCsCases', cs && cs.kpis ? cs.kpis.total_cases : null,
-      cs && cs.kpis ? cs.kpis.owners + ' case owners' : 'sheet unavailable');
-    setKpi('kpiCsTat', cs && cs.kpis ? cs.kpis.avg_tat_days : null, 'days per field case');
 
     /* Asset charts */
     Charts.fleetStatus(data.fleetStatus, function (statusName) {
@@ -669,17 +651,6 @@
     Charts.zohoChannel(data.zohoChannel);
     Charts.zohoSegment(data.zohoSegment);
     renderSla(data.slaKpis, data.slaByType || []);
-    if (cs) {
-      Charts.tatTrend(cs.tatByMonth);
-      Charts.csMachine(cs.byMachine);
-      Charts.csIssueType(cs.byIssueType);
-      renderCsOwners(cs.byOwner || []);
-    } else {
-      Charts.showEmpty('chartTatTrend', 'CS tracker sheet not available');
-      Charts.showEmpty('chartCsMachine', 'CS tracker sheet not available');
-      Charts.showEmpty('chartCsIssueType', 'CS tracker sheet not available');
-      renderCsOwners([]);
-    }
 
     $('statusStrip').classList.remove('is-stale');
     $('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
@@ -933,21 +904,6 @@
       tr.addEventListener('click', go);
       tr.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     });
-  }
-
-  function renderCsOwners(rows) {
-    var body = $('csOwnerTable').querySelector('tbody');
-    if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="3"><div class="chart-empty" style="padding:24px 0">CS tracker sheet not available</div></td></tr>';
-      return;
-    }
-    body.innerHTML = rows.map(function (r) {
-      return '<tr>' +
-        '<td>' + escapeHtml(r.owner) + '</td>' +
-        '<td class="num">' + FMT.format(r.cases) + '</td>' +
-        '<td class="num">' + (r.avg_tat == null ? '—' : escapeHtml(r.avg_tat)) + '</td>' +
-        '</tr>';
-    }).join('');
   }
 
   /* ── device explorer (Asset view) ────────────────────────────── */
@@ -1839,7 +1795,6 @@
     setKpi('exCenters', roll.centers, FMT.format(roll.attention_centers || 0) + ' need attention');
     setKpi('exTickets', z.open_tickets, FMT.format(z.created_7d || 0) + ' new this week');
     setKpi('exTopLe', tt.devices, tt.customers + ' Top LE accounts');
-    setKpi('exTat', d.cs ? d.cs.avg_tat_days : null, d.cs ? d.cs.total_cases + ' field cases' : 'sheet unavailable');
     var sla = d.slaKpis || {};
     setKpi('exTicketCount', z.total_tickets, FMT.format(z.open_tickets || 0) + ' currently open');
     setKpi('exSlaBreach', sla.breached_open, (sla.within_pct != null ? sla.within_pct + '% within SLA' : 'open tickets past target'));
@@ -2373,10 +2328,6 @@
     slaBreach: { code: 'SLA', name: 'SLA breach (open)',
       formula: 'Open tickets whose current age already exceeds the SLA days for their ticket type.',
       source: 'zoho_data open tickets vs SLA catalog.' },
-    tat: { code: 'M-S2', name: 'Turnaround Time (TAT)',
-      formula: 'Average (Closed − Received) in days across field-service cases.',
-      source: 'CS-tracker Google Sheet, one row per field case.' },
-
     // ── Support distributions ──
     ticketFlow: { name: 'Ticket flow (created vs closed)',
       formula: 'Monthly counts of tickets created vs closed over the last 12 months.',
@@ -2389,12 +2340,9 @@
       source: 'The uptime engine (see M-A1/M-A6).' },
     backlog: { name: 'Active backlog', formula: 'Open (non-terminal) tickets grouped by status. No date window — the whole current backlog.', source: 'zoho_data (status not Closed / Duplicate / Junk).' },
     priority: { name: 'Priority mix', formula: 'Open tickets grouped by priority (blank = “Unset”).', source: 'zoho_data.priority.' },
-    categories: { name: 'Issue categories', formula: 'Ticket counts grouped by issue category / type.', source: 'zoho_data.IssueCategory (or CS-sheet issue type).' },
+    categories: { name: 'Issue categories', formula: 'Ticket counts grouped by issue category / type.', source: 'zoho_data.IssueCategory.' },
     channels: { name: 'Intake channels', formula: 'Tickets grouped by the channel they arrived through.', source: 'zoho_data.Channel.' },
     segment: { name: 'Tickets by segment', formula: 'Tickets grouped by customer / hub segment.', source: 'zoho_data.hub_master_segment.' },
-    machines: { name: 'Machines in the field', formula: 'Field cases grouped by machine / device type.', source: 'CS-tracker sheet.' },
-    owners: { name: 'Case owners', formula: 'Field cases grouped by assigned owner.', source: 'CS-tracker sheet.' },
-    fieldCases: { name: 'Field cases', formula: 'Count of field-service cases logged.', source: 'CS-tracker sheet.' },
     created7d: { name: 'Created · 7d', formula: 'Tickets created in the last 7 days.', source: 'zoho_data.CreatedAt.' },
     closed7d: { name: 'Closed · 7d', formula: 'Tickets closed in the last 7 days.', source: 'zoho_data.ClosedAt.' },
     openAge: { name: 'Avg open age', formula: 'Average age in days of currently-open tickets — now − CreatedAt, computed in SQL.', source: 'zoho_data (now − CreatedAt).' },
@@ -2444,13 +2392,12 @@
     exCenters: 'centersCount', kpiCenters: 'centersCount', mapCenters: 'centersCount', tcCenters: 'centersCount',
     exTickets: 'openTickets', kpiZOpen: 'openTickets', mapTickets: 'openTickets',
     exTopLe: 'topLeDevices', tcCustomers: 'topLe',
-    exTat: 'tat', kpiCsTat: 'tat',
     exTicketCount: 'ticketsCount', tcTicketCount: 'ticketsCount',
     exSlaBreach: 'slaBreach', tcSlaBreach: 'slaBreach',
     kpiHealth: 'health', kpiSignal: 'poorSignal', kpiUnsynced: 'unsynced',
     kpiAvgAge: 'assetAge', kpiPastLife: 'assetAge',
     kpiStates: 'statesReach', kpiMtbf: 'mtbf',
-    kpiZIn: 'created7d', kpiZOut: 'closed7d', kpiZAge: 'openAge', kpiCsCases: 'fieldCases',
+    kpiZIn: 'created7d', kpiZOut: 'closed7d', kpiZAge: 'openAge',
     mapAssets: 'assetLifecycle', tcAssets: 'assetLifecycle'
   };
 
@@ -2468,8 +2415,7 @@
     'sla compliance': 'sla', 'sla breach by issue type': 'slaType',
     'priority mix': 'priority', 'active backlog': 'backlog', 'top issue categories': 'categories',
     'intake channels': 'channels', 'tickets by customer segment': 'segment',
-    'field service tat': 'tat', 'machines in the field': 'machines', 'field issue types': 'categories',
-    'case owners': 'owners', 'assets by machine type': 'assetLifecycle', 'asset lifecycle age': 'assetAge',
+    'assets by machine type': 'assetLifecycle', 'asset lifecycle age': 'assetAge',
     'assets by category': 'assetLifecycle', 'centers by state': 'geo',
     'devices per customer': 'topLeDevices', 'centers per customer': 'centersPerCust',
     'open tickets per customer': 'openTickets', 'customer leaderboard': 'leaderboard',

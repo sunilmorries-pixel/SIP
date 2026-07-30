@@ -2,8 +2,8 @@
 
 A production-ready, **Tricog-branded**, interactive analytics dashboard built on **Google
 Apps Script + BigQuery**. It surfaces live insights from the `tricogde-dwh.abi_tables`
-dataset plus two Google Sheets: center reliability, revenue-at-risk, support-ticket flow
-(Zoho), SLA compliance, device fleet, and asset reliability.
+dataset plus the Jira devices Google Sheet: center reliability, support-ticket flow (Zoho),
+SLA compliance, device fleet, and asset reliability.
 
 ![stack](https://img.shields.io/badge/stack-Apps%20Script%20%C2%B7%20BigQuery%20%C2%B7%20ECharts-E5344F)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-black?logo=github)](https://github.com/sunilmorries-pixel/SIP)

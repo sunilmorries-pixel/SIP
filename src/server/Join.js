@@ -3,7 +3,7 @@
  *
  * Why joins live here: every BigQuery statement in Queries.js is a
  * single-table read; multi-source combining happens in JS. This also lets
- * BigQuery results join against non-BigQuery sources (the CS tracker
+ * BigQuery results join against non-BigQuery sources (the Jira devices
  * Google Sheet) — something SQL alone can't do.
  *
  * Pattern: keep each side PRE-AGGREGATED in its source query (one row per

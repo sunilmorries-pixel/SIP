@@ -56,9 +56,6 @@ function apiGetExecOverview() {
           };
         });
 
-      var cs = null;
-      try { var t = readCsTracker(); cs = t && t.kpis; } catch (e) { cs = null; }
-
       return {
         kpis: (r.kpis && r.kpis[0]) || {},
         zohoKpis: (r.zohoKpis && r.zohoKpis[0]) || {},
@@ -72,8 +69,7 @@ function apiGetExecOverview() {
         topTotals: top.totals,
         avgAgeDays: age.avg_age_days != null ? age.avg_age_days : null,
         uptimeFleet: (r.uptimeFleet && r.uptimeFleet[0]) || null,
-        slaKpis: (r.slaKpis && r.slaKpis[0]) || null,
-        cs: cs
+        slaKpis: (r.slaKpis && r.slaKpis[0]) || null
       };
     });
   });

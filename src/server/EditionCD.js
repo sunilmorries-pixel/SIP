@@ -560,7 +560,6 @@ function apiGetDashboardCD(options) {
     results.assets = assetsDonutFromIndex_(assetIdx);
     results.cohortReliability = cohortFromIndex_(assetIdx, results.zohoFailByCenter);
     delete results.zohoFailByCenter;
-    results.csTracker = readCsTracker();
     results.appName = CONFIG.APP_NAME;
     results.appVersion = CONFIG.APP_VERSION;
     // jiraDeviceStats_ (Numbers.js) now accepts a `filters` object directly
@@ -854,9 +853,6 @@ function apiGetExecOverviewCD(options) {
             devices: c.devices, online: c.online, open_tickets: c.open_tickets };
         });
 
-      var cs = null;
-      try { var t = readCsTracker(); cs = t && t.kpis; } catch (e) { cs = null; }
-
       return {
         kpis: (r.kpis && r.kpis[0]) || {}, zohoKpis: (r.zohoKpis && r.zohoKpis[0]) || {},
         fleetStatus: r.fleetStatus || [], zohoTrend: r.zohoTrend || [], geo: r.geo || [],
@@ -864,7 +860,7 @@ function apiGetExecOverviewCD(options) {
         topCustomers: top.customers.slice(0, 6), topTotals: top.totals,
         avgAgeDays: age.avg_age_days != null ? age.avg_age_days : null,
         uptimeFleet: (r.uptimeFleet && r.uptimeFleet[0]) || null,
-        slaKpis: (r.slaKpis && r.slaKpis[0]) || null, cs: cs,
+        slaKpis: (r.slaKpis && r.slaKpis[0]) || null,
         // jiraDeviceStats_ now accepts `filters` directly (Task 7) — see
         // apiGetDashboardCD's identical call site above.
         fleet: jiraDeviceStats_(filters),

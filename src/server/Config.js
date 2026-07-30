@@ -44,9 +44,6 @@ var CONFIG = {
    */
   IST_OFFSET_MINUTES: 330,
 
-  /** CS/Service field tracker sheet (Support view). */
-  CS_SHEET_ID: '16Q2q9R6GPBOBYVmvImRTZRp8g1kW-G6fio26XDJiULo',
-
   /**
    * Devices (Jira) source: the BQ table jira_data is commented out in favour of
    * this Google Sheet (same columns). Read via Sheets REST API in SheetSource.js

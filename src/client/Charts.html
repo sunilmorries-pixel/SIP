@@ -285,8 +285,6 @@ var Charts = (function () {
   function zohoCategories(rows) { horizontalBar('chartZohoCategories', rows, 'category', 'cnt', C.info); }
   function firmware(rows)    { horizontalBar('chartFirmware', rows, 'firmware', 'devices', C.info); }
   function zohoSegment(rows) { horizontalBar('chartZohoSegment', rows, 'segment', 'cnt', C.primary); }
-  function csMachine(rows)   { horizontalBar('chartCsMachine', rows, 'label', 'cnt', C.violet); }
-  function csIssueType(rows) { horizontalBar('chartCsIssueType', rows, 'label', 'cnt', C.accent); }
 
   var AGE_ORDER = ['<3 mo', '3-6 mo', '6-12 mo', '1-2 yr', '2+ yr'];
 
@@ -392,32 +390,6 @@ var Charts = (function () {
           return { name: r.channel, value: r.cnt, itemStyle: { color: CHANNEL_PALETTE[i % CHANNEL_PALETTE.length] } };
         })
       }]
-    }));
-  }
-
-  function tatTrend(rows) {
-    if (!rows || !rows.length) return showEmpty('chartTatTrend', 'CS tracker sheet not available');
-    render('chartTatTrend', base({
-      tooltip: { trigger: 'axis' },
-      legend: { top: 0, textStyle: { color: C.text, fontSize: 12 }, icon: 'circle', itemWidth: 9, itemHeight: 9 },
-      grid: { left: 8, right: 8, top: 36, bottom: 8, containLabel: true },
-      xAxis: catAxis({ data: rows.map(function (r) { return r.month; }) }),
-      yAxis: [
-        valAxis({ name: 'cases' }),
-        valAxis({ name: 'avg TAT (d)', splitLine: { show: false } })
-      ],
-      series: [
-        {
-          name: 'Cases resolved', type: 'bar', barMaxWidth: 26,
-          itemStyle: { borderRadius: [6, 6, 0, 0], color: C.primary },
-          data: rows.map(function (r) { return r.cases; })
-        },
-        {
-          name: 'Avg TAT (days)', type: 'line', yAxisIndex: 1, smooth: true, symbolSize: 7,
-          lineStyle: { width: 2.5, color: C.accent }, itemStyle: { color: C.accent },
-          data: rows.map(function (r) { return r.avg_tat; })
-        }
-      ]
     }));
   }
 
@@ -643,9 +615,6 @@ var Charts = (function () {
     zohoPriority: zohoPriority,
     zohoChannel: zohoChannel,
     zohoSegment: zohoSegment,
-    tatTrend: tatTrend,
-    csMachine: csMachine,
-    csIssueType: csIssueType,
     FLEET_ORDER: FLEET_ORDER
   };
 })();

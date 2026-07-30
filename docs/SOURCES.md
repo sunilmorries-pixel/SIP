@@ -2,10 +2,10 @@
 
 The dashboard is powered by BigQuery tables in
 `tricogde-dwh.abi_tables` (migrated 2026-07-22 from the `magnaquest-sand-box.abi_team_sip_devtest_poc`
-dev/test dataset — same six table names, byte-identical schema, live-verified) plus **two
-Google Sheets** (a Jira devices export and the CS/Service tracker). The `sql/*.lineage.sql`
-files describe the upstream DWH queries that originally produced these tables — read them
-for column semantics.
+dev/test dataset — same six table names, byte-identical schema, live-verified) plus **one
+Google Sheet** (a Jira devices export — the CS/Service tracker Sheet was removed 2026-07-29,
+see below). The `sql/*.lineage.sql` files describe the upstream DWH queries that originally
+produced these tables — read them for column semantics.
 
 ## BigQuery tables
 
@@ -39,21 +39,15 @@ for column semantics.
 - **Offline fallback:** while the Sheets API is disabled, `JiraDump.js` supplies a static
   pre-aggregated snapshot; the live read auto-resumes once the API is enabled.
 
-## Google Sheet — CS/Service tracker
+## Google Sheet — CS/Service tracker (REMOVED 2026-07-29)
 
-- **ID:** `16Q2q9R6GPBOBYVmvImRTZRp8g1kW-G6fio26XDJiULo` (see `CONFIG.CS_SHEET_ID`)
-- **Grain:** 1 row / resolved service case (manual field-team log)
-- **Columns:** `T O M` (ticket owner), `Received Date`, `Closed Date`, `Zoho ID`,
-  `Center ID`, `Center Name`, `Location`, `CS team Name & Service Team`,
-  `Machine & DeviceType`, `Issue Type`, `Issue`, `Reason`, `Remarks`, `Comments`,
-  `Year`, `Month`, `TAT (Days)`, `Source Tab`
-- **Powers:** Support/CS view — TAT trend, issues by machine type, workload by owner
-- **Access:** read via the **Sheets REST API v4** with the script's OAuth token
-  (scope `spreadsheets.readonly`). Not `SpreadsheetApp` — that service demands the
-  full read-write scope. The web app executes as the deploying user, who must
-  have at least Viewer on the sheet.
-- **Join key to BigQuery:** `Zoho ID` ↔ `zoho_data.ticketNumber` (strip the `#`),
-  `Center ID` ↔ `CenterID`.
+This Sheet (a manual field-team log — TAT/machine/issue-type/owner cases) previously powered
+Support/CS's TAT trend, machines-in-the-field, field-issue-types, and case-owners panels, plus
+Overview's field-TAT KPI. It was removed as a data source: the Sheets API was disabled on the
+GCP project, so it was already failing in production, and — unlike the Jira devices Sheet
+above — there was no BigQuery table to fall back to. Those panels have no replacement; they're
+gone from the UI. `CONFIG.CS_SHEET_ID`, `SheetSource.readCsTracker()`, and the `cs_tracker` Raw
+Data source were all deleted.
 
 ## Raw Data page (v5.2)
 
@@ -117,7 +111,7 @@ combining happens in Apps Script via `src/server/Join.js` (hash-join utilities):
    `getCenter360Rows_` is the retired legacy equivalent); filtering/sorting/paging
    run over the joined rows, and the result is cached (chunked gzip, 30 min).
 3. This is also the ONLY way to join **Google Sheet ⋈ BigQuery** data
-   (the CS tracker is not in BigQuery), so one pattern covers everything.
+   (the Jira devices Sheet is not in BigQuery), so one pattern covers everything.
 
 Golden rule: **aggregate first, join small.** Never pull raw fact tables into
 Apps Script — 84k Zoho rows don't fit the runtime; 5k aggregated center rows do.

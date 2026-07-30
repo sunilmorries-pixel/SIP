@@ -75,7 +75,8 @@ them as a fallback serial→center source).
   Columns: `Key`, `Issue Type`, `Summary` (holds serial, e.g. `H4-F79C6E22`), `Status`, `Created`,
   `Customer ID`, `Customer Name`, `Tricog Device Type`. **Needs the Sheets API enabled** on GCP
   project 218180702013 + Viewer share; until then the app uses the offline `JiraDump.js` snapshot.
-- **CS tracker** (`CONFIG.CS_SHEET_ID`) — field-service cases (TAT/machine/owner).
+  (The CS tracker Sheet, formerly the second source here, was removed 2026-07-29 — no BQ
+  equivalent existed, and it was already failing since the Sheets API is disabled.)
 
 ## After a reload — 3 steps
 1. **Wait ≤10 min** (cache TTL) or run `clearDashboardCache()` in the editor.

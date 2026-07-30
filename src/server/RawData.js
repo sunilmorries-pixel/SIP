@@ -18,12 +18,13 @@ function rawSources_() {
     center_details: { label: 'Center Details', kind: 'bq', table: 'center_details', orderBy: 'CenterID' },
     cloud_devices: { label: 'Cloud Devices', kind: 'bq', table: 'cloud_devices', orderBy: 'DeviceID' },
     zoho_data: { label: 'Zoho Tickets', kind: 'bq', table: 'zoho_data', orderBy: 'ticketNumber' },
-    // Removed as user-facing sources (2026-07-08, per request); BQ tables still
-    // exist: device_metrics (no other app usage), device_center_mapping (still
-    // read internally by Geo.js), jira_data (Jira is now sourced from the Sheet
-    // only — the BQ jira_data table is ignored app-wide).
-    jira_sheet: { label: 'Jira Devices (Sheet)', kind: 'sheet', sheetId: CONFIG.JIRA_SHEET_ID },
-    cs_tracker: { label: 'CS Tracker (Sheet)', kind: 'sheet', sheetId: CONFIG.CS_SHEET_ID }
+    // Removed as user-facing sources: device_metrics (no other app usage),
+    // device_center_mapping (still read internally by Geo.js), jira_data
+    // (Jira is sourced from the Sheet below), the CS tracker Sheet (removed
+    // 2026-07-29 — the Sheets API was disabled on the GCP project, so it was
+    // already failing in production; the TAT/machine/issue-type/owner panels
+    // it fed were dropped, no replacement).
+    jira_sheet: { label: 'Jira Devices (Sheet)', kind: 'sheet', sheetId: CONFIG.JIRA_SHEET_ID }
   };
 }
 

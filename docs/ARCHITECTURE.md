@@ -31,8 +31,12 @@ See `docs/SOURCES.md` for the full source-of-truth table. Summary of current rol
 | `cloud_devices` (BQ) | ~11.3k | Fleet-status donut, device explorer, serial→center bridge |
 | `zoho_data` (BQ) | ~84.5k | Support tickets, SLA compliance, uptime-downtime proxy. Date strings via `SAFE.PARSE_DATETIME('%d-%b-%Y %I:%M:%S %p', …)` |
 | `device_metrics` (BQ) | dup rows | Reliability watchlist — deduped with `GROUP BY deviceid` |
-| CS tracker Google Sheet | — | Support/CS field cases (TAT/machine/owner) |
 | `device_center_mapping`, `jira_data` (BQ) | — | **Retired as user-facing sources** (legacy serial-linking / asset spec only); still surfaced read-only on the Raw Data page |
+
+The CS/Service tracker Google Sheet (TAT/machine/issue-type/owner panels on Support/CS, plus
+Overview's field-TAT KPI) was removed 2026-07-29 — the Sheets API was disabled on the GCP
+project, so it was already failing in production, and there was no BigQuery equivalent to fall
+back to. No replacement; those panels are gone.
 
 **v5.2:** the Jira devices Google Sheet's fleet count is permanently restricted to Issue
 Type = Connector or ECG Machine (`CONFIG.JIRA_DEVICE_TYPES`, applied in `jiraDeviceStats_()`).

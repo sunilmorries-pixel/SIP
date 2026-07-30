@@ -97,6 +97,15 @@ once their columns/headers are removed from the table.
   special-cased "worst first" default is introduced for this merge.
 - **Column count stays at 14** (2 removed, 2 added) — no width/layout concern, unlike the
   earlier 14→17 draft.
+- **Sticky first column (new ask):** the **Center** column stays pinned while the rest of the
+  row scrolls horizontally inside `.table-scroll`, so the center name stays visible next to
+  whichever column the user has scrolled to. Scoped to `#centerTable` only (Styles.html) —
+  `position: sticky; left: 0` on that column's `th`/`td`, with an opaque background (matching
+  `.data-table th`'s existing `var(--surface-solid)` for the header cell, and the row's
+  current background for body cells so hover/click-highlight states still show correctly
+  through the sticky cell) and a subtle right-edge shadow/border to separate it from
+  scrolling content. Not applied to any other table (Device explorer, Raw Data, etc.) unless
+  asked separately.
 
 ## Testing / verification
 
@@ -108,6 +117,10 @@ once their columns/headers are removed from the table.
    values — same formula, so this should be an exact match, not an approximation.
 3. Confirm Center 360 pagination/search/sort still work correctly with the updated row shape,
    and that `apiGetDashboardCD`'s payload no longer includes `assetHealth` (smaller response).
+4. Scroll the Center 360 table horizontally (desktop width) and confirm the Center column
+   stays pinned/visible with no visual gap or content bleeding through underneath it, in both
+   light and dark theme, and that row hover/click-highlight still visibly applies to the
+   sticky cell, not just the scrolling ones.
 4. Run `npm test` (existing unit suite) — no new pure-JS logic is introduced, so this is a
    regression check, not new coverage.
 

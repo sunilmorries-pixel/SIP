@@ -364,7 +364,7 @@ function centerBaseSpecCD_() {
  * @param {boolean=} bypassCache force a rebuild (used by the warm trigger)
  */
 function getCenter360RowsCD_(bypassCache) {
-  var ckey = 'ctr360cd_v6';
+  var ckey = 'ctr360cd_v7'; // v7: added mtbf_hrs/failures columns
   if (bypassCache !== true) {
     var cached = cacheGetLarge(ckey);
     if (cached) return cached;
@@ -412,7 +412,7 @@ function getCenter360RowsCD_(bypassCache) {
     "SELECT center_id, " +
     " ROUND(life_hrs / 24 / 365, 2) AS lifecycle_years, " +
     " ROUND(downtime_hrs / 24, 1) AS downtime_days, " +
-    " uptime_pct FROM scored"), null, { maxRows: 60000 });
+    " uptime_pct, mtbf_hrs, failures FROM scored"), null, { maxRows: 60000 });
   var uptimeByCenter = {};
   uptimeRows.forEach(function (r) { uptimeByCenter[r.center_id] = r; });
 
@@ -427,6 +427,8 @@ function getCenter360RowsCD_(bypassCache) {
     row.lifecycle_years = u ? u.lifecycle_years : null;
     row.downtime_days = u ? u.downtime_days : null;
     row.uptime_pct = u ? u.uptime_pct : null;
+    row.mtbf_hrs = u ? u.mtbf_hrs : null;
+    row.failures = u ? u.failures : 0;
     row.jira_devices = jiraCountByCenter[row.center_id] || 0;
     return row;
   });
@@ -521,18 +523,27 @@ function apiGetDashboardCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    // reliability/assetHealth now carry every scored center (2026-07-23 watchlist
-    // merge), not just 12, so this payload can exceed withCache's 100KB-per-key
-    // limit. cachePutLarge/cacheGetLarge (gzip + chunked, already used for
-    // Center-360) replace withCache here — same TTL, no size ceiling.
-    var cacheKey = 'dashcd_v6_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
+    // reliability carries every scored center (2026-07-23 watchlist merge,
+    // narrowed 2026-07-30 to drop the no-longer-needed assetHealth spec from
+    // THIS endpoint only — see the .filter() below), not just 12, so this
+    // payload can exceed withCache's 100KB-per-key limit. cachePutLarge/
+    // cacheGetLarge (gzip + chunked, already used for Center-360) replace
+    // withCache here — same TTL, no size ceiling.
+    var cacheKey = 'dashcd_v7_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
     }
-    var results = runQueriesParallel(buildDashboardQuerySpecsCD(hub, filters));
+    // assetHealth is excluded here (2026-07-30): Center 360 now carries
+    // mtbf_hrs/failures directly, so nothing consumes this endpoint's
+    // assetHealth anymore. reliability is NOT excluded — it stays computed
+    // (Overview's separate apiGetExecOverviewCD endpoint depends on the same
+    // spec definition, and this array is otherwise harmless/unused here).
+    var dashSpecs = buildDashboardQuerySpecsCD(hub, filters).filter(function (s) {
+      return s.key !== 'assetHealth';
+    });
+    var results = runQueriesParallel(dashSpecs);
     enrichCenterNamesCD_(results.reliability);
-    enrichCenterNamesCD_(results.assetHealth);
     // Jira metrics from the Sheet index; keep only assets whose center passes
     // the global filter (unmapped devices drop out whenever ANY of
     // Segment/Status/State/Hub is active — matching the existing v5.8

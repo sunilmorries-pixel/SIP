@@ -64,9 +64,10 @@ function apiGetDevices(options) {
 /** Whitelisted sort columns for the joined Center-360 rows. */
 var CENTER_SORT_KEYS = {
   center: 'center', state: 'state', devices: 'devices',
-  online: 'online', open_tickets: 'open_tickets', last_seen: 'last_seen',
+  open_tickets: 'open_tickets',
   lifecycle_years: 'lifecycle_years', downtime_days: 'downtime_days',
-  uptime_pct: 'uptime_pct', tickets_total: 'tickets_total', jira_devices: 'jira_devices'
+  uptime_pct: 'uptime_pct', tickets_total: 'tickets_total', jira_devices: 'jira_devices',
+  mtbf_hrs: 'mtbf_hrs', failures: 'failures'
 };
 
 /**

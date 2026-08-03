@@ -239,7 +239,7 @@ git commit -m "Server: add MTBF/Failures to Center 360, drop unused assetHealth 
 - Consumes: `mtbf_hrs`/`failures` fields on Center 360 rows (Task 1).
 - Produces: `CENTER_COLUMNS` array gains 2 entries (`mtbf_hrs`, `failures`) that Task 4's cleanup and Task 5's CSS both assume are present and rendered as ordinary (non-first) columns.
 
-- [ ] **Step 1: Add the 2 new columns to `CENTER_COLUMNS`**
+- [x] **Step 1: Add the 2 new columns to `CENTER_COLUMNS`**
 
 Find:
 
@@ -287,7 +287,7 @@ Replace with:
 
 (`online`/`last_seen` stay in this step — they're only removed in Task 4, once the live cross-check in Task 3 has confirmed the new columns are correct. Keeping them here means this step is a pure addition, independently safe to ship/preview.)
 
-- [ ] **Step 2: Render the 2 new cells in `renderCenterTable`**
+- [x] **Step 2: Render the 2 new cells in `renderCenterTable`**
 
 Find:
 
@@ -311,7 +311,7 @@ Replace with:
 
 (Same MTBF humanization — hours→days, `—` when null — as the old `renderCenterWatchlist`, `App.html:761`. Failures shown as a plain count, matching the old watchlist's Failures column, which used no badge.)
 
-- [ ] **Step 3: Update the `apiGetCenters` mock so the local preview has data for the new columns**
+- [x] **Step 3: Update the `apiGetCenters` mock so the local preview has data for the new columns**
 
 Find:
 
@@ -363,7 +363,7 @@ Replace with:
     }
 ```
 
-- [ ] **Step 4: Build the local preview and check it visually**
+- [x] **Step 4: Build the local preview and check it visually**
 
 Run: `powershell -File scripts/build_preview.ps1` (leave it running, it serves on `http://localhost:8765/preview.html`)
 
@@ -372,12 +372,16 @@ Open `http://localhost:8765/preview.html` in a browser, go to the Centers/Custom
 - Clicking those column headers sorts the table (ascending/descending toggle, same as every other column).
 - The old "Reliability & Health" card above it still renders unchanged (not touched by this task).
 
-- [ ] **Step 5: Commit**
+**Result (2026-08-04): all 3 confirmed** — verified live via browser automation, not just visually eyeballed: MTBF/Failures cells render with correct `—`/`Nd` humanization; clicking the MTBF header fires a refetch and `aria-sort` correctly flips to `descending` on the live (re-rendered) header node; the Reliability & Health card is untouched (`#centerWatchlistTable` still present, title unchanged).
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/client/App.html
 git commit -m "Client: add MTBF/Failures columns to Center 360 (watchlist untouched for now)"
 ```
+
+**Committed as `2993d82`** — isolated from unrelated concurrent edits in the same file via a hand-built partial patch (`git apply --cached`), since `App.html` had other in-progress work mixed in at the time.
 
 ---
 

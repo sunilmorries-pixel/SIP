@@ -479,7 +479,6 @@
     $('centersKpiGrid').innerHTML =
       kpiTile('kpiCenters', 'building', 'var(--secondary)', 'Centers', 'all centers') +
       kpiTile('kpiUptime', 'online', 'var(--ok)', 'Center uptime', 'avg per-center uptime') +
-      kpiTile('kpiHealth', 'health', 'var(--primary)', 'Center health', 'avg score / 100') +
       kpiTile('kpiStates', 'map', 'var(--accent)', 'States', 'geographic reach') +
       kpiTile('kpiMtbf', 'clock', 'var(--violet)', 'MTBF', 'avg days between failures');
     $('supportKpiGrid').innerHTML =
@@ -609,8 +608,6 @@
     var ck = (data.centerKpis && data.centerKpis[0]) || {};
     setKpi('kpiCenters', ck.centers, 'all centers');
     uptimeKpi('kpiUptime', up);
-    setKpi('kpiHealth', up ? up.avg_health : null,
-      up && up.avg_mtbf_days != null ? 'avg MTBF ' + up.avg_mtbf_days + 'd · ' + (up.pct_healthy || 0) + '% healthy' : 'composite 0–100');
     setKpi('kpiStates', ck.states, 'geographic reach');
     setKpi('kpiMtbf', up && up.avg_mtbf_days != null ? up.avg_mtbf_days : null, 'avg days between failures');
 
@@ -637,7 +634,6 @@
     renderAssetSummary(data);
 
     /* Centers charts */
-    renderCentersSummary(data);
     Charts.geo(data.geo);
     Charts.deploymentAge(data.deploymentAge);
     Charts.activeVsEnded(data.activeVsEnded);
@@ -693,41 +689,6 @@
         text: FMT.format(f.past_life) + ' devices 5y+ (' + pastPct + '% past expected life)' });
     }
     $('assetSummaryFlags').innerHTML = flagChips_(flags);
-  }
-
-  /** Per-page executive summary for the CENTERS page — built metric by metric.
-   *  Metric 1: center uptime over lifecycle. lifecycle = today − deploymentdate;
-   *  uptime% = (lifecycle − merged technical downtime) / lifecycle; + health. */
-  function renderCentersSummary(data) {
-    var el = $('centersSummary');
-    if (!el) return;
-    var up = (data.uptimeFleet && data.uptimeFleet[0]) || {};
-    var roll = (data.centerKpis && data.centerKpis[0]) || {};
-    var s;
-    if (up.scored != null) {
-      s = 'Average <b>center uptime</b> is <b class="' + (up.avg_uptime >= 99 ? 'up' : 'down') + '">' +
-        (up.avg_uptime != null ? up.avg_uptime + '%' : '–') + '</b> across <b>' + FMT.format(up.scored) +
-        '</b> scored centers';
-      if (up.avg_life_years != null) {
-        s += ' over an average lifecycle of <b>' + up.avg_life_years + ' years</b>';
-      }
-      if (up.avg_downtime_days != null) {
-        s += ' (avg downtime <b>' + up.avg_downtime_days + ' days</b> per center)';
-      }
-      if (up.avg_health != null) {
-        s += ' — <b>' + (up.pct_healthy || 0) + '%</b> score health ≥ 80';
-      }
-      s += '.';
-    } else {
-      s = '<b>' + FMT.format(roll.centers || 0) + '</b> centers.';
-    }
-    el.innerHTML = s;
-
-    var flags = [];
-    flags.push({ cls: up.avg_uptime >= 99 ? 'is-good' : 'is-alert', icon: ICONS.online,
-      text: (up.avg_uptime != null ? up.avg_uptime + '% center uptime' : 'uptime unavailable') +
-        (up.pct99 != null ? ' · ' + up.pct99 + '% ≥ 99%' : '') });
-    $('centersSummaryFlags').innerHTML = flagChips_(flags);
   }
 
   /**
@@ -2299,9 +2260,6 @@
     mtbf: { code: 'M-A2', name: 'Mean Time Between Failures',
       formula: 'uptime hours ÷ failure count, shown in days. Null when a center has fewer than 2 failures.',
       source: 'Derived in the uptime engine (zoho_data failures over deployment life).' },
-    health: { code: 'M-A6', name: 'Asset Health Score',
-      formula: '0–100 = 0.5 × uptime% + MTBF-tier score + failure-count-tier score (TRD tiers). Higher is healthier.',
-      source: 'Composed from M-A1 uptime, M-A2 MTBF and failure counts per center.' },
     ftf: { code: 'M-A3', name: 'First-Time-Failure by batch',
       formula: 'Per production-year cohort: the share of the cohort whose center has ever logged a device-failure ticket, plus median time-to-first-failure and early fails (<7 days). Failures/device is a CENTER-grain proxy (a device inherits its whole center’s ticket count) — no per-device failure source exists yet.',
       source: 'Batch = year of a device’s first Jira appearance (serial parsed from summary); failures from zoho_data at that center.' },
@@ -2394,7 +2352,7 @@
     exTopLe: 'topLeDevices', tcCustomers: 'topLe',
     exTicketCount: 'ticketsCount', tcTicketCount: 'ticketsCount',
     exSlaBreach: 'slaBreach', tcSlaBreach: 'slaBreach',
-    kpiHealth: 'health', kpiSignal: 'poorSignal', kpiUnsynced: 'unsynced',
+    kpiSignal: 'poorSignal', kpiUnsynced: 'unsynced',
     kpiAvgAge: 'assetAge', kpiPastLife: 'assetAge',
     kpiStates: 'statesReach', kpiMtbf: 'mtbf',
     kpiZIn: 'created7d', kpiZOut: 'closed7d', kpiZAge: 'openAge',

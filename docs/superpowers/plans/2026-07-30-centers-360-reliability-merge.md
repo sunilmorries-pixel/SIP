@@ -393,21 +393,23 @@ git commit -m "Client: add MTBF/Failures columns to Center 360 (watchlist untouc
 
 This task exists to confirm, against real data, that the new Center 360 MTBF/Failures columns show the exact same numbers as the (still-present) Reliability & Health watchlist — proving the projection change in Task 1 didn't alter any values before the watchlist is deleted in Task 4.
 
-- [ ] **Step 1: Push Tasks 1-2 to the Apps Script editor**
+- [x] **Step 1: Push Tasks 1-2 to the Apps Script editor**
 
 Run: `clasp push` (this syncs the editor only — it does NOT affect the live production URL; do not run `clasp deploy` in this task).
 
-- [ ] **Step 2: Open the pushed web app's test/dev URL (or the live URL if that's the only one available) and go to Centers/Customers**
+- [x] **Step 2: Open the pushed web app's test/dev URL (or the live URL if that's the only one available) and go to Centers/Customers**
 
-- [ ] **Step 3: Pick 5 centers visible in the "Reliability & Health" watchlist and note their Health/Uptime/MTBF/Failures values**
+- [x] **Step 3: Pick 5 centers visible in the "Reliability & Health" watchlist and note their Health/Uptime/MTBF/Failures values**
 
-- [ ] **Step 4: Find those same 5 centers in the Center 360 table (use the search box) and confirm their Uptime, MTBF (days), and Failures values match exactly what the watchlist showed**
+- [x] **Step 4: Find those same 5 centers in the Center 360 table (use the search box) and confirm their Uptime, MTBF (days), and Failures values match exactly what the watchlist showed**
 
 Expected: exact match for every center checked — this is a projection change, not a formula change, so any mismatch means Task 1 was implemented incorrectly and must be fixed before proceeding.
 
-- [ ] **Step 5: Confirm sort still works correctly by clicking the MTBF and Failures column headers and checking a few rows land in the right order relative to their badge/number**
+- [x] **Step 5: Confirm sort still works correctly by clicking the MTBF and Failures column headers and checking a few rows land in the right order relative to their badge/number**
 
-- [ ] **Step 6: Report back (to whoever is driving the plan) that the cross-check passed before Task 4 begins**
+- [x] **Step 6: Report back (to whoever is driving the plan) that the cross-check passed before Task 4 begins**
+
+**Result (2026-08-04): cross-check passed** — user confirmed directly ("cross-check passed"), clearing Task 4 to proceed.
 
 ---
 
@@ -429,7 +431,7 @@ Expected: exact match for every center checked — this is a projection change, 
 **Interfaces:**
 - Produces: `CENTER_COLUMNS` now has exactly the 14 final columns listed in Global Constraints; `#centerWatchlistTable`, `renderCenterWatchlist`, `state.centersWatchlistSort`, and `#watchlistSort` no longer exist anywhere in the codebase.
 
-- [ ] **Step 1: Delete the "Reliability & Health" card from `Index.html`**
+- [x] **Step 1: Delete the "Reliability & Health" card from `Index.html`**
 
 Find (the entire `<article>` block, verbatim):
 
@@ -468,7 +470,7 @@ Find (the entire `<article>` block, verbatim):
 
 Delete it entirely (including the trailing blank line before the next `<article class="card span-12">` for Center 360).
 
-- [ ] **Step 2: Remove Online/Last-heartbeat from `CENTER_COLUMNS`**
+- [x] **Step 2: Remove Online/Last-heartbeat from `CENTER_COLUMNS`**
 
 Find:
 
@@ -502,7 +504,7 @@ Replace with:
   ];
 ```
 
-- [ ] **Step 3: Remove the Online/Last-heartbeat cells from `renderCenterTable`**
+- [x] **Step 3: Remove the Online/Last-heartbeat cells from `renderCenterTable`**
 
 Find:
 
@@ -536,7 +538,7 @@ Replace with:
           '</tr>';
 ```
 
-- [ ] **Step 4: Drop `online`/`last_seen` from the `apiGetCenters` mock**
+- [x] **Step 4: Drop `online`/`last_seen` from the `apiGetCenters` mock**
 
 Find:
 
@@ -571,7 +573,7 @@ Replace with:
         });
 ```
 
-- [ ] **Step 5: Remove the `renderCenterWatchlist` call site from `render()`**
+- [x] **Step 5: Remove the `renderCenterWatchlist` call site from `render()`**
 
 Find:
 
@@ -592,7 +594,7 @@ Replace with:
     renderCohort(data.cohortReliability || []);
 ```
 
-- [ ] **Step 6: Delete the `renderCenterWatchlist` function entirely**
+- [x] **Step 6: Delete the `renderCenterWatchlist` function entirely**
 
 Find and delete this whole block (including its docblock comment):
 
@@ -640,7 +642,7 @@ Find and delete this whole block (including its docblock comment):
   }
 ```
 
-- [ ] **Step 7: Delete the `watchlistSort` change listener**
+- [x] **Step 7: Delete the `watchlistSort` change listener**
 
 Find and delete:
 
@@ -656,7 +658,7 @@ Find and delete:
 
 ```
 
-- [ ] **Step 8: Remove `state.centersWatchlistSort`**
+- [x] **Step 8: Remove `state.centersWatchlistSort`**
 
 Find:
 
@@ -673,7 +675,7 @@ Replace with:
     centerRows: [], centerTotal: 0,
 ```
 
-- [ ] **Step 9: Delete the main-dashboard mock's `assetHealth` array**
+- [x] **Step 9: Delete the main-dashboard mock's `assetHealth` array**
 
 Find:
 
@@ -686,7 +688,7 @@ Find:
 
 Delete it entirely (this is in the default/fallback mock branch, the one feeding `apiGetDashboardCD`'s local-preview data — distinct from the `apiGetExecOverview` mock earlier in the file, which keeps its own separate `reliability` array untouched).
 
-- [ ] **Step 10: Remove the `reliability` METRIC_INFO entry and its title mapping; update `center360`'s formula text**
+- [x] **Step 10: Remove the `reliability` METRIC_INFO entry and its title mapping; update `center360`'s formula text**
 
 Find:
 
@@ -722,7 +724,7 @@ Replace with:
     'centers needing attention': 'attention',
 ```
 
-- [ ] **Step 11: Delete the dead `#centerWatchlistTable` CSS rule**
+- [x] **Step 11: Delete the dead `#centerWatchlistTable` CSS rule**
 
 In `src/client/Styles.html`, find:
 
@@ -732,7 +734,7 @@ In `src/client/Styles.html`, find:
 
 Delete this line entirely.
 
-- [ ] **Step 12: Build the local preview and confirm**
+- [x] **Step 12: Build the local preview and confirm**
 
 Run: `powershell -File scripts/build_preview.ps1`
 
@@ -742,17 +744,23 @@ Open `http://localhost:8765/preview.html`, go to Centers/Customers, and confirm:
 - Open the browser console — no JS errors on page load or tab switch.
 - Click a Center 360 row — the center-detail drawer still opens and still shows its own "Online 24h" stat (confirms Online data wasn't lost, only the table column).
 
-- [ ] **Step 13: Run the unit suite**
+**Result (2026-08-04):** first 3 checks confirmed via browser automation (card gone/no gap; `centerTableHead` has exactly the 14 planned columns; 0 console errors). **4th check FAILED as written** — `renderInto`/`makeCenterDetail` (`App.html:1563-1594`) has no "Online 24h" stat; that stat only exists in the separate hub-level `openCustomer` drawer. Flagged to the user before committing: per-center online-device count is genuinely not visible anywhere in the UI now (still computed server-side and visible in aggregate via Map/hub rollups, just not per-center). **User decision: proceed as planned** — the aggregate views are sufficient, no follow-up fix requested.
+
+- [x] **Step 13: Run the unit suite**
 
 Run: `npm test`
 Expected: all suites pass.
 
-- [ ] **Step 14: Commit**
+**Result (2026-08-04): 62/62 pass.**
+
+- [x] **Step 14: Commit**
 
 ```bash
 git add src/client/App.html src/client/Index.html src/client/Styles.html
 git commit -m "Client: delete Reliability & Health card, remove Online/Last-heartbeat from Center 360"
 ```
+
+**Committed as `9f51347`** — App.html/Styles.html again isolated from unrelated concurrent edits via a hand-built partial patch.
 
 ---
 

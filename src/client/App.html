@@ -110,6 +110,7 @@
       for (var c = 0; c < 15; c++) {
         var n = rnd(1, 14);
         var up = rnd(88, 100);
+        var fails = rnd(0, 6);
         crows.push({
           center_id: rnd(1000, 60000), center: 'Demo Center ' + rnd(1, 4000),
           hub: 'Demo Hub ' + rnd(1, 30),
@@ -119,7 +120,8 @@
           lifecycle_years: (rnd(3, 90) / 10), downtime_days: (rnd(0, 200) / 10),
           uptime_pct: up, tickets_total: rnd(0, 40),
           last_seen: new Date(Date.now() - rnd(0, 96) * 36e5).toISOString().replace('T', ' ').slice(0, 19),
-          open_tickets: rnd(0, 6)
+          open_tickets: rnd(0, 6),
+          mtbf_hrs: fails >= 2 ? rnd(120, 4000) : null, failures: fails
         });
       }
       return Promise.resolve({ rows: crows, totalRows: 4719, page: (args && args.page) || 0, pageSize: 15 });
@@ -1007,7 +1009,9 @@
     { key: 'uptime_pct', label: 'Uptime', sortable: true, num: true },
     { key: 'tickets_total', label: 'Tickets', sortable: true, num: true },
     { key: 'open_tickets', label: 'Open tickets', sortable: true, num: true },
-    { key: 'last_seen', label: 'Last heartbeat', sortable: true, num: true }
+    { key: 'last_seen', label: 'Last heartbeat', sortable: true, num: true },
+    { key: 'mtbf_hrs', label: 'MTBF (days)', sortable: true, num: true },
+    { key: 'failures', label: 'Failures', sortable: true, num: true }
   ];
 
   function buildCenterHeader() {
@@ -1077,6 +1081,8 @@
           '<td class="num">' + FMT.format(r.tickets_total || 0) + '</td>' +
           '<td class="num"><span class="badge badge-' + ticketBadge + '">' + FMT.format(r.open_tickets || 0) + '</span></td>' +
           '<td class="num" title="' + escapeHtml(r.last_seen || '') + '">' + escapeHtml(relTime(r.last_seen)) + '</td>' +
+          '<td class="num">' + (r.mtbf_hrs == null ? '—' : FMT.format(Math.round(r.mtbf_hrs / 24)) + 'd') + '</td>' +
+          '<td class="num">' + FMT.format(r.failures || 0) + '</td>' +
           '</tr>';
       }).join('');
       Array.prototype.forEach.call($('centerTable').querySelectorAll('tr.is-clickable'), function (tr) {

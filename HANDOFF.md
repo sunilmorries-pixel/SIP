@@ -1,14 +1,12 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-04 · **Version:** 5.14 (centers-360-reliability-merge) · **Status:**
-LIVE — Apps Script **version 43** deployed to the stable production URL
+**Last updated:** 2026-08-04 · **Version:** 5.15 (global-search-fix-and-ticket-lookup) ·
+**Status:** LIVE — Apps Script **version 44** deployed to the stable production URL
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always),
-tagged `v5.14`. **Deployed 2026-08-04, with the user's explicit go-ahead** — deployed in
-isolation (`git stash` around the push+deploy, `git stash pop` after) so a separate, still-local
-commit (search/ticket-lookup fixes, below) wasn't dragged into production before it was ready.
-**Git is ahead of both the Apps Script editor and production** by that one commit — `9657431`
-("fix dead global search on non-list tabs, add Support/CS ticket-number lookup") exists only in
-git so far, not yet pushed or deployed.
+tagged `v5.15`. Git, the Apps Script editor, and production are all in sync at commit `5130c5d`.
+**Deployed 2026-08-04, with the user's explicit go-ahead.** (v5.14, the Centers 360 merge, was
+deployed in isolation one step earlier — `git stash` around that push+deploy so this commit
+wasn't dragged in before it was ready; this deploy is the follow-up that brings it live too.)
 
 > **2026-08-04 — Centers 360 / Reliability & Health merge, all 6 tasks, DEPLOYED as v5.14/@43.**
 > Built task-by-task per `docs/superpowers/plans/2026-07-30-centers-360-reliability-merge.md`
@@ -49,8 +47,8 @@ git so far, not yet pushed or deployed.
 >   no new live-BQ check (correctly — nothing after Task 3 touched the MTBF/Failures calculation).
 
 > **2026-08-04 — fixed dead global search on non-list tabs, added Support/CS ticket-number
-> lookup (commit `9657431`, NOT yet pushed/deployed — see status line above).** Directly resolves
-> finding #1 of the 2026-07-31 review below (global search silently doing nothing on 5 of 8 tabs).
+> lookup (commit `9657431`, deployed as Apps Script version 44, tagged `v5.15`).** Directly
+> resolves finding #1 of the 2026-07-31 review below (global search silently doing nothing on 5 of 8 tabs).
 > `SEARCH_TAB_INFO` (`App.html`) now disables the search box with an explanatory placeholder on
 > Overview/Numbers/Raw Data (no per-row list to filter); Top Customers' leaderboard is now
 > actually filtered by the search box (was previously wired but never applied) with a "no

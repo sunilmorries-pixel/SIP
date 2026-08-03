@@ -216,6 +216,8 @@ body[data-theme="light"] .bg-decor {
 .input::placeholder { color: var(--text-3); }
 .input:hover { border-color: var(--border-strong); }
 .input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.input:disabled { opacity: 0.5; cursor: not-allowed; }
+.input:disabled:hover { border-color: var(--border); }
 
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
@@ -905,6 +907,7 @@ body[data-theme="light"] .bg-decor {
   transition: border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-fast);
 }
 a.ticket-row:hover { border-color: var(--border-strong); background: var(--primary-soft); transform: translateX(2px); }
+.ticket-row.is-highlighted { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 button.ticket-row { width: 100%; text-align: left; font: inherit; cursor: pointer; padding-right: 12px; }
 button.ticket-row:hover { border-color: var(--border-strong); background: var(--primary-soft); transform: translateX(2px); }
 .ticket-row-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px; }

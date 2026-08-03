@@ -919,3 +919,35 @@ function apiGetCenterDetailCD(options) {
     });
   });
 }
+
+/**
+ * Support/CS has no per-ticket or per-center list to filter (it's all
+ * aggregate breakdown cards), so its global-search box is repurposed as a
+ * lookup instead: try the query as a CenterID first, then as a Zoho
+ * ticketNumber, resolving the ticket to ITS center — the client opens the
+ * one existing center-detail drawer either way. Returns
+ * `{kind:null}` (not an error) on no match; "not found" is a normal search
+ * outcome, not a failure.
+ */
+function apiSupportSearchCD(options) {
+  var idNum = parseInt(options && options.query, 10);
+  return respond_(function () {
+    if (!isFinite(idNum)) return { kind: null };
+    return withCache('supportsearchcd_v1_' + idNum, function () {
+      var centerHit = runQuery(
+        "SELECT CenterID AS center_id FROM " + T('center_details') + " WHERE CenterID = @id LIMIT 1",
+        { id: idNum }
+      );
+      if (centerHit && centerHit[0]) return { kind: 'center', centerId: centerHit[0].center_id };
+
+      var ticketHit = runQuery(
+        "SELECT CenterID AS center_id FROM " + T('zoho_data') +
+        " WHERE ticketNumber = @id AND CenterID IS NOT NULL LIMIT 1",
+        { id: idNum }
+      );
+      if (ticketHit && ticketHit[0]) return { kind: 'ticket', centerId: ticketHit[0].center_id, ticketNumber: idNum };
+
+      return { kind: null };
+    });
+  });
+}

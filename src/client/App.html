@@ -141,6 +141,18 @@
         : MOCK_HUBS.filter(function (h) { return h.toLowerCase().indexOf(hq) !== -1; }).slice(0, 50);
       return Promise.resolve({ hubs: hubHits, query: hq, mode: hq.length < 2 ? 'top' : 'search' });
     }
+    if (fn === 'apiSupportSearch') {
+      // Deterministic-but-varied so all 3 outcomes are reachable while testing
+      // the preview by hand: ÷3 → not found, even → center match, odd → ticket
+      // match (using one of apiGetCenterDetail's canned ticket numbers, so the
+      // ticket-focus/highlight behaviour is actually visible in the drawer).
+      var sq = parseInt((args && args.query) || '', 10);
+      if (!isFinite(sq)) return Promise.resolve({ kind: null });
+      if (sq % 3 === 0) return Promise.resolve({ kind: null });
+      if (sq % 2 === 0) return Promise.resolve({ kind: 'center', centerId: sq });
+      var mockTickets = [149127, 149081, 148990, 148711, 148502];
+      return Promise.resolve({ kind: 'ticket', centerId: sq, ticketNumber: mockTickets[sq % mockTickets.length] });
+    }
     if (fn === 'apiGetCenterDetailsRaw') {
       var pg = (args && args.page) || 0, ps = (args && args.pageSize) || 25, tot = 18370;
       var segs = ['', 'Hospital <100 beds', 'Diagnostic centre', 'GP clinic'];
@@ -1500,10 +1512,10 @@
         '<div class="ticket-subj">' + escapeHtml(t.subject) +
         (t.created ? ' <span class="ticket-date">· ' + escapeHtml(t.created) + '</span>' : '') + '</div>';
       return safe
-        ? '<a class="ticket-row" href="' + escapeHtml(safe) + '" target="_blank" rel="noopener noreferrer" title="Open ticket #' + escapeHtml(t.ticket) + ' in Zoho Desk">' +
+        ? '<a class="ticket-row" data-ticket="' + escapeHtml(t.ticket) + '" href="' + escapeHtml(safe) + '" target="_blank" rel="noopener noreferrer" title="Open ticket #' + escapeHtml(t.ticket) + ' in Zoho Desk">' +
           inner +
           '<svg class="ticket-ext" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>'
-        : '<div class="ticket-row">' + inner + '</div>';
+        : '<div class="ticket-row" data-ticket="' + escapeHtml(t.ticket) + '">' + inner + '</div>';
     }).join('');
   }
 
@@ -1513,7 +1525,14 @@
    * open_tickets, assets].
    */
   function makeCenterDetail(ids) {
-    function open(c) {
+    /**
+     * @param {Array} c compact center row (see class doc below).
+     * @param {{ticketNumber:number}=} opts when opened from a Support/CS
+     *   ticket-number search, switches the ticket list to "All" and scrolls/
+     *   highlights that ticket once rendered (best-effort — the All list is
+     *   capped, see buildCenterDetailSpecs, so a very old ticket may not appear).
+     */
+    function open(c, opts) {
       $(ids.panel).hidden = false;
       if (ids.scrim) $(ids.scrim).hidden = false;
       $(ids.title).textContent = c[1];
@@ -1521,10 +1540,24 @@
       $(ids.body).innerHTML = '<div class="chart-empty" style="padding:32px 0">Loading details…</div>';
       $(ids.body).scrollTop = 0;
       gsCall(ep('apiGetCenterDetail'), { centerId: c[0] })
-        .then(function (detail) { renderInto(c, detail); })
+        .then(function (detail) {
+          renderInto(c, detail);
+          if (opts && opts.ticketNumber) focusTicket_(opts.ticketNumber);
+        })
         .catch(function (err) {
           $(ids.body).innerHTML = '<div class="chart-empty" style="padding:32px 0">Failed: ' + escapeHtml(err.message) + '</div>';
         });
+    }
+
+    /** Switches the ticket list to "All" and highlights/scrolls to one ticket, if present. */
+    function focusTicket_(ticketNumber) {
+      var allBtn = $(ids.body).querySelector('.ticket-toggle-btn[data-tix="all"]');
+      if (allBtn) allBtn.click();
+      var row = $(ids.body).querySelector('.ticket-row[data-ticket="' + ticketNumber + '"]');
+      if (row) {
+        row.classList.add('is-highlighted');
+        row.scrollIntoView({ block: 'center' });
+      }
     }
 
     function renderInto(c, d) {
@@ -1816,7 +1849,18 @@
     Charts.rankBar('chartTcCenters', asRows(topBy(withCenters, 'centers', 15), 'centers'), { color: '#38BDF8', empty: 'No center data' });
     Charts.rankBar('chartTcTickets', asRows(topBy(withTickets, 'open_tickets', 15), 'open_tickets'), { color: '#F5B301', empty: 'No open tickets' });
 
-    renderTcTable(payload.customers);
+    renderTcTable(topCustFilteredRows());
+  }
+
+  /** Customer leaderboard filtered by the global search box (name or hub ID) — client-side, the full ~27-row Top LE list is already in memory. */
+  function topCustFilteredRows() {
+    var all = (state.topBundle && state.topBundle.customers) || [];
+    var q = (state.search || '').trim().toLowerCase();
+    if (!q) return all;
+    return all.filter(function (c) {
+      return String(c.hub || '').toLowerCase().indexOf(q) !== -1 ||
+        String(c.hub_id != null ? c.hub_id : '').indexOf(q) !== -1;
+    });
   }
 
   function topBy(rows, key, n) {
@@ -1854,7 +1898,7 @@
         var k = btn.getAttribute('data-k');
         if (tcSort.key === k) tcSort.dir = tcSort.dir === 'asc' ? 'desc' : 'asc';
         else { tcSort.key = k; tcSort.dir = k === 'hub' ? 'asc' : 'desc'; }
-        renderTcTable(customers);
+        renderTcTable(topCustFilteredRows());
       });
     });
 
@@ -1864,6 +1908,14 @@
       if (typeof x === 'number' && typeof y === 'number') return (x - y) * sign;
       return String(x).localeCompare(String(y)) * sign;
     });
+
+    if (!rows.length) {
+      $('tcTable').querySelector('tbody').innerHTML = '<tr><td colspan="' + TC_COLUMNS.length + '">' +
+        '<div class="chart-empty" style="padding:32px 0">' +
+        '<strong>No customers match</strong><span>Try clearing the search</span>' +
+        '</div></td></tr>';
+      return;
+    }
 
     $('tcTable').querySelector('tbody').innerHTML = rows.map(function (c, i) {
       var onlinePct = c.devices ? Math.round((c.online / c.devices) * 100) : null;
@@ -2424,11 +2476,19 @@
     state.autoRefresh = true;
     setInterval(tickCountdown, 1000);
 
-    // Global search — one box drives the active list page.
+    // Global search — one box drives the active list page. Support/CS has no
+    // list to filter, so it's a lookup instead, fired on Enter (not per
+    // keystroke — a partial ID mid-type shouldn't trigger a BigQuery call).
     $('globalSearch').addEventListener('input', debounce(function (e) {
       state.search = e.target.value.trim();
       reloadActiveList();
     }, 350));
+    $('globalSearch').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && state.activeTab === 'tab-support') {
+        e.preventDefault();
+        supportSearchLookup_(e.target.value.trim());
+      }
+    });
 
     // Global filter drawer (Segment/Status/State/Hub/Date range) — replaces
     // the old per-page Segment dropdowns; one filter set drives every page.
@@ -2547,15 +2607,56 @@
     if (state.activeTab === 'tab-asset') { state.devices.page = 0; loadDevices(); }
     else if (state.activeTab === 'tab-centers') { state.centers.page = 0; loadCenters(); }
     else if (state.activeTab === 'tab-map') applyMapFilters();
+    else if (state.activeTab === 'tab-topcust') renderTcTable(topCustFilteredRows());
   }
 
+  /**
+   * Per-tab behaviour of the one global search box. Most tabs filter a list;
+   * Support/CS repurposes it as a center/ticket lookup (see supportSearchLookup_);
+   * Overview/Numbers/Raw Data have no per-row list (or are deliberately exempt
+   * from every other site filter) so the box is disabled there instead of
+   * silently accepting input that does nothing.
+   */
+  var SEARCH_TAB_INFO = {
+    'tab-overview': { disabled: true, placeholder: "Search isn't available on this page" },
+    'tab-asset': { placeholder: 'Search devices by ID, center or hub…' },
+    'tab-centers': { placeholder: 'Search centers by name, ID, hub or state…' },
+    'tab-support': { placeholder: 'Search by center ID or ticket number…' },
+    'tab-map': { placeholder: 'Search the map: center, hub, device or serial…' },
+    'tab-topcust': { placeholder: 'Search customers by name or hub ID…' },
+    'tab-numbers': { disabled: true, placeholder: 'This page shows unfiltered raw data' },
+    'tab-rawdata': { disabled: true, placeholder: 'This page shows unfiltered raw data' }
+  };
+
   function updateSearchPlaceholder() {
-    var map = {
-      'tab-asset': 'Search devices by ID, center or hub…',
-      'tab-centers': 'Search centers by name, ID, hub or state…',
-      'tab-map': 'Search the map: center, hub, device or serial…'
-    };
-    $('globalSearch').placeholder = map[state.activeTab] || 'Search centers, devices, hubs, serials…';
+    var info = SEARCH_TAB_INFO[state.activeTab] || {};
+    var input = $('globalSearch');
+    input.placeholder = info.placeholder || 'Search centers, devices, hubs, serials…';
+    input.disabled = !!info.disabled;
+    if (input.disabled) { input.value = ''; state.search = ''; }
+  }
+
+  /**
+   * Support/CS search: not a list filter (there's no per-ticket/per-center
+   * list on this page) — a lookup. Tries the query as a CenterID, then as a
+   * Zoho ticket number, and opens the one shared center-detail drawer either
+   * way. Toasts on no match so the box is never silently a no-op.
+   */
+  function supportSearchLookup_(query) {
+    if (!query) return;
+    gsCall(ep('apiSupportSearch'), { query: query })
+      .then(function (result) {
+        if (result.kind === 'center') {
+          CenterDetail.open([result.centerId, '', 0, 0, 0, 0, 0, 0]);
+        } else if (result.kind === 'ticket') {
+          CenterDetail.open([result.centerId, '', 0, 0, 0, 0, 0, 0], { ticketNumber: result.ticketNumber });
+        } else {
+          toast('No match for "' + query + '"', 'error');
+        }
+      })
+      .catch(function (err) {
+        toast('Search failed: ' + err.message, 'error');
+      });
   }
 
   function syncLegendActive() {

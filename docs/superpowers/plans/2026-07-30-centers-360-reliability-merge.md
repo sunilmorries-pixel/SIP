@@ -851,12 +851,14 @@ git commit -m "Client: sticky Center column on the Center 360 table"
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Run the full unit suite one more time**
+- [x] **Step 1: Run the full unit suite one more time**
 
 Run: `npm test`
 Expected: all suites pass.
 
-- [ ] **Step 2: Rebuild the local preview and walk the full testing checklist from the design spec**
+**Result (2026-08-04): 62/62 pass.**
+
+- [x] **Step 2: Rebuild the local preview and walk the full testing checklist from the design spec**
 
 Run: `powershell -File scripts/build_preview.ps1`, then in the browser on the Centers/Customers tab confirm, end to end:
 1. Center 360 has exactly 14 columns (Center, ID, Hub, City, State, Devices, Jira devices, Lifecycle, Downtime, Uptime, Tickets, Open tickets, MTBF (days), Failures) — no Online, no Last heartbeat, no Health.
@@ -865,16 +867,24 @@ Run: `powershell -File scripts/build_preview.ps1`, then in the browser on the Ce
 4. The sticky Center column behaves correctly while scrolling, in both themes.
 5. No console errors anywhere on the page.
 
-- [ ] **Step 3: Confirm the earlier live cross-check (Task 3) result is still valid**
+**Result (2026-08-04): all 5 confirmed live via browser automation** — `centerTableHead` column list matches exactly; `#centerWatchlistTable`/`#watchlistSort` both absent from the DOM; paged to 2/315, typed a search query (refetches correctly), clicked 4 different column-header sorts and confirmed `aria-sort` correctly tracks whichever was clicked last; sticky cell's computed `background-color` correctly switches from the dark navy surface color to white when toggling light/dark theme; 0 console errors across the whole sequence.
+
+- [x] **Step 3: Confirm the earlier live cross-check (Task 3) result is still valid**
 
 Since Tasks 4-5 only changed columns/CSS (not the MTBF/Failures calculation itself), no new live-BQ check is needed — just note in the commit message that Task 3's cross-check covers the shipped formula.
 
-- [ ] **Step 4: Final commit (if anything is still uncommitted)**
+**Confirmed valid** — Task 3's cross-check (2026-08-04) covers the exact formula shipped here; nothing since has touched `centerUptimeSqlCD_` or the MTBF/Failures projection.
+
+- [x] **Step 4: Final commit (if anything is still uncommitted)**
 
 ```bash
 git status
 ```
 
 If clean, this task needs no commit — Tasks 1, 2, 4, and 5 already committed everything. If anything is uncommitted, stage and commit it with a message describing what was missed.
+
+**Result (2026-08-04): no commit needed.** Everything from this plan (Tasks 1, 2, 4, 5) is already committed (`6260e57`, `2993d82`, `9f51347`, `948f64e`). The only uncommitted files are the user's own unrelated concurrent work (search-per-tab fixes, ticket-number lookup, `HANDOFF.md`/`README.md` drafts) — left untouched, not part of this plan.
+
+**Plan status: all 6 tasks complete.** Not yet done (deliberately, per Global Constraints and this project's standing convention): `clasp push`, `clasp deploy`, or `git push` — all three require the user's explicit go-ahead as a separate step.
 
 **Do not `clasp push`/`clasp deploy` or `git push` as part of this task** — confirm with the user before either of those, per this project's established pattern (see Global Constraints).

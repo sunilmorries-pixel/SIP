@@ -773,7 +773,7 @@ git commit -m "Client: delete Reliability & Health card, remove Online/Last-hear
 - Consumes: `#centerTable`'s existing markup (Task 4 left it structurally unchanged — same `<table class="data-table" id="centerTable">` inside `.table-scroll`).
 - Produces: nothing consumed by later tasks — this is the final visual layer.
 
-- [ ] **Step 1: Add the sticky-column CSS**
+- [x] **Step 1: Add the sticky-column CSS**
 
 Find (the existing table CSS block, so the new rules land right after the last existing rule in it):
 
@@ -824,7 +824,7 @@ Replace with:
 
 (`#centerTable th:first-child` doesn't need `position: sticky` or `background` redeclared — it inherits `position: sticky; top: 0; background: var(--surface-solid)` from the existing `.data-table th` rule; this block only adds the horizontal-stick behavior on top.)
 
-- [ ] **Step 2: Build the local preview and check both themes**
+- [x] **Step 2: Build the local preview and check both themes**
 
 Run: `powershell -File scripts/build_preview.ps1`
 
@@ -834,12 +834,16 @@ Open `http://localhost:8765/preview.html`, go to Centers/Customers, narrow the b
 - Toggle the theme switcher (light/dark) and repeat — confirm the pinned column's background matches the surrounding table in both themes (uses `var(--surface-solid)`, which is already theme-aware).
 - Click a row and confirm the whole row (including the pinned cell) still opens the center-detail drawer.
 
-- [ ] **Step 3: Commit**
+**Result (2026-08-04): all 4 confirmed live** — scrolled `.table-scroll` to max via JS, zoomed screenshots at both edges confirmed a clean shadow separator with no bleed-through in light and dark theme; hovering and clicking the sticky cell itself picked up the row's highlight and opened the drawer correctly; 0 console errors.
+
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/client/Styles.html
 git commit -m "Client: sticky Center column on the Center 360 table"
 ```
+
+**Committed as `948f64e`** — isolated via a hand-built partial patch (again, `Styles.html` had unrelated concurrent edits mixed in).
 
 ---
 

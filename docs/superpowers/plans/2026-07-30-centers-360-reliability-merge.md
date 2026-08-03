@@ -32,7 +32,7 @@
 - Produces: `getCenter360RowsCD_()` rows now carry `mtbf_hrs` (number or `null`) and `failures` (number) alongside the existing `lifecycle_years`/`downtime_days`/`uptime_pct`. `apiGetDashboardCD(...)` results no longer contain an `assetHealth` key. `CENTER_SORT_KEYS` recognizes `mtbf_hrs`/`failures` as sortable and no longer recognizes `online`/`last_seen`.
 - Consumes: nothing new — reuses `centerUptimeSqlCD_` (`EditionCD.js:90-127`, unchanged) and `runQuery`/`runQueriesParallel` (existing).
 
-- [ ] **Step 1: Extend the per-center uptime query's tail-select in `getCenter360RowsCD_`**
+- [x] **Step 1: Extend the per-center uptime query's tail-select in `getCenter360RowsCD_`**
 
 In `src/server/EditionCD.js`, find:
 
@@ -56,7 +56,7 @@ Replace with:
 
 (`mtbf_hrs` and `failures` already exist on the `scored`/`calc` CTEs inside `centerUptimeSqlCD_` — this only adds them to the outer projection. `health_score` also exists there but is deliberately NOT selected.)
 
-- [ ] **Step 2: Merge the two new fields into the joined rows**
+- [x] **Step 2: Merge the two new fields into the joined rows**
 
 Find:
 
@@ -86,7 +86,7 @@ Replace with:
   });
 ```
 
-- [ ] **Step 3: Bump the Center 360 cache key**
+- [x] **Step 3: Bump the Center 360 cache key**
 
 Find:
 
@@ -102,7 +102,7 @@ function getCenter360RowsCD_(bypassCache) {
   var ckey = 'ctr360cd_v7'; // v7: added mtbf_hrs/failures columns
 ```
 
-- [ ] **Step 4: Update `clearDashboardCache()` to match the new cache key**
+- [x] **Step 4: Update `clearDashboardCache()` to match the new cache key**
 
 In `src/server/Setup.js`, find:
 
@@ -116,7 +116,7 @@ Replace with:
   ['ctr360cd_v7', 'map_v3', 'assets_v3'].forEach(function (base) {
 ```
 
-- [ ] **Step 5: Exclude `assetHealth` from `apiGetDashboardCD`'s query list, bump its cache key**
+- [x] **Step 5: Exclude `assetHealth` from `apiGetDashboardCD`'s query list, bump its cache key**
 
 In `src/server/EditionCD.js`, find:
 
@@ -161,7 +161,7 @@ Replace with:
     enrichCenterNamesCD_(results.reliability);
 ```
 
-- [ ] **Step 6: Update `CENTER_SORT_KEYS`**
+- [x] **Step 6: Update `CENTER_SORT_KEYS`**
 
 In `src/server/Api.js`, find:
 
@@ -188,12 +188,19 @@ var CENTER_SORT_KEYS = {
 
 (`online`/`last_seen` are removed — their columns are going away in Task 4, and `apiGetCentersCD`'s `CENTER_SORT_KEYS[clean.sortBy] || 'devices'` already falls back safely to `'devices'` for any now-unrecognized `sortBy` value, so removing these entries cannot throw.)
 
-- [ ] **Step 7: Run the existing unit suite to confirm no regressions**
+- [x] **Step 7: Run the existing unit suite to confirm no regressions**
 
 Run: `npm test`
 Expected: all existing suites pass (this task adds no new pure-JS logic — `sortRows`, in `src/server/Join.js`, already handles `null` values generically, so the nullable `mtbf_hrs` needs no special-casing).
 
-- [ ] **Step 8: Manual server-side spot check in the Apps Script editor**
+**Result (2026-08-03): 62/62 pass, no regressions.**
+
+- [ ] **Step 8: Manual server-side spot check in the Apps Script editor** — **NOT DONE.** Requires
+  `clasp push` first, which the Global Constraints above explicitly say not to do as part of any
+  task, and then running a function inside the Apps Script editor UI, which isn't reachable from
+  this environment either way. Needs the user (or a session with editor access) to push and run
+  the `_verifyTask1()` snippet below before Task 2 starts touching the client side of this same
+  data.
 
 After pushing this task's changes to the Apps Script editor (`clasp push` — NOT deploy), open the editor and run:
 
@@ -210,12 +217,14 @@ function _verifyTask1() {
 
 Expected: the logged rows show sane `mtbf_hrs`/`failures` values (not all `null`/`0`), and `assetHealth present?` logs `false`.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/server/EditionCD.js src/server/Api.js src/server/Setup.js
 git commit -m "Server: add MTBF/Failures to Center 360, drop unused assetHealth from dashboard payload"
 ```
+
+**Committed as `6260e57` (2026-08-03).**
 
 ---
 

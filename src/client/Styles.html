@@ -474,6 +474,31 @@ body[data-theme="light"] .bg-decor {
 .data-table tbody tr.is-clickable { cursor: pointer; }
 .data-table tbody tr.is-clickable:hover { background: var(--primary-soft); }
 
+/* Center 360: pin the Center column while the rest of the row scrolls
+   horizontally. Scoped to #centerTable only (not every .data-table). The
+   sticky cell needs an opaque background so scrolled-past columns don't
+   show through underneath it; the hover/click tint is re-applied as a
+   background-image layer on top of that opaque color so it still reads as
+   highlighted, not just the rest of the row. */
+#centerTable td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: var(--surface-solid);
+  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.15);
+}
+#centerTable th:first-child {
+  left: 0;
+  z-index: 2;
+  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.15);
+}
+#centerTable tbody tr:hover td:first-child {
+  background-image: linear-gradient(rgba(46, 155, 214, 0.05), rgba(46, 155, 214, 0.05));
+}
+#centerTable tbody tr.is-clickable:hover td:first-child {
+  background-image: linear-gradient(var(--primary-soft), var(--primary-soft));
+}
+
 .th-sort {
   display: inline-flex; align-items: center; gap: 5px;
   min-height: 24px;

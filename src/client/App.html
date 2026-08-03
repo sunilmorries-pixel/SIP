@@ -35,7 +35,6 @@
     devices: { status: '', sortBy: 'last_seen', sortDir: 'desc', page: 0, pageSize: 15 },
     deviceRows: [], deviceTotal: 0,
     centers: { sortBy: 'devices', sortDir: 'desc', page: 0, pageSize: 15 },
-    centersWatchlistSort: 'uptime_pct',
     centerRows: [], centerTotal: 0,
     // The filter set each paginated table's CURRENT rows were fetched with —
     // the same guard state.dashFilters gives the shared dashboard payload, for
@@ -116,10 +115,9 @@
           hub: 'Demo Hub ' + rnd(1, 30),
           city: ['Bengaluru', 'Mumbai', 'Chennai', 'Hisar', 'Delhi'][rnd(0, 5)],
           state: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Haryana', 'Delhi'][rnd(0, 5)],
-          devices: n, jira_devices: rnd(0, n + 3), online: rnd(0, n + 1),
+          devices: n, jira_devices: rnd(0, n + 3),
           lifecycle_years: (rnd(3, 90) / 10), downtime_days: (rnd(0, 200) / 10),
           uptime_pct: up, tickets_total: rnd(0, 40),
-          last_seen: new Date(Date.now() - rnd(0, 96) * 36e5).toISOString().replace('T', ' ').slice(0, 19),
           open_tickets: rnd(0, 6),
           mtbf_hrs: fails >= 2 ? rnd(120, 4000) : null, failures: fails
         });
@@ -335,10 +333,6 @@
       fleet: { total: 28444,
         avg_age_days: 1411, aged_devices: 28444, past_life: 8105,
         age_bands: [{ k: '<1y', n: 3566 }, { k: '1-2y', n: 3343 }, { k: '2-3y', n: 7072 }, { k: '3-5y', n: 6358 }, { k: '5y+', n: 8105 }] },
-      assetHealth: Array.from({ length: 12 }, function (_, i) {
-        var h = rnd(28, 78), up = rnd(20, 90);
-        return { centerid: rnd(1000, 50000), center: 'Demo Center ' + rnd(1, 400), uptime_pct: up, mtbf_hrs: rnd(120, 4000), failures: rnd(1, 9), health_score: h };
-      }),
       cohortReliability: [
         { batch_year: 2019, devices: 663, ftf_rate_pct: 8.0, median_ttff_days: 1288, early_fails: 0, avg_failures: 0.24, top_issue: 'Acquisition Delay -Network Issue' },
         { batch_year: 2020, devices: 465, ftf_rate_pct: 15.5, median_ttff_days: 1191, early_fails: 1, avg_failures: 0.40, top_issue: 'Tricog Device Network Issue' },
@@ -631,7 +625,6 @@
     var assets = data.assets || [];
     Charts.assetStatus(assets.filter(function (r) { return r.dim === 'status'; }).slice(0, 8));
     Charts.assetTypes(assets.filter(function (r) { return r.dim === 'type'; }).slice(0, 8));
-    renderCenterWatchlist(data.reliability || [], data.assetHealth || [], state.centersWatchlistSort);
     renderCohort(data.cohortReliability || []);
     renderAssetSummary(data);
 
@@ -691,48 +684,6 @@
         text: FMT.format(f.past_life) + ' devices 5y+ (' + pastPct + '% past expected life)' });
     }
     $('assetSummaryFlags').innerHTML = flagChips_(flags);
-  }
-
-  /**
-   * Merges reliability + assetHealth by centerid (both arrays cover the exact
-   * same "scored" center set — see centerUptimeSqlCD_ — so every reliability
-   * row has a matching assetHealth row), sorts by sortBy ascending (worst
-   * first — both uptime_pct and health_score are "higher is better"), and
-   * renders the worst 12.
-   */
-  function renderCenterWatchlist(reliabilityRows, assetHealthRows, sortBy) {
-    var body = $('centerWatchlistTable').querySelector('tbody');
-    var healthByCid = {};
-    (assetHealthRows || []).forEach(function (r) { healthByCid[r.centerid] = r; });
-    var merged = (reliabilityRows || []).map(function (r) {
-      var h = healthByCid[r.centerid] || {};
-      return {
-        centerid: r.centerid, center: r.center, devices: r.devices,
-        uptime_pct: r.uptime_pct, downtime_pct: r.downtime_pct, failures: r.failures,
-        health_score: h.health_score, mtbf_hrs: h.mtbf_hrs
-      };
-    });
-    merged.sort(function (a, b) { return a[sortBy] - b[sortBy]; });
-    var rows = merged.slice(0, 12);
-    if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="7" class="chart-empty">No reliability/health metrics yet</td></tr>';
-      return;
-    }
-    body.innerHTML = rows.map(function (r) {
-      var uptimeSev = r.uptime_pct >= 95 ? 'ok' : (r.uptime_pct >= 90 ? 'warn' : 'danger');
-      var healthBand = r.health_score >= 80 ? 'ok' : (r.health_score >= 60 ? 'warn' : 'danger');
-      var mtbf = r.mtbf_hrs == null ? '—' : FMT.format(Math.round(r.mtbf_hrs / 24)) + 'd';
-      return '<tr class="is-clickable" data-cid="' + escapeHtml(r.centerid) + '" tabindex="0" role="button" aria-label="Open ' + escapeHtml(r.center || ('center ' + r.centerid)) + '">' +
-        '<td><strong>' + escapeHtml(r.center || ('Center #' + r.centerid)) + '</strong></td>' +
-        '<td class="num">' + FMT.format(r.devices || 0) + '</td>' +
-        '<td class="num"><span class="badge badge-' + healthBand + '">' + escapeHtml(r.health_score) + '</span></td>' +
-        '<td class="num"><span class="badge badge-' + uptimeSev + '">' + escapeHtml(r.uptime_pct) + '%</span></td>' +
-        '<td class="num">' + escapeHtml(r.downtime_pct) + '%</td>' +
-        '<td class="num">' + mtbf + '</td>' +
-        '<td class="num">' + FMT.format(r.failures || 0) + '</td>' +
-        '</tr>';
-    }).join('');
-    wireCenterRowClicks($('centerWatchlistTable'));
   }
 
   /**
@@ -1003,13 +954,11 @@
     { key: 'state', label: 'State', sortable: true },
     { key: 'devices', label: 'Devices', sortable: true, num: true },
     { key: 'jira_devices', label: 'Jira devices', sortable: true, num: true },
-    { key: 'online', label: 'Online', sortable: true, num: true },
     { key: 'lifecycle_years', label: 'Lifecycle', sortable: true, num: true },
     { key: 'downtime_days', label: 'Downtime', sortable: true, num: true },
     { key: 'uptime_pct', label: 'Uptime', sortable: true, num: true },
     { key: 'tickets_total', label: 'Tickets', sortable: true, num: true },
     { key: 'open_tickets', label: 'Open tickets', sortable: true, num: true },
-    { key: 'last_seen', label: 'Last heartbeat', sortable: true, num: true },
     { key: 'mtbf_hrs', label: 'MTBF (days)', sortable: true, num: true },
     { key: 'failures', label: 'Failures', sortable: true, num: true }
   ];
@@ -1074,13 +1023,11 @@
           '<td>' + escapeHtml(r.state || '—') + '</td>' +
           '<td class="num">' + FMT.format(r.devices || 0) + '</td>' +
           '<td class="num">' + FMT.format(r.jira_devices || 0) + '</td>' +
-          '<td class="num">' + FMT.format(r.online || 0) + '</td>' +
           '<td class="num">' + (r.lifecycle_years != null ? r.lifecycle_years + 'y' : '—') + '</td>' +
           '<td class="num">' + (r.downtime_days != null ? r.downtime_days + 'd' : '—') + '</td>' +
           '<td class="num"><span class="badge badge-' + upBadge + '">' + (r.uptime_pct != null ? r.uptime_pct + '%' : '—') + '</span></td>' +
           '<td class="num">' + FMT.format(r.tickets_total || 0) + '</td>' +
           '<td class="num"><span class="badge badge-' + ticketBadge + '">' + FMT.format(r.open_tickets || 0) + '</span></td>' +
-          '<td class="num" title="' + escapeHtml(r.last_seen || '') + '">' + escapeHtml(relTime(r.last_seen)) + '</td>' +
           '<td class="num">' + (r.mtbf_hrs == null ? '—' : FMT.format(Math.round(r.mtbf_hrs / 24)) + 'd') + '</td>' +
           '<td class="num">' + FMT.format(r.failures || 0) + '</td>' +
           '</tr>';
@@ -2299,9 +2246,6 @@
     attention: { name: 'Centers needing attention',
       formula: 'Centers ranked by number of open tickets (4+ open = flagged).',
       source: 'zoho_data open tickets grouped by center, joined to center_details names.' },
-    reliability: { name: 'Reliability & health watchlist',
-      formula: 'Centers ranked by Machine Uptime % (M-A1) or composite Health Score (M-A6), whichever the sort toggle selects — worst first either way.',
-      source: 'The uptime engine (see M-A1/M-A6).' },
     backlog: { name: 'Active backlog', formula: 'Open (non-terminal) tickets grouped by status. No date window — the whole current backlog.', source: 'zoho_data (status not Closed / Duplicate / Junk).' },
     priority: { name: 'Priority mix', formula: 'Open tickets grouped by priority (blank = “Unset”).', source: 'zoho_data.priority.' },
     categories: { name: 'Issue categories', formula: 'Ticket counts grouped by issue category / type.', source: 'zoho_data.IssueCategory.' },
@@ -2335,7 +2279,7 @@
     geo: { name: 'Geographic spread', formula: 'Centers / devices grouped by state (or city).', source: 'center_details.state / city.' },
     statesReach: { name: 'States', formula: 'Distinct states with at least one center.', source: 'center_details.state.' },
     deployStatus: { name: 'Deployment / lifecycle status', formula: 'Centers (or assets) grouped by status — active vs ended / lifecycle stage.', source: 'center_details.Status / jira_data.status_name.' },
-    center360: { name: 'Center 360', formula: 'One row per center: devices (cloud_devices + jira_data), online, lifecycle (today − deploymentdate), downtime (merged technical-ticket hours), uptime %, tickets (total + open) — joined in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data ⋈ jira_data asset index (hash-joined).' },
+    center360: { name: 'Center 360', formula: 'One row per center: devices (cloud_devices + jira_data), lifecycle (today − deploymentdate), downtime (merged technical-ticket hours), uptime %, MTBF (uptime hours ÷ failures, days), failure count, tickets (total + open) — joined in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data ⋈ jira_data asset index (hash-joined).' },
     centersRaw: { name: 'center_details · raw data', formula: 'Raw center_details rows (no baseline filter), paginated, with a per-center device count and mapped flag.', source: 'center_details + LEFT JOIN cloud_devices.' },
 
     // ── Customers ──
@@ -2369,7 +2313,7 @@
   var TITLE_METRIC = {
     'device status (jira)': 'jiraFleetStatus', 'device status': 'fleetStatus',
     'support ticket flow': 'ticketFlow', 'ticket flow': 'ticketFlow',
-    'centers needing attention': 'attention', 'reliability & health': 'reliability',
+    'centers needing attention': 'attention',
     'top le customers': 'topLe', 'where devices live': 'geo', 'firmware spread': 'firmware',
     'asset lifecycle': 'assetLifecycle', 'asset types': 'assetLifecycle',
     'first-time-failure by production batch': 'ftf',
@@ -2510,15 +2454,6 @@
     });
     document.addEventListener('keydown', function (event) {
       if (event.key === 'Escape' && !$('filterDrawer').hidden) closeFilterDrawer_();
-    });
-
-    // Reliability/health watchlist sort toggle — re-renders from the already-
-    // fetched dashboard payload, no refetch needed.
-    $('watchlistSort').addEventListener('change', function (event) {
-      state.centersWatchlistSort = event.target.value;
-      if (state.lastDashboard) {
-        renderCenterWatchlist(state.lastDashboard.reliability || [], state.lastDashboard.assetHealth || [], state.centersWatchlistSort);
-      }
     });
 
     $('prevPageBtn').addEventListener('click', function () {

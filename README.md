@@ -13,17 +13,19 @@ flow (Zoho), SLA compliance, device fleet, and asset reliability.
 | Tab | Insights |
 |---|---|
 | **Overview** | Executive rollup: narrative hero, device-age ring, KPI strip, **Device status (Jira)** lifecycle donut, ticket flow, centers-needing-attention + reliability tables |
-| **Centers / Customers** | Geo, deployment age, active-vs-ended, top hubs, reliability watchlist (uptime M-A1 / MTBF M-A2 / health M-A6), Center-360 table (clickable rows → drawer) |
+| **Centers / Customers** | Geo, deployment age, segment breakdown (`hub_master_segment`), top hubs (by spoke count), Center-360 table (MTBF/Failures columns, sticky Center column, clickable rows → drawer) |
 | **Support / CS** | Zoho KPIs, ticket flow, **SLA-compliance suite** (within% + Tech/Non-Tech + breach-by-type), backlog, categories, priority, channel, segment |
-| **Asset** | Device age (executive summary), fleet-status donut, firmware spread, asset lifecycle/type breakdown, failure-analysis cohort (M-A3/A5), device explorer (search/sort/paginate/CSV) |
+| **Asset** | Device age (executive summary), device-status donut, firmware spread, asset lifecycle/type breakdown, failure-analysis cohort (M-A3/A5), device explorer (search/sort/paginate/CSV) — donut/firmware/lifecycle/cohort tiles still await a metric-by-metric confirmation pass |
 | **Map** | Leaflet map of located centers, clustered, colored by open tickets, clickable ticket-bucket legend |
 | **Top Customers** | Curated 27 "Top LE" hubs: KPIs, map, ranked bars, leaderboard (→ customer drawer) |
 | **Numbers** | Source-reconciliation counts + raw paginated `center_details` table (Devices + Mapped columns) |
 | **Raw Data** | All 4 underlying BigQuery sources as paginated, unfiltered tables with pill-selector and full CSV export. No site filters apply |
 
-Interactive everywhere: global search, a **Filters** drawer (Segment / Status / State / Hub
-multi-select + date range, with Status defaulting to `ACTIVE` as a removable chip), light/dark
-theme, a shared center-detail drawer (KPIs + Zoho ticket links + Jira-devices table), **ⓘ
+Interactive everywhere: global search (per-tab behavior — filters a list, looks up a
+CenterID/ticket number on Support/CS, or disables itself with an explanation on tabs with no
+list to filter), a **Filters** drawer (Segment / Status / State / Hub multi-select + date
+range, with Status defaulting to `ACTIVE` as a removable chip), light/dark theme, a shared
+center-detail drawer (KPIs + Zoho ticket links + Jira-devices table), **ⓘ
 metric-explanation tooltips** on every KPI and card (formula + data source), flowing animations,
 auto-refresh every 5 minutes, skeleton loading, graceful error/empty states. **Responsive** down
 to 320px (breakpoints in `src/client/Styles.html`).
@@ -41,7 +43,7 @@ demo-sip/
 │   │   ├── Queries.js        # base SQL statements, parameterised
 │   │   ├── EditionCD.js      # center_details data layer — LIVE client endpoints
 │   │   ├── SlaCatalog.js     # SLA catalog + Tech/Non-Tech classification
-│   │   ├── Numbers.js         # Numbers page + jira_data device stats (Connector/ECG Machine only)
+│   │   ├── Numbers.js         # Numbers page + Jira device stats (live jira_data BQ table, exclude-list device-type filter)
 │   │   ├── RawData.js        # Raw Data page: all 4 BQ sources, paginated, CSV export
 │   │   ├── Api.js            # legacy endpoints (retained; CD versions are live)
 │   │   ├── TopCustomers.js   # curated 27 "Top LE" hubs

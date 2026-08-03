@@ -1,10 +1,152 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-07-29 · **Version:** 5.11 (global-nav-and-universal-filter) · **Status:**
-LIVE — Apps Script **version 40** deployed to the stable production URL
+**Last updated:** 2026-08-04 · **Version:** 5.14 (centers-360-reliability-merge) · **Status:**
+LIVE — Apps Script **version 43** deployed to the stable production URL
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always),
-tagged `v5.11`. Git, the Apps Script editor content, and the live deployment are all in sync at
-commit `043311b`. **Deployed 2026-07-29, with the user's explicit go-ahead.**
+tagged `v5.14`. **Deployed 2026-08-04, with the user's explicit go-ahead** — deployed in
+isolation (`git stash` around the push+deploy, `git stash pop` after) so a separate, still-local
+commit (search/ticket-lookup fixes, below) wasn't dragged into production before it was ready.
+**Git is ahead of both the Apps Script editor and production** by that one commit — `9657431`
+("fix dead global search on non-list tabs, add Support/CS ticket-number lookup") exists only in
+git so far, not yet pushed or deployed.
+
+> **2026-08-04 — Centers 360 / Reliability & Health merge, all 6 tasks, DEPLOYED as v5.14/@43.**
+> Built task-by-task per `docs/superpowers/plans/2026-07-30-centers-360-reliability-merge.md`
+> (spec: the sibling `-design.md` in `docs/superpowers/specs/`), each task committed and verified
+> live before the next started:
+> 1. **Server** (`6260e57`): `getCenter360RowsCD_` gains `mtbf_hrs`/`failures` (same CTE the old
+>    watchlist used — a projection change, not a formula change); `apiGetDashboardCD` drops the
+>    now-unused `assetHealth` spec from its query list (`reliability` stays — Overview's separate
+>    endpoint depends on it); cache keys bumped `ctr360cd_v6→v7`, `dashcd_v6→v7`.
+> 2. **Client, additive** (`7bfc610`, `2993d82`): retired the Centers-page executive summary and
+>    "Center Health" KPI tile (both explicitly out of the original spec's scope — an in-session
+>    scope addition, confirmed with the user first); added MTBF/Failures as two new Center 360
+>    columns, watchlist left in place for a side-by-side comparison.
+> 3. **Manual live cross-check (human checkpoint)** — user confirmed the new Center 360
+>    MTBF/Failures values matched the watchlist's exactly, clearing the projection change.
+> 4. **Client, destructive** (`9f51347`): deleted the "Reliability & Health" card and
+>    `renderCenterWatchlist` entirely; removed Online/Last-heartbeat from Center 360 (14 final
+>    columns). **Found and flagged before committing**: the design spec's justification for
+>    dropping Online ("still shown in the center-detail drawer") doesn't hold —
+>    `renderInto`/`makeCenterDetail` has no Online stat; only the separate hub-level customer
+>    drawer does. Per-center online-device count is no longer visible anywhere in the UI (still
+>    computed server-side, still visible in aggregate via Map/hub rollups). **User decision:
+>    ship anyway** — the drawer gap wasn't worth blocking on.
+> 5. **CSS only** (`948f64e`): sticky `#centerTable` first column — verified in both themes via
+>    browser automation (computed `background-color` switches from dark navy to white on toggle,
+>    clean edge shadow, no bleed-through, hover/click highlight applies to the pinned cell too).
+> 6. **Final regression pass** — 62/62 unit tests, full live checklist (exact 14 columns, no
+>    watchlist anywhere in the DOM, pagination/search/4-column sort spot-check, sticky column both
+>    themes, 0 console errors).
+> - **Deploy, isolated from concurrent work**: at deploy time the working tree also had unrelated,
+>   not-yet-committed work in progress (the search/ticket-lookup fixes below) sitting in the same
+>   files (`App.html`/`Styles.html`/`EditionCD.js`). Rather than ship both together, `git stash -u`
+>   → clean tree exactly matched the committed merge → `npm test` → `clasp push` → confirmed the
+>   stable deployment ID was still pinned at @42/v5.13 → `clasp deploy` → **@43, tagged v5.14** →
+>   `git stash pop` to restore the concurrent work untouched. User explicitly chose this isolated
+>   path over deploying everything together.
+> - **Still open**: the Online-in-drawer gap above (accepted, not fixed); Task 6 itself performed
+>   no new live-BQ check (correctly — nothing after Task 3 touched the MTBF/Failures calculation).
+
+> **2026-08-04 — fixed dead global search on non-list tabs, added Support/CS ticket-number
+> lookup (commit `9657431`, NOT yet pushed/deployed — see status line above).** Directly resolves
+> finding #1 of the 2026-07-31 review below (global search silently doing nothing on 5 of 8 tabs).
+> `SEARCH_TAB_INFO` (`App.html`) now disables the search box with an explanatory placeholder on
+> Overview/Numbers/Raw Data (no per-row list to filter); Top Customers' leaderboard is now
+> actually filtered by the search box (was previously wired but never applied) with a "no
+> matches" empty state. Support/CS has no per-row list either, so its box is repurposed as a
+> lookup fired on Enter: tries the query as a CenterID, then a Zoho ticket number (new
+> `apiSupportSearchCD` endpoint, `EditionCD.js`), opens the existing center-detail drawer either
+> way — switching its ticket list to "All" and highlighting the matched ticket
+> (`focusTicket_`) when opened via a ticket number. Toasts on no match instead of failing
+> silently. New live-BigQuery reconciliation test (`test/reconcile/support-search.test.js`)
+> verifies both lookup SQL shapes against real data (IDs discovered live, never hardcoded, per
+> this repo's established reconciliation-test convention).
+
+> **2026-07-31 review — full codebase + live first-time-user UX audit (no code changes, no
+> deploy).** Requested as a senior-frontend-style gap/optimization pass across server, client and
+> GitHub state. Method: 2 parallel code-review passes over `src/server/*.js` and `src/client/*.html`
+> + a live click-through of the local mock preview via browser automation, acting as a genuine
+> first-time visitor (search, filters, drawer, keyboard-only nav, light/dark theme). Full report
+> delivered to the user in-session; the load-bearing, non-obvious findings are kept here (and as
+> new items in Section 6) so they survive to the next session. Top 5, ranked:
+> 1. **Global search is a false affordance on 5 of 8 tabs.** `reloadActiveList()`
+>    (`App.html:2646-2651`) only wires `tab-asset`/`tab-centers`/`tab-map`; on Overview/Support/
+>    Top Customers/Numbers/Raw Data, typing in the always-visible search box does nothing — no
+>    error, no explanation. **Live-confirmed** (typed on Overview and Support/CS, zero effect;
+>    typed on Centers, list re-fetched).
+> 2. **Zero onboarding.** The only "what is this app" explanation is a tooltip behind the 16px ⓘ
+>    next to the header tagline (`App.html:2385`) — good copy, effectively undiscoverable to a
+>    first-time visitor who has no reason to click a tiny dot next to the logo.
+> 3. **Drawers have no focus trap/restore** (`#filterDrawer`, `#centerDrawer`, both
+>    `aria-modal="true"`, no `.focus()` management anywhere in `App.html` besides tab arrow-nav).
+>    **Live-reproduced**: Tab-ing inside an open Center-detail drawer walks keyboard focus straight
+>    into the dimmed background page and pops an unrelated chart tooltip open behind the drawer.
+>    (Partially known already — the 2026-07-29 fix-wave notes below already parked "filter drawer
+>    has `aria-modal` but no real focus trap" as a non-blocking gap; this confirms it's still true
+>    AND that the same gap exists on the center-detail drawer, not just the filter drawer.)
+> 4. **~900 lines of confirmed dead backend code.** `ep()` (`App.html:73`) always appends `CD`, so
+>    the client never calls the non-CD `Api.js`/`ExecOverview.js`/`TopCustomers.js` functions —
+>    verified by grep, not inferred (no call site reaches `apiGetCenters`/`apiGetTopCustomers`/
+>    `apiGetExecOverview` without going through `ep()`). Section 3's file map already flags
+>    `Api.js` as "retained but unused"; this confirms the same is true of the full `ExecOverview.js`
+>    and most of `TopCustomers.js`, not just `Api.js`.
+> 5. **Auth fails open** (`Auth.js:74-85`) — already a known open item since v5.9 (see that section
+>    below: `AUTHORIZED_EMAILS` still unset); reconfirmed still true today and still untested.
+>
+> Also found, not yet actioned: contradictory KPI numbers on Overview (executive-summary
+> "11,331 devices" vs. the "Total Devices" KPI tile's "28,444" — two real, different metrics with
+> no on-screen distinction between "cloud-connected" and "total Jira fleet"); the Centers-tab KPI
+> strip showing "28,482 all centers" while Overview's KPI shows "18,370" under the identical
+> "Status: Active" filter chip (unconfirmed whether this is a new bug or the same class of SQL-vs-
+> JS filter-path disagreement the 2026-07-29 fix wave already fixed once for Hub/State — needs
+> its own repro); the uptime/MTBF/health CTE still computed 3× per dashboard load (open since v5.9,
+> §6 below, still true); `RawData.js`'s full-table `SELECT *, COUNT(*) OVER()` scans; zero unit
+> tests for `Auth.js`/`BigQuery.js`/the SQL-builder functions; `Charts.html` hardcoding
+> `'Fira Sans'` against the rest of the app's Lato; local `main` sitting 3 commits ahead of
+> `origin/main`, unpushed, at review time. **Not done this session** (explicitly a review, not an
+> implementation pass) — see Section 6, items 12-16, for the resulting action items.
+
+**v5.13 (2026-07-30, deployed @42):** widened the Jira device-type filter + audited the other
+3 live BigQuery sources for similar gaps.
+- **Devices count 29,624 → 45,404.** The filter had been an include-list of exactly 2 Jira Issue
+  Types (`Connector`, `ECG Machine`) — `CONFIG.JIRA_DEVICE_TYPES` — silently excluding 12 other
+  real device/asset categories present in `jira_data`: SIM Card (11,017), UPS (2,453), Printer
+  (546), TriCare Assets (405), BP Machine (379), Tab (305), Mobile (237), IV Trolley (218),
+  Laptop (152), ECHO MACHINE (30), ECG Device (20), WiFi Dongle (18). Flipped to an exclude-list
+  of the 3 actual non-device housekeeping types (`CONFIG.JIRA_NON_DEVICE_TYPES: ['task','epic',
+  'test']`, 39 rows total) — every other Issue Type now counts as a device. Changed:
+  `Config.js`, `Numbers.js` (`isTrackedJiraDeviceType_`), `Api.js` (`getAssetIndex_`), `Setup.js`
+  diagnostics log text, `App.html` METRIC_INFO tooltips, `docs/SOURCES.md`/`docs/ARCHITECTURE.md`,
+  and rewrote `test/unit/jira-device-type.test.js` for the new exclude-list semantics (62/62
+  tests pass, was 61).
+- **Other-sources audit** (`center_details`, `cloud_devices`, `zoho_data`): all 4 BQ tables
+  (including `jira_data`) show a table-metadata reload within the same ~13s window on
+  2026-07-30 — one daily ETL run touches all of them; `cloud_devices`' most recent heartbeat is
+  even more current same-day. `cloud_devices`' 7,246 NULL-`LastTimeStamp` rows (63% of 11,555)
+  are correctly bucketed as "Never seen" by `FLEET_BUCKET_SQL` — checked, not a bug. Found one
+  more classification gap of the same shape: **"Vcardia Issue" (640 Zoho tickets) is classified
+  Non-Tech** by the `SLA_CATALOG`/`TECH_FALLBACK_REGEX` fallback (the regex doesn't match
+  "vcardia", unhyphenated, even though V-Cardia is a Tricog device line with 5 hyphenated
+  catalog entries) — feeds into the SLA Tech/Non-Tech split and the Machine Uptime downtime
+  calc (`techBoolSql_`). **User decision: leave as-is, not fixed.**
+- Also fixed 2 stale references found during the audit: a `diagnostics()` log line still
+  claimed `center_details` excludes F2P centers (that baseline was removed 2026-07-22, see the
+  v5.10 entry below); `EditionCD.js`'s `FLAGS_CD` metadata (returned in the API response, not
+  actually rendered client-side) still described Jira as Sheet-sourced (removed in the v5.10/
+  jira_data-migration work below).
+- Deployed to the stable deployment ID as Apps Script **version 42**, tagged `v5.13`. Committed
+  as `3c8e493` — **not yet pushed to `origin/main`** (3 commits ahead locally as of this entry).
+
+**v5.12 (2026-07-30, deployed @41):** 2 UI fixes recovered from the live Apps Script editor —
+made directly in the editor in an earlier session (never in git), discovered via a `clasp pull`
+and preserved rather than overwritten by a later `clasp push`. Expanded `.info-dot`'s tap target
+to the accessibility-minimum 44px via a `::before` overlay (doesn't grow the visible dot) with
+the focus ring restored; fixed the Jira-status donut legend color adjacency (`STATUS_PALETTE`
+had `ok`/`teal` — both green/turquoise — as neighbors; reordered) and the Numbers-tab compact
+tables overflowing their grid track (`.num-table`/`.data-table { min-width: 0; }`). Verified via
+`clasp pull` + diff (byte-identical to git HEAD before this fix) and `npm test` (61/61 at the
+time). Committed as `5f99e34`.
 
 > **2026-07-29 global nav + universal filter (built via Subagent-Driven Development, all 13
 > tasks + preview verification + final whole-branch-review fix wave complete — DEPLOYED to
@@ -642,6 +784,11 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 9. **Remaining pages not yet worked**: Support/CS, Map, Top Customers, Numbers, Raw Data, Overview — the page-by-page/metric-by-metric pass (started 2026-07-08 with Asset then Centers) has not reached these yet.
 10. **Next up (queued, not started):** user has queued a batch of changes around filters and data extraction — requirements gathering (brainstorm/spec) has started but the change inventory has not yet been provided.
 11. **Test harness added (2026-07-28)** — a two-tier Jest suite now exists: `npm test` (fast unit tests, no credentials) and `npm run test:reconcile` (live-BigQuery reconciliation, needs `GOOGLE_APPLICATION_CREDENTIALS`); `npm run verify-before-deploy` runs both as a manual pre-deploy gate. CI (`.github/workflows/test.yml`) runs the unit tier on every push and the reconciliation tier on PRs into `main`. **Still open:** the `BQ_SERVICE_ACCOUNT_KEY` repo secret (base64-encoded `tricogde-dwh` service-account key) has not been added to GitHub yet, so the CI reconciliation job currently no-ops on every PR — see `docs/superpowers/specs/2026-07-28-testing-harness-design.md` for the full design and what's still uncovered.
+12. ~~**(from 2026-07-31 review) Fix global search's silent no-op**~~ — **DONE 2026-08-04**, commit `9657431` (not yet pushed/deployed): Overview/Numbers/Raw Data now disable the box with an explanation; Top Customers now actually filters; Support/CS is a CenterID/ticket-number lookup instead.
+13. **(from 2026-07-31 review) Add first-run onboarding** — a dismissible welcome panel (localStorage-flagged, shown once) surfacing what's currently only in the header ⓘ tooltip (`App.html:2385`), which a first-time visitor has no reason to discover.
+14. **(from 2026-07-31 review) Add real focus-trap + focus-restore to both drawers** (`#filterDrawer` AND `#centerDrawer` — live-reproduced escaping into background content on the center-detail drawer, not just the filter drawer already parked above in the 2026-07-29 fix-wave notes).
+15. **(from 2026-07-31 review) Decide the fate of the confirmed-dead non-CD code** in `Api.js`/`ExecOverview.js`/`TopCustomers.js` (verified via grep — `ep()` at `App.html:73` always routes to the `CD` endpoints) — either delete it or explicitly document why it's intentionally retained, before someone "fixes a bug" in a file the client never calls.
+16. **(from 2026-07-31 review) Investigate the Overview-vs-Centers-tab KPI count mismatch** — Overview shows 18,370 centers, the Centers-tab KPI strip shows 28,482 "all centers", both under the identical default "Status: Active" filter chip. Not yet root-caused; may be a fresh instance of the SQL-vs-JS filter-path disagreement class the 2026-07-29 fix wave already fixed once for Hub/State (item I4/I8 above).
 
 ---
 

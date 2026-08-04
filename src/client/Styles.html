@@ -217,19 +217,14 @@ body.sidebar-collapsed .sidebar { width: var(--sidebar-w-collapsed); }
 }
 .brand-sub b { color: var(--primary); font-weight: 700; }
 body.sidebar-collapsed .brand-text { display: none; }
-/* One <img> for both states — expanded shows the full wordmark; collapsed
-   reuses the SAME image cropped to its right edge (object-fit:cover +
-   object-position:100%) to show just the heart mark, no second asset. */
+/* Official Tricog heart+pulse mark (icon-only crop, no wordmark baked in —
+   "SIP Insights" is set as real text in .brand-text alongside it). Same
+   image, just scaled down, for both expanded and collapsed states. */
 .sidebar-logo {
-  height: 30px; width: auto; max-width: 168px;
-  object-fit: contain; object-position: left center;
-  flex: none; transition: all var(--dur) var(--ease-out);
+  height: 30px; width: auto;
+  flex: none; transition: height var(--dur) var(--ease-out);
 }
-body.sidebar-collapsed .sidebar-logo {
-  height: 36px; width: 36px; max-width: none;
-  object-fit: cover; object-position: 100% 50%;
-  border-radius: 10px;
-}
+body.sidebar-collapsed .sidebar-logo { height: 26px; }
 body.sidebar-collapsed .sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
 
 .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; overflow-y: auto; }
@@ -1216,10 +1211,7 @@ tr.row-flagged > td { background: rgba(248, 113, 113, 0.06); }
      so the "collapsed" treatment applies unconditionally, not just via
      body.sidebar-collapsed. */
   :root { --sidebar-w: var(--sidebar-w-collapsed); }
-  .sidebar-logo {
-    height: 36px; width: 36px; max-width: none;
-    object-fit: cover; object-position: 100% 50%; border-radius: 10px;
-  }
+  .sidebar-logo { height: 26px; }
   .sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
   .brand-text { display: none; }
   .tab { justify-content: center; padding: 0; }

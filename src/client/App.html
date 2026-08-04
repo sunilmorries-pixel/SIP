@@ -1772,6 +1772,19 @@
     if (state.topLoaded) renderTopCustomers(state.topBundle);
   }
 
+  function applySidebarCollapsed(collapsed, persist) {
+    document.body.classList.toggle('sidebar-collapsed', collapsed);
+    var btn = $('sidebarCollapseBtn');
+    if (btn) {
+      btn.setAttribute('aria-expanded', String(!collapsed));
+      btn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+    }
+    if (persist) localStorage.setItem('sip.sidebarCollapsed', collapsed ? '1' : '0');
+    // Charts/maps size themselves off the viewport at render time — the
+    // sidebar width change needs a resize tick so they don't stay stale.
+    window.dispatchEvent(new Event('resize'));
+  }
+
   /* ── Executive Overview (landing) ────────────────────────────── */
   function loadExec() {
     // Silent refresh: only show skeletons before the first successful load.
@@ -2257,7 +2270,8 @@
       var tab = $(id);
       tab.addEventListener('click', function () { activateTab(id); });
       tab.addEventListener('keydown', function (event) {
-        var delta = event.key === 'ArrowRight' ? 1 : (event.key === 'ArrowLeft' ? -1 : 0);
+        var delta = (event.key === 'ArrowDown' || event.key === 'ArrowRight') ? 1 :
+          ((event.key === 'ArrowUp' || event.key === 'ArrowLeft') ? -1 : 0);
         if (!delta) return;
         event.preventDefault();
         var next = TAB_IDS[(index + delta + TAB_IDS.length) % TAB_IDS.length];
@@ -2523,6 +2537,12 @@
     applyTheme(localStorage.getItem('sip.theme') || 'dark', false);
     $('themeDark').addEventListener('click', function () { applyTheme('dark', true); });
     $('themeLight').addEventListener('click', function () { applyTheme('light', true); });
+
+    // Sidebar collapse (persisted).
+    applySidebarCollapsed(localStorage.getItem('sip.sidebarCollapsed') === '1', false);
+    $('sidebarCollapseBtn').addEventListener('click', function () {
+      applySidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'), true);
+    });
 
     // Auto-refresh now runs unconditionally in the background.
     state.autoRefresh = true;

@@ -1,13 +1,53 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-04 · **Version:** 5.16 (customers-page-rework) ·
-**Status:** LIVE — Apps Script **version 45** deployed to the stable production URL
+**Last updated:** 2026-08-04 · **Version:** 5.17 (glassmorphism-sidebar-redesign) ·
+**Status:** LIVE — Apps Script **version 46** deployed to the stable production URL
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always),
-tagged `v5.16`. Git (commit `e818958`, tag `v5.16`), the Apps Script editor, and production are
-all in sync. **Pushed to `origin/main` + deployed 2026-08-04, with the user's explicit
-"push the changes to live" go-ahead.** (v5.15/@44 — the global-search fix — was deployed
-immediately before this in the same session lineage; v5.14/@43, the Centers 360 merge, one step
-before that; see their own entries below.)
+tagged `v5.17`. Git (commits `d9f4ed5`, `9b7a74e`, tag `v5.17`), the Apps Script editor, and
+production are all in sync. **Deployed 2026-08-04, with the user's explicit "push it to live"
+go-ahead.** (v5.16/@45 — the Customers page rework — was deployed immediately before this in the
+same session lineage; see its own entry below.)
+
+> **2026-08-04 — Glassmorphism redesign: left sidebar nav + real Tricog logo (commits `d9f4ed5`,
+> `9b7a74e`, tagged `v5.17`, DEPLOYED as Apps Script version 46).** Full visual redesign per user
+> request, using `ui-ux-pro-max` design guidance; two clarifying design decisions confirmed with
+> the user up front: **Tricog red-based glass** (not the reference screenshot's purple, since the
+> real brand is red/black) and **icon + label, collapsible sidebar** (not icon-only, for
+> discoverability of non-obvious tab names like "Numbers"/"Raw Data").
+> - **Top tabs → left sidebar**: `Index.html`'s single horizontal `<nav role="tablist">` restructured
+>   into `.app-shell > aside.sidebar + div.app-main` (topbar + page content). All 8 tab buttons kept
+>   their exact `id`/`role="tab"`/`aria-selected`/`aria-controls`/`tabindex` — only the wrapping
+>   markup and orientation changed (`aria-orientation="vertical"`) — each now shows a hand-authored
+>   24×24 stroke icon plus its label. `App.html`'s `wireTabs()` keydown handler now primarily
+>   answers `ArrowUp`/`ArrowDown` (kept `ArrowLeft`/`ArrowRight` too) to match the vertical layout.
+> - **Collapsible, persisted**: new `applySidebarCollapsed()` in `App.html`, mirroring the existing
+>   `applyTheme()` persistence pattern (`localStorage['sip.sidebarCollapsed']`), wired to a new
+>   `#sidebarCollapseBtn`; toggling fires a `resize` event so ECharts/Leaflet re-size correctly.
+>   Below 1180px the sidebar auto-collapses unconditionally (a plain CSS override, not JS-driven —
+>   there's no room for a manual toggle at that width).
+> - **Glassmorphism**: `Styles.html` tokens reworked — translucent `--surface`/`--surface-2`,
+>   `backdrop-filter: blur(22px) saturate(160%)` on KPI/cards, an inset `--glass-highlight` sheen,
+>   brighter background blobs to blur into. Done for both themes independently (light theme's glass
+>   is a separate, lighter token set, not just dark-theme values with opacity flipped).
+> - **Real Tricog logo, corrected mid-session**: first pass embedded the user-supplied PNG directly
+>   as a data URI, but the user flagged it as inaccurate against the live brand and pointed at
+>   `tricog.com` as the reference. Re-fetched the actual current brand assets straight from
+>   Tricog's own CDN (`tricog.com/wp-content/uploads/...`) instead of trusting the earlier
+>   attachment: the full navbar lockup is white-text-only (baked-in "Accelerating Cardiac Care"
+>   tagline, meant for their dark navbar) with no light-background variant, but their favicon asset
+>   is a clean icon-only heart+pulse mark that works on any background. Given a choice, the user
+>   picked **icon mark + our own "SIP Insights / Service Insights Platform" text** over trying to
+>   recolor/reuse the full lockup — avoids duplicating Tricog's own tagline next to ours. Icon
+>   cropped to its tight bounding box via Pillow (72KB reconstruction → 13.8KB authentic asset);
+>   `.sidebar-logo` CSS simplified since the old crop-to-corner-for-collapsed trick is no longer
+>   needed (the asset is already a compact mark, same size shown in both states).
+> - **Verification**: live-tested in the local preview via browser automation — logo renders
+>   correctly in dark/light/collapsed states, collapse toggle persists across reload, all 8 tabs
+>   verified via both click and `ArrowUp`/`ArrowDown` keyboard nav, 0 console errors on Overview/
+>   Numbers/Customers. One gap: the sandboxed test browser's viewport was pinned at 1280×495 and
+>   would not resize, so the ≤1180px auto-collapse breakpoint was code-reviewed (matches the
+>   existing 820px/560px breakpoint pattern already shipping elsewhere in the file) but not
+>   click-tested live.
 
 > **2026-08-04 — Customers page rework (commit `e818958`, tagged `v5.16`, DEPLOYED as Apps
 > Script version 45).** Five changes, all per user request:
@@ -753,7 +793,7 @@ PowerShell backtick-escaping collision). Auth via
 - `Setup.js` — `setupServiceAccountKey()` (one-time), `diagnostics()` (points at CD endpoints + Jira device-type stats + raw-data row counts for all 8 sources), `clearDashboardCache()`.
 
 **Client (`src/client/*.html`):**
-- `Index.html` — page shell (topbar, **8 tabs** incl. **Raw Data**, all panels, shared drawer, script includes). `#activeOnlyBtn` toggle. Uses `<?!= include('...') ?>`.
+- `Index.html` — page shell: `.app-shell` = collapsible left sidebar nav (**8 tabs** incl. **Raw Data**, icon+label, Tricog brand mark) + `.app-main` (topbar, all panels, shared drawer, script includes). `#activeOnlyBtn` toggle. Uses `<?!= include('...') ?>`.
 - `Styles.html` — Tricog design tokens (dark + light), component CSS, motion tokens + entrance/hover animations, `.info-dot`/`.info-pop` (metric tooltips), `.sla-*`, `.num-*`, `.raw-*` (pill selector + actions), `.batch-signal`, responsive breakpoints (320px+).
 - `Charts.html` — all ECharts configs (`Charts` module), theme-aware palette, `fleetStatus`/`zohoTrend`/`geo`/`cohort`/`rankBar`/**`jiraStatus`**, lazy render/flush.
 - `MapView.html` — **factory** `MapView(containerId)` → Leaflet instance (CARTO tiles, markercluster).

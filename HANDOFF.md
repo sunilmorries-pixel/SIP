@@ -1,12 +1,45 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-04 · **Version:** 5.15 (global-search-fix-and-ticket-lookup) ·
-**Status:** LIVE — Apps Script **version 44** deployed to the stable production URL
+**Last updated:** 2026-08-04 · **Version:** 5.16 (customers-page-rework) ·
+**Status:** LIVE — Apps Script **version 45** deployed to the stable production URL
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always),
-tagged `v5.15`. Git, the Apps Script editor, and production are all in sync at commit `5130c5d`.
-**Deployed 2026-08-04, with the user's explicit go-ahead.** (v5.14, the Centers 360 merge, was
-deployed in isolation one step earlier — `git stash` around that push+deploy so this commit
-wasn't dragged in before it was ready; this deploy is the follow-up that brings it live too.)
+tagged `v5.16`. Git (commit `e818958`, tag `v5.16`), the Apps Script editor, and production are
+all in sync. **Pushed to `origin/main` + deployed 2026-08-04, with the user's explicit
+"push the changes to live" go-ahead.** (v5.15/@44 — the global-search fix — was deployed
+immediately before this in the same session lineage; v5.14/@43, the Centers 360 merge, one step
+before that; see their own entries below.)
+
+> **2026-08-04 — Customers page rework (commit `e818958`, tagged `v5.16`, DEPLOYED as Apps
+> Script version 45).** Five changes, all per user request:
+> - **Tab renamed** "Centers / Customers" → "Customers" (`Index.html`; internal id/hash
+>   unchanged — `tab-centers`/`#centers` stay as-is, only the visible label changed).
+> - **Deployment age bucketing now matches Device age exactly**: `<1y/1-2y/2-3y/3-5y/5y+`
+>   (was day-threshold bands `<3mo/3-6mo/6-12mo/1-2yr/2+yr`) — `EditionCD.js`'s `deploymentAge`
+>   spec + `Charts.html`'s `AGE_ORDER`, so the two age distributions are now directly comparable.
+> - **Segment variants merged into one canonical name, GLOBALLY** (explicit user scope
+>   decision — confirmed "everywhere segment appears," not just one chart): "Private - SME" →
+>   **SME**; every "LE - Cath Lab"/"LE - Diagnostic Chain"/"LE - Large Hospital" variant → **LE**;
+>   Government/ECHO/Project pass through unchanged. One new shared `segmentGroupSql_()`
+>   (`Queries.js`) is the single definition, applied to: `centerAttrCond_` (the filter-condition
+>   builder — so selecting "SME" in the Filters drawer matches every raw variant),
+>   `centerBaseSpecCD_` (Center-360/JS filter predicate), `segmentOptions` (the Filters drawer's
+>   own checklist — now offers the merged names, not the raw ones), `activeVsEnded` ("Centers by
+>   segment" chart), `Numbers.js`'s `centersSegment`/`hubsSegment`, `Queries.js`'s `zohoSegment`
+>   (Support/CS "Tickets by customer segment"), and the center-detail drawer's segment display.
+>   Fixed 4 existing unit tests that asserted the pre-merge SQL shape; added a dedicated test
+>   block for `segmentGroupSql_` itself, pinned against the real current segment values.
+> - **"Top hubs" chart removed** from the Centers page — card markup, `Charts.hubs()` render
+>   function, and the now-dead server query spec are all deleted (not left as unused dead code).
+> - **Center-detail drawer pagination**: the Jira-devices table and both ticket tabs (Open/All)
+>   are now client-side paginated, 5 per page, Prev/Next shown only when a list has >5 items.
+>   Rebuilt the drawer's render flow around one `activeTix` + per-list `listPage` state re-rendered
+>   through a single path (`renderInto`), so tab-switch clicks and pager clicks can't drift out of
+>   sync — this also keeps the Support/CS ticket-number search's "jump to the right page and
+>   highlight the ticket" behavior (`focusTicket_`) correct through the new pagination.
+> - **Verification**: 69/69 unit tests pass (was 62 — added `segmentGroupSql_` coverage); full
+>   live click-through in the rebuilt local preview (tab label, both age charts, segment chart +
+>   Filters drawer checklist showing merged names, Top hubs absent, all 3 drawer pagers tested
+>   including cross-page ticket highlighting), 0 console errors.
 
 > **2026-08-04 — Centers 360 / Reliability & Health merge, all 6 tasks, DEPLOYED as v5.14/@43.**
 > Built task-by-task per `docs/superpowers/plans/2026-07-30-centers-360-reliability-merge.md`

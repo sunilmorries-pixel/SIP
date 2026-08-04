@@ -73,7 +73,10 @@ var FLAGS_CD = [
  */
 function centerAttrCond_(filters) {
   var f = filters || {};
-  return multiCond_('hub_master_segment', f.segments) +
+  // Segment values are compared post-merge (segmentGroupSql_) so selecting
+  // "SME"/"LE" in the filter drawer matches every raw variant that merges
+  // into it — segmentOptions ships the merged names, so the two must agree.
+  return multiCond_(segmentGroupSql_('hub_master_segment'), f.segments) +
     multiCond_('Status', f.statuses) +
     multiCond_('State', f.states) +
     multiCond_('HubName', f.hubs);
@@ -157,26 +160,26 @@ function buildDashboardQuerySpecsCD(hub, filters) {
       "FROM " + CD + " WHERE " + F + filterCond + dateCond + " GROUP BY state ORDER BY devices DESC LIMIT 12",
     // One row per center (MIN deploymentdate); counts DISTINCT centers so the
     // bands sum to the center count (was active-only rows → didn't match).
+    // Bands match the Asset-page Device age chart exactly (Numbers.js
+    // jiraDeviceStats_'s ageBands: <1y/1-2y/2-3y/3-5y/5y+, off age/365 years)
+    // so the two age distributions are directly comparable.
     deploymentAge:
       "WITH dep AS (SELECT CenterID, DATE_DIFF(CURRENT_DATE(), DATE(MIN(deploymentdate)), DAY) AS age_days " +
       " FROM " + CD + " WHERE deploymentdate IS NOT NULL AND " + F + filterCond + dateCond + " GROUP BY CenterID) " +
-      "SELECT CASE WHEN age_days < 90 THEN '<3 mo' WHEN age_days < 180 THEN '3-6 mo' " +
-      " WHEN age_days < 365 THEN '6-12 mo' WHEN age_days < 730 THEN '1-2 yr' ELSE '2+ yr' END AS band, " +
+      "SELECT CASE WHEN age_days < 365 THEN '<1y' WHEN age_days < 730 THEN '1-2y' " +
+      " WHEN age_days < 1095 THEN '2-3y' WHEN age_days < 1825 THEN '3-5y' ELSE '5y+' END AS band, " +
       " COUNT(*) AS devices FROM dep GROUP BY band",
     // "Deployment status" card repurposed to a segment breakdown (hub_master_segment, per user).
+    // Segment variants merged (segmentGroupSql_ — SME/LE, per user) so this
+    // agrees with the Filters drawer's Segment checklist and every other
+    // segment-grouped chart/table app-wide.
     // No dateCond here: the segment breakdown has no date semantics of its own
     // (filterCond's own segment component still legitimately narrows which
     // segments show; only the deployment-date range is skipped).
     activeVsEnded:
-      "SELECT IFNULL(NULLIF(TRIM(hub_master_segment), ''), '(blank)') AS status, " +
+      "SELECT " + segmentGroupSql_('hub_master_segment') + " AS status, " +
       " COUNT(DISTINCT CenterID) AS devices FROM " + CD + " WHERE " + F + filterCond +
       " GROUP BY status ORDER BY devices DESC LIMIT 12",
-    // "Top hubs" ranked by SPOKE COUNT (distinct centers per hub), not device
-    // online/offline (the legacy spec read cloud_devices, unrelated to hubs here).
-    hubs:
-      "SELECT IFNULL(NULLIF(TRIM(HubName), ''), 'Unassigned') AS hub, " +
-      " COUNT(DISTINCT CenterID) AS spokes FROM " + CD + " WHERE " + F + filterCond + dateCond +
-      " GROUP BY hub ORDER BY spokes DESC LIMIT 12",
     reliability: centerUptimeSqlCD_(
       "SELECT center_id AS centerid, uptime_pct, ROUND(100 - uptime_pct, 1) AS downtime_pct, " +
       " failures, ROUND(life_hrs / 24.0, 0) AS life_days FROM scored ORDER BY uptime_pct ASC", filters),
@@ -195,9 +198,14 @@ function buildDashboardQuerySpecsCD(hub, filters) {
   // The jira_data BQ specs (assets/cohortReliability) were removed from
   // buildDashboardQuerySpecs — the status/type donut and the batch cohort are
   // now computed in JS from the Jira SHEET asset index (see apiGetDashboardCD).
-  var specs = buildDashboardQuerySpecs(hub, filters).map(function (s) {
-    return cd[s.key] ? { key: s.key, params: s.params, sql: cd[s.key], maxRows: s.maxRows } : s;
-  });
+  var specs = buildDashboardQuerySpecs(hub, filters)
+    // "Top hubs" chart removed from the Centers page (per user) — drop the
+    // spec entirely rather than just skip overriding it, so the legacy
+    // device_center_mapping-based query underneath doesn't still run unused.
+    .filter(function (s) { return s.key !== 'hubs'; })
+    .map(function (s) {
+      return cd[s.key] ? { key: s.key, params: s.params, sql: cd[s.key], maxRows: s.maxRows } : s;
+    });
   // reliability/assetHealth now return EVERY scored center (LIMIT removed above) so the
   // client can merge + sort-toggle between uptime% and health score — the default
   // MAX_ROWS (1000) would silently truncate the ~28k-center universe, repeating the
@@ -217,8 +225,12 @@ function buildDashboardQuerySpecsCD(hub, filters) {
   // review finding C1). Hub is served by apiSearchHubsCD instead, a debounced
   // server-side search; see its docblock.
   specs.push({
+    // Merged names (segmentGroupSql_ — SME/LE variants collapsed, per user) so
+    // the checklist offers exactly the vocabulary every chart/table now uses,
+    // and selecting "SME" here matches every underlying raw variant via
+    // centerAttrCond_'s identically-merged comparison.
     key: 'segmentOptions', maxRows: 200,
-    sql: "SELECT DISTINCT TRIM(hub_master_segment) AS segment FROM " + CD +
+    sql: "SELECT DISTINCT " + segmentGroupSql_('hub_master_segment') + " AS segment FROM " + CD +
       " WHERE " + F + " AND NULLIF(TRIM(hub_master_segment), '') IS NOT NULL ORDER BY segment"
   });
   specs.push({
@@ -351,7 +363,7 @@ function centerBaseSpecCD_() {
       "SELECT DISTINCT CenterID AS center_id, Centername AS center, HubID AS hub_id, " +
       " IFNULL(TRIM(HubName), '') AS hub, " +
       " City AS city, IFNULL(TRIM(State), '') AS state, PinCode AS pin, Spoke_Country AS country, " +
-      " IFNULL(TRIM(hub_master_segment), '') AS segment, " +   // segment = hub_master_segment (per user)
+      " " + segmentGroupSql_('hub_master_segment') + " AS segment, " +   // segment = hub_master_segment, SME/LE variants merged (per user)
       " IFNULL(TRIM(Status), '') AS status, " +                // NEW: needed for the global Status filter
       " CAST(NULL AS FLOAT64) AS lat, CAST(NULL AS FLOAT64) AS lng, " +
       " CAST(deploymentdate AS STRING) AS deployment_date " +

@@ -47,6 +47,29 @@ function fleetBucketSql_() {
 /** WHERE fragment honouring the optional hub filter. */
 var HUB_FILTER_SQL = "(@hub = '' OR HubName = @hub)";
 
+/**
+ * Merges segment-name variants into one canonical bucket, GLOBALLY (every
+ * chart/table/filter that groups or filters by hub_master_segment uses this
+ * same expression, so they all agree on one vocabulary): anything containing
+ * "SME" -> 'SME', anything containing "LE" -> 'LE' (case-insensitive
+ * substring match, per user request — current real values "Private - SME",
+ * "LE - Cath Lab", "LE - Diagnostic Chain", "LE - Large Hospital" all match
+ * cleanly; "Government"/"ECHO"/"Project" contain neither and pass through
+ * unchanged). Blank/null -> blankLabel (default '(blank)') so callers that
+ * used a different fallback (e.g. zohoSegment's 'Unknown') can keep it.
+ * @param {string} column bare column name or any SQL expression
+ * @param {string=} blankLabel
+ * @return {string} a CASE...END SQL expression
+ */
+function segmentGroupSql_(column, blankLabel) {
+  var blank = (blankLabel || '(blank)').replace(/'/g, "\\'");
+  return "CASE " +
+    "WHEN NULLIF(TRIM(" + column + "), '') IS NULL THEN '" + blank + "' " +
+    "WHEN UPPER(" + column + ") LIKE '%SME%' THEN 'SME' " +
+    "WHEN UPPER(" + column + ") LIKE '%LE%' THEN 'LE' " +
+    "ELSE TRIM(" + column + ") END";
+}
+
 /* ── Segment filter helpers (page-level Segment dropdown, 2026-07-10) ──
  * The segment value is user input → sanitize before inlining as a SQL literal.
  * hub_master_segment exists on BOTH center_details and zoho_data, so cdSegCond_
@@ -461,7 +484,7 @@ function buildDashboardQuerySpecs(hub, filters) {
         "WITH t AS (SELECT hub_master_segment, HubName, CenterID, CreatedAt, " +
         " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
         " FROM " + T('zoho_data') + ") " +
-        "SELECT IFNULL(NULLIF(TRIM(hub_master_segment), ''), 'Unknown') AS segment, COUNT(*) AS cnt " +
+        "SELECT " + segmentGroupSql_('hub_master_segment', 'Unknown') + " AS segment, COUNT(*) AS cnt " +
         "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
         "GROUP BY segment ORDER BY cnt DESC LIMIT 8"
     }
@@ -575,7 +598,8 @@ function buildCenterSourceSpecs() {
         // tickets are all closed), open_tickets counts only active ones.
         "SELECT CenterID AS center_id, COUNT(*) AS tickets_total, " +
         " COUNTIF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS open_tickets, " +
-        " ANY_VALUE(NULLIF(TRIM(hub_master_segment), '')) AS segment " +
+        " ANY_VALUE(CASE WHEN NULLIF(TRIM(hub_master_segment), '') IS NULL THEN NULL " +
+        "  ELSE " + segmentGroupSql_('hub_master_segment') + " END) AS segment " +
         "FROM " + T('zoho_data') + " WHERE CenterID IS NOT NULL " +
         "GROUP BY CenterID"
     }
@@ -619,7 +643,11 @@ function buildCenterDetailSpecs(centerId) {
       sql:
         "SELECT COUNT(*) AS total_tickets, " +
         " COUNTIF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS open_tickets, " +
-        " ANY_VALUE(NULLIF(TRIM(hub_master_segment), '')) AS segment " +
+        // NULL (not '(blank)') on a blank segment — the drawer's dt_('Segment', …)
+        // falls back to its own '—' for a falsy value; segmentGroupSql_'s
+        // blank-LABEL default would otherwise show the literal string "(blank)".
+        " ANY_VALUE(CASE WHEN NULLIF(TRIM(hub_master_segment), '') IS NULL THEN NULL " +
+        "  ELSE " + segmentGroupSql_('hub_master_segment') + " END) AS segment " +
         "FROM " + T('zoho_data') + " WHERE CenterID = @cid"
     },
     {

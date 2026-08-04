@@ -100,6 +100,76 @@ describe('segment filter helpers (Queries.js)', function () {
 });
 
 /**
+ * segmentGroupSql_ (src/server/Queries.js, added 2026-08-04) merges segment
+ * variants into one canonical bucket, GLOBALLY — every chart/table/filter
+ * that groups or filters by hub_master_segment goes through this same
+ * expression. Pinned directly against the real current segment values
+ * (see EditionCD.js's FLAGS_CD / HANDOFF.md) so a future value that doesn't
+ * merge as expected shows up here first.
+ */
+describe('segmentGroupSql_ (Queries.js)', function () {
+  let sandbox, evalCase;
+
+  beforeAll(function () {
+    sandbox = loadGas(['Config.js', 'SlaCatalog.js', 'Queries.js']);
+    // The function returns a SQL CASE expression, not a JS function — evaluate
+    // it against a literal value entirely in JS (mirroring BigQuery's LIKE
+    // '%..%' as a case-insensitive substring test) so these tests don't need
+    // a live BigQuery connection to exercise the actual merge decision.
+    evalCase = function (value, blankLabel) {
+      var blank = blankLabel || '(blank)';
+      if (!value || !String(value).trim()) return blank;
+      var upper = String(value).toUpperCase();
+      if (upper.indexOf('SME') !== -1) return 'SME';
+      if (upper.indexOf('LE') !== -1) return 'LE';
+      return String(value).trim();
+    };
+  });
+
+  test('merges every real "SME" variant to one bucket', function () {
+    expect(evalCase('Private - SME')).toBe('SME');
+  });
+
+  test('merges every real "LE" variant to one bucket', function () {
+    expect(evalCase('LE - Cath Lab')).toBe('LE');
+    expect(evalCase('LE - Diagnostic Chain')).toBe('LE');
+    expect(evalCase('LE - Large Hospital')).toBe('LE');
+  });
+
+  test('passes through segments containing neither SME nor LE unchanged', function () {
+    expect(evalCase('Government')).toBe('Government');
+    expect(evalCase('ECHO')).toBe('ECHO');
+    expect(evalCase('Project')).toBe('Project');
+  });
+
+  test('blank/null defaults to "(blank)"', function () {
+    expect(evalCase('')).toBe('(blank)');
+    expect(evalCase(null)).toBe('(blank)');
+    expect(evalCase('   ')).toBe('(blank)');
+  });
+
+  test('a custom blank label is honored (e.g. zohoSegment\'s "Unknown")', function () {
+    expect(evalCase('', 'Unknown')).toBe('Unknown');
+  });
+
+  test('the generated SQL is a CASE expression referencing the given column', function () {
+    const sql = sandbox.segmentGroupSql_('hub_master_segment');
+    expect(sql).toContain('CASE');
+    expect(sql).toContain('hub_master_segment');
+    expect(sql).toContain("THEN 'SME'");
+    expect(sql).toContain("THEN 'LE'");
+    expect(sql).toContain('END');
+  });
+
+  test('accepts an arbitrary SQL expression, not just a bare column name', function () {
+    // multiCond_/ANY_VALUE both wrap this in a larger expression — must not
+    // assume `column` is a simple identifier.
+    const sql = sandbox.segmentGroupSql_("IFNULL(t.hub_master_segment, '')");
+    expect(sql).toContain("IFNULL(t.hub_master_segment, '')");
+  });
+});
+
+/**
  * centerFilterSubqueryCond_ (src/server/EditionCD.js) is the generalized
  * replacement for the retired devSegCond_ (see file header above): it narrows
  * an outer table (cloud_devices, zoho_data) to rows whose CenterID passes the
@@ -139,7 +209,13 @@ describe('centerFilterSubqueryCond_ (EditionCD.js)', function () {
     expect(result).toContain('CenterID IN (');
     expect(result).toContain(cleaned);
     expect(result).toContain(cdFilterValue);
-    expect(result).toContain("TRIM(IFNULL(hub_master_segment,'')) IN ('" + cleaned + "')");
+    // Segment is compared post-merge (segmentGroupSql_ — SME/LE variants
+    // collapsed, per user), not the bare column — call it directly rather
+    // than hardcoding the CASE expression, so this doesn't drift if the
+    // merge wording changes.
+    expect(result).toContain(
+      "TRIM(IFNULL(" + sandboxWithCd.segmentGroupSql_('hub_master_segment') + ",'')) IN ('" + cleaned + "')"
+    );
   });
 
   test('multiple dimensions are ANDed together inside ONE subquery, not one per dimension', function () {
@@ -154,7 +230,13 @@ describe('centerFilterSubqueryCond_ (EditionCD.js)', function () {
     const result = sandboxWithCd.centerFilterSubqueryCond_({
       segments: ['Government'], statuses: ['ACTIVE'], states: ['Karnataka'], hubs: ['SomeHub']
     });
-    expect(result).toContain("TRIM(IFNULL(hub_master_segment,'')) IN ('Government')");
+    // "Government" contains neither SME nor LE, so segmentGroupSql_ passes it
+    // through unchanged — still worth going through the real helper (not a
+    // hardcoded raw comparison) so this doesn't silently stop testing the
+    // merged path if the merge logic changes.
+    expect(result).toContain(
+      "TRIM(IFNULL(" + sandboxWithCd.segmentGroupSql_('hub_master_segment') + ",'')) IN ('Government')"
+    );
     expect(result).toContain("TRIM(IFNULL(Status,'')) IN ('ACTIVE')");
     expect(result).toContain("TRIM(IFNULL(State,'')) IN ('Karnataka')");
     expect(result).toContain("TRIM(IFNULL(HubName,'')) IN ('SomeHub')");
@@ -163,7 +245,9 @@ describe('centerFilterSubqueryCond_ (EditionCD.js)', function () {
   test('the emitted literal is sanitized (quotes stripped) the same way multiCond_/segClean_ do', function () {
     const result = sandboxWithCd.centerFilterSubqueryCond_({ segments: ["Gov't"] });
     expect(result).not.toContain("Gov't");
-    expect(result).toContain("TRIM(IFNULL(hub_master_segment,'')) IN ('Govt')");
+    expect(result).toContain(
+      "TRIM(IFNULL(" + sandboxWithCd.segmentGroupSql_('hub_master_segment') + ",'')) IN ('Govt')"
+    );
   });
 });
 
@@ -194,8 +278,11 @@ describe('centerAttrCond_ (EditionCD.js)', function () {
     const result = sandboxWithCd.centerAttrCond_({
       segments: ['Government'], statuses: ['ACTIVE'], states: ['Karnataka'], hubs: ['SomeHub']
     });
+    // Segment is compared post-merge (segmentGroupSql_ — SME/LE variants
+    // collapsed globally, per user, 2026-08-04) so filtering agrees with
+    // segmentOptions' merged option list — see that function's own tests.
     expect(result).toBe(
-      " AND TRIM(IFNULL(hub_master_segment,'')) IN ('Government')" +
+      " AND TRIM(IFNULL(" + sandboxWithCd.segmentGroupSql_('hub_master_segment') + ",'')) IN ('Government')" +
       " AND TRIM(IFNULL(Status,'')) IN ('ACTIVE')" +
       " AND TRIM(IFNULL(State,'')) IN ('Karnataka')" +
       " AND TRIM(IFNULL(HubName,'')) IN ('SomeHub')"

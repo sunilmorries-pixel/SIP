@@ -302,18 +302,23 @@
           { ticket: '149081', status: 'Pending on Customer', priority: 'Medium', subject: 'Lead cable replacement request', category: 'Hardware', link: 'https://desk.zoho.com/support/demo#Cases/dv/2' },
           { ticket: '148990', status: 'On Hold', priority: 'Low', subject: 'Network connectivity intermittent', category: 'Network', link: 'https://desk.zoho.com/support/demo#Cases/dv/3' }
         ],
+        // 8 (not 5) so the drawer's >5-items pager is actually exercisable in
+        // preview — openTickets stays at 3 (a genuine no-pager negative case).
         allTickets: [
           { ticket: '149127', status: 'In Progress', priority: 'High', subject: 'ECG showing error on MAC600', category: 'Device Issue', link: 'https://desk.zoho.com/support/demo#Cases/dv/1', created: '2026-07-01 10:22:00' },
           { ticket: '149081', status: 'Pending on Customer', priority: 'Medium', subject: 'Lead cable replacement request', category: 'Hardware', link: 'https://desk.zoho.com/support/demo#Cases/dv/2', created: '2026-06-28 15:05:00' },
           { ticket: '148990', status: 'On Hold', priority: 'Low', subject: 'Network connectivity intermittent', category: 'Network', link: 'https://desk.zoho.com/support/demo#Cases/dv/3', created: '2026-06-20 09:41:00' },
           { ticket: '148711', status: 'Closed', priority: 'Medium', subject: 'Battery replacement completed', category: 'Hardware', link: 'https://desk.zoho.com/support/demo#Cases/dv/4', created: '2026-05-11 08:12:00' },
-          { ticket: '148502', status: 'Closed', priority: 'Low', subject: 'Prepaid recharge request', category: 'Billing', link: '', created: '2026-04-02 14:30:00' }
+          { ticket: '148502', status: 'Closed', priority: 'Low', subject: 'Prepaid recharge request', category: 'Billing', link: '', created: '2026-04-02 14:30:00' },
+          { ticket: '148300', status: 'Closed', priority: 'Low', subject: 'SIM swap request', category: 'Network', link: '', created: '2026-03-14 11:05:00' },
+          { ticket: '148102', status: 'Closed', priority: 'Medium', subject: 'Firmware update failed', category: 'Device Issue', link: '', created: '2026-02-20 09:00:00' },
+          { ticket: '147988', status: 'Closed', priority: 'Low', subject: 'Report formatting query', category: 'Billing', link: '', created: '2026-01-30 16:40:00' }
         ],
         devices: Array.from({ length: 3 }, function (_, i) {
           return { device: 'H4-DEMO' + i, imsi: '', battery: String(rnd(20, 95)), csq: rnd(8, 30),
                    status: Charts.FLEET_ORDER[rnd(0, 4)], last_seen: new Date().toISOString() };
         }),
-        assets: Array.from({ length: 5 }, function (_, i) {
+        assets: Array.from({ length: 8 }, function (_, i) {
           var age = rnd(90, 1400);
           var birth = new Date(Date.now() - age * 864e5);
           return { key: 'TA-' + (45000 + i), serial: 'B2-DEMO' + (1000 + i), type: ['VCARDIA', 'HE', 'H4'][rnd(0, 3)],
@@ -362,9 +367,8 @@
       centerKpis: [{ centers: 28482, states: 357 }],
       filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], dateFrom: '', dateTo: '' },
       geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
-      hubs: Array.from({ length: 10 }, function (_, i) { return { hub: 'Demo Hub ' + (i + 1), spokes: rnd(20, 400) }; }),
-      deploymentAge: ['<3 mo', '3-6 mo', '6-12 mo', '1-2 yr', '2+ yr'].map(function (b) { return { band: b, devices: rnd(400, 3200) }; }),
-      activeVsEnded: [{ status: 'Private - SME', devices: 14316 }, { status: 'Government', devices: 4754 }, { status: 'LE - Cath Lab', devices: 2822 }, { status: 'LE - Diagnostic Chain', devices: 1740 }, { status: 'ECHO', devices: 788 }, { status: 'LE - Large Hospital', devices: 545 }],
+      deploymentAge: ['<1y', '1-2y', '2-3y', '3-5y', '5y+'].map(function (b) { return { band: b, devices: rnd(400, 3200) }; }),
+      activeVsEnded: [{ status: 'SME', devices: 14316 }, { status: 'Government', devices: 4754 }, { status: 'LE', devices: 5107 }, { status: 'ECHO', devices: 788 }, { status: 'Project', devices: 65 }],
       zohoKpis: [{ open_tickets: 211, created_7d: 340, closed_7d: 361, avg_open_age_days: 6.2, total_tickets: 84545 }],
       slaKpis: [{ resolved_n: 77678, within_pct: 65.5, within_tech: 51.0, within_nontech: 74.6, breached_open: 484, atrisk_open: 25, avg_res_days: 16.7 }],
       slaByType: [
@@ -385,7 +389,7 @@
       zohoSegment: ['Enterprise', 'SMB', 'Government', 'Distributor', 'Direct'].map(function (sg) { return { segment: sg, cnt: rnd(120, 1900) }; }),
       // No hubOptions: Hub is served by the apiSearchHubs mock branch above, the
       // same as the real payload no longer carrying a hub list (finding C1).
-      segmentOptions: ['Private - SME', 'Government', 'LE - Cath Lab', 'LE - Diagnostic Chain', 'ECHO', 'LE - Large Hospital', 'Project'].map(function (sg) { return { segment: sg }; }),
+      segmentOptions: ['SME', 'Government', 'LE', 'ECHO', 'Project'].map(function (sg) { return { segment: sg }; }),
       stateOptions: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Delhi', 'Gujarat', 'Uttar Pradesh', 'West Bengal'].map(function (s) { return { state: s }; })
     });
   }
@@ -550,7 +554,7 @@
   /* ── dashboard load ──────────────────────────────────────────── */
   var CHART_IDS = ['chartFleetStatus', 'chartFirmware', 'chartDeviceAges',
     'chartAssetStatus', 'chartAssetTypes', 'chartGeo', 'chartDeploymentAge', 'chartActiveEnded',
-    'chartHubs', 'chartZohoTrend', 'chartZohoPriority', 'chartZohoStatus', 'chartZohoCategories',
+    'chartZohoTrend', 'chartZohoPriority', 'chartZohoStatus', 'chartZohoCategories',
     'chartZohoChannel', 'chartZohoSegment', 'chartCohort'];
 
   var dashboardRequestId = 0;
@@ -644,7 +648,6 @@
     Charts.geo(data.geo);
     Charts.deploymentAge(data.deploymentAge);
     Charts.activeVsEnded(data.activeVsEnded);
-    Charts.hubs(data.hubs);
 
     /* Support charts */
     Charts.zohoTrend(data.zohoTrend);
@@ -1524,15 +1527,44 @@
    * Center 360 rows. `c` is a compact array [id, name, ?, ?, devices, online,
    * open_tickets, assets].
    */
+  /** Client-side pager for a list already fully fetched (drawer lists never
+   *  need a new server round-trip — devices/tickets are already small capped
+   *  batches). '' when everything fits on one page. */
+  function listPagerHtml_(pagerKey, page, pageSize, total) {
+    if (total <= pageSize) return '';
+    var totalPages = Math.ceil(total / pageSize);
+    var start = page * pageSize;
+    return '<div class="list-pager" data-pager="' + pagerKey + '">' +
+      '<button type="button" class="list-pager-btn" data-dir="prev"' + (page === 0 ? ' disabled' : '') +
+      ' aria-label="Previous page"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+      '<path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+      '<span class="list-pager-info">' + (start + 1) + '–' + Math.min(total, start + pageSize) + ' of ' + total + '</span>' +
+      '<button type="button" class="list-pager-btn" data-dir="next"' + (page + 1 >= totalPages ? ' disabled' : '') +
+      ' aria-label="Next page"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+      '<path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+      '</div>';
+  }
+  function clampPage_(page, total, pageSize) {
+    var totalPages = Math.max(1, Math.ceil(total / pageSize));
+    return Math.max(0, Math.min(page, totalPages - 1));
+  }
+
   function makeCenterDetail(ids) {
+    var PAGE_SIZE = 5; // "paginate if more than 5" — Jira devices + both ticket tabs
+    var listPage = { assets: 0, open: 0, all: 0 };
+    var activeTix = 'open';
+
     /**
      * @param {Array} c compact center row (see class doc below).
      * @param {{ticketNumber:number}=} opts when opened from a Support/CS
-     *   ticket-number search, switches the ticket list to "All" and scrolls/
-     *   highlights that ticket once rendered (best-effort — the All list is
-     *   capped, see buildCenterDetailSpecs, so a very old ticket may not appear).
+     *   ticket-number search, switches the ticket list to "All", jumps to
+     *   whichever page contains that ticket, and highlights/scrolls to it
+     *   once rendered (best-effort — the All list is capped, see
+     *   buildCenterDetailSpecs, so a very old ticket may not appear at all).
      */
     function open(c, opts) {
+      listPage = { assets: 0, open: 0, all: 0 };
+      activeTix = 'open';
       $(ids.panel).hidden = false;
       if (ids.scrim) $(ids.scrim).hidden = false;
       $(ids.title).textContent = c[1];
@@ -1541,6 +1573,14 @@
       $(ids.body).scrollTop = 0;
       gsCall(ep('apiGetCenterDetail'), { centerId: c[0] })
         .then(function (detail) {
+          if (opts && opts.ticketNumber) {
+            activeTix = 'all';
+            var idx = -1;
+            (detail.allTickets || []).forEach(function (t, i) {
+              if (idx < 0 && String(t.ticket) === String(opts.ticketNumber)) idx = i;
+            });
+            if (idx >= 0) listPage.all = Math.floor(idx / PAGE_SIZE);
+          }
           renderInto(c, detail);
           if (opts && opts.ticketNumber) focusTicket_(opts.ticketNumber);
         })
@@ -1549,10 +1589,8 @@
         });
     }
 
-    /** Switches the ticket list to "All" and highlights/scrolls to one ticket, if present. */
+    /** Highlights/scrolls to one ticket row, if it's on the currently-rendered page. */
     function focusTicket_(ticketNumber) {
-      var allBtn = $(ids.body).querySelector('.ticket-toggle-btn[data-tix="all"]');
-      if (allBtn) allBtn.click();
       var row = $(ids.body).querySelector('.ticket-row[data-ticket="' + ticketNumber + '"]');
       if (row) {
         row.classList.add('is-highlighted');
@@ -1569,8 +1607,9 @@
 
       // "Devices" = Jira devices mapped to this center by Summary serial
       // (d.assets, from getAssetIndex_) — NOT cloud_devices telemetry.
-      var jiraDevCount = d.assets ? d.assets.length : (c[7] || 0);
-      var oldest = d.assets && d.assets.length ? d.assets[0] : null;
+      var assetsList = d.assets || [];
+      var jiraDevCount = assetsList.length || (c[7] || 0);
+      var oldest = assetsList.length ? assetsList[0] : null; // oldest overall, not just the current page
       var html =
         '<div class="detail-grid">' +
         statBox_(jiraDevCount, 'Devices') +
@@ -1595,22 +1634,33 @@
 
       // Ticket list: toggle between Open (default) and All (every ticket the
       // center has ever raised) — per user request to see full ticket history.
-      if ((d.openTickets && d.openTickets.length) || (d.allTickets && d.allTickets.length)) {
+      // Each tab is independently paginated (5/page) — see listPage.open/all.
+      var openList = d.openTickets || [];
+      var allList = d.allTickets || [];
+      if (openList.length || allList.length) {
+        listPage.open = clampPage_(listPage.open, openList.length, PAGE_SIZE);
+        listPage.all = clampPage_(listPage.all, allList.length, PAGE_SIZE);
+        var openSlice = openList.slice(listPage.open * PAGE_SIZE, listPage.open * PAGE_SIZE + PAGE_SIZE);
+        var allSlice = allList.slice(listPage.all * PAGE_SIZE, listPage.all * PAGE_SIZE + PAGE_SIZE);
         html += '<div class="panel-section-title-row">' +
           '<span class="panel-section-title">Tickets</span>' +
           '<div class="ticket-toggle" role="group" aria-label="Ticket list filter">' +
-          '<button type="button" class="ticket-toggle-btn is-active" data-tix="open">Open (' + (d.openTickets ? d.openTickets.length : 0) + ')</button>' +
-          '<button type="button" class="ticket-toggle-btn" data-tix="all">All (' + (d.allTickets ? d.allTickets.length : 0) + (d.allTickets && d.allTickets.length >= 50 ? '+' : '') + ')</button>' +
+          '<button type="button" class="ticket-toggle-btn' + (activeTix === 'open' ? ' is-active' : '') + '" data-tix="open">Open (' + openList.length + ')</button>' +
+          '<button type="button" class="ticket-toggle-btn' + (activeTix === 'all' ? ' is-active' : '') + '" data-tix="all">All (' + allList.length + (allList.length >= 50 ? '+' : '') + ')</button>' +
           '</div></div>' +
-          '<div class="ticket-list" data-tix-panel="open">' + ticketRowsHtml_(d.openTickets || [], 'priority') + '</div>' +
-          '<div class="ticket-list" data-tix-panel="all" hidden>' + ticketRowsHtml_(d.allTickets || [], 'status') + '</div>';
+          '<div class="ticket-list" data-tix-panel="open"' + (activeTix === 'open' ? '' : ' hidden') + '>' +
+          ticketRowsHtml_(openSlice, 'priority') + listPagerHtml_('open', listPage.open, PAGE_SIZE, openList.length) + '</div>' +
+          '<div class="ticket-list" data-tix-panel="all"' + (activeTix === 'all' ? '' : ' hidden') + '>' +
+          ticketRowsHtml_(allSlice, 'status') + listPagerHtml_('all', listPage.all, PAGE_SIZE, allList.length) + '</div>';
       }
 
-      if (d.assets && d.assets.length) {
-        html += '<div class="panel-section-title">Jira devices (' + d.assets.length + ', oldest first)</div>' +
+      if (assetsList.length) {
+        listPage.assets = clampPage_(listPage.assets, assetsList.length, PAGE_SIZE);
+        var assetsSlice = assetsList.slice(listPage.assets * PAGE_SIZE, listPage.assets * PAGE_SIZE + PAGE_SIZE);
+        html += '<div class="panel-section-title">Jira devices (' + assetsList.length + ', oldest first)</div>' +
           '<div class="table-scroll"><table class="assets-table">' +
           '<thead><tr><th>Key</th><th>Serial</th><th>Type</th><th>Category</th><th class="num">Age</th><th>Since</th></tr></thead><tbody>' +
-          d.assets.map(function (asset) {
+          assetsSlice.map(function (asset) {
             var keyCell = asset.key
               ? '<a href="' + escapeHtml(JIRA_BROWSE + encodeURIComponent(asset.key)) +
                 '" target="_blank" rel="noopener noreferrer" title="Open ' + escapeHtml(asset.key) + ' in Jira">' +
@@ -1623,7 +1673,8 @@
               '<td class="num">' + humanAge(asset.age_days) + '</td>' +
               '<td>' + escapeHtml(asset.birthday || '—') + '</td></tr>';
           }).join('') +
-          '</tbody></table></div>';
+          '</tbody></table></div>' +
+          listPagerHtml_('assets', listPage.assets, PAGE_SIZE, assetsList.length);
       } else {
         html += '<div class="panel-section-title">Jira devices</div>' +
           '<p class="card-sub">No Jira devices are linked to this center yet.</p>';
@@ -1632,13 +1683,15 @@
       $(ids.body).innerHTML = html;
       Array.prototype.forEach.call($(ids.body).querySelectorAll('.ticket-toggle-btn'), function (btn) {
         btn.addEventListener('click', function () {
-          var mode = btn.getAttribute('data-tix');
-          Array.prototype.forEach.call($(ids.body).querySelectorAll('.ticket-toggle-btn'), function (b) {
-            b.classList.toggle('is-active', b === btn);
-          });
-          Array.prototype.forEach.call($(ids.body).querySelectorAll('[data-tix-panel]'), function (p) {
-            p.hidden = p.getAttribute('data-tix-panel') !== mode;
-          });
+          activeTix = btn.getAttribute('data-tix');
+          renderInto(c, d);
+        });
+      });
+      Array.prototype.forEach.call($(ids.body).querySelectorAll('.list-pager-btn'), function (btn) {
+        btn.addEventListener('click', function () {
+          var pagerKey = btn.closest('.list-pager').getAttribute('data-pager');
+          listPage[pagerKey] += (btn.getAttribute('data-dir') === 'next' ? 1 : -1);
+          renderInto(c, d);
         });
       });
     }
@@ -2335,7 +2388,6 @@
     centersRaw: { name: 'center_details · raw data', formula: 'Raw center_details rows (no baseline filter), paginated, with a per-center device count and mapped flag.', source: 'center_details + LEFT JOIN cloud_devices.' },
 
     // ── Customers ──
-    topHubs: { name: 'Top hubs', formula: 'Hubs ranked by number of spokes — COUNT(DISTINCT CenterID) per hub.', source: 'center_details grouped by HubName.' },
     topLe: { name: 'Top LE customers', formula: 'The curated 27 large-enterprise accounts, ranked by devices.', source: 'TopCustomers.js hub list.' },
     topLeDevices: { name: 'Top LE devices', formula: 'Devices run by the 27 curated “Top LE” hub accounts.', source: 'TopCustomers hub list ⋈ device mapping.' },
     centersPerCust: { name: 'Centers per customer', formula: 'Distinct centers per top account.', source: 'center_details grouped by hub.' },
@@ -2371,7 +2423,7 @@
     'first-time-failure by production batch': 'ftf',
     'batch signal': 'batch', 'batch cohort detail': 'ftf',
     'devices by state': 'geo', 'deployment age': 'deployAge', 'deployment status': 'deployStatus',
-    'top hubs': 'topHubs', 'center 360': 'center360',
+    'center 360': 'center360',
     'sla compliance': 'sla', 'sla breach by issue type': 'slaType',
     'priority mix': 'priority', 'active backlog': 'backlog', 'top issue categories': 'categories',
     'intake channels': 'channels', 'tickets by customer segment': 'segment',

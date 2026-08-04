@@ -171,7 +171,7 @@ function apiGetNumbers(options) {
           "SELECT IFNULL(NULLIF(TRIM(Status), ''), '(blank)') AS k, COUNT(DISTINCT CenterID) AS n " +
           "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC" },
         { key: 'centersSegment', maxRows: 50, sql:
-          "SELECT IFNULL(NULLIF(TRIM(hub_master_segment), ''), '(blank)') AS k, COUNT(DISTINCT CenterID) AS n " +
+          "SELECT " + segmentGroupSql_('hub_master_segment') + " AS k, COUNT(DISTINCT CenterID) AS n " +
           "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC LIMIT 15" },
 
         { key: 'hubsTot', sql:
@@ -183,7 +183,7 @@ function apiGetNumbers(options) {
           "SELECT IFNULL(NULLIF(TRIM(Status), ''), '(blank)') AS k, COUNT(DISTINCT HubID) AS n " +
           "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC" },
         { key: 'hubsSegment', maxRows: 50, sql:
-          "SELECT IFNULL(NULLIF(TRIM(hub_master_segment), ''), '(blank)') AS k, COUNT(DISTINCT HubID) AS n " +
+          "SELECT " + segmentGroupSql_('hub_master_segment') + " AS k, COUNT(DISTINCT HubID) AS n " +
           "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC LIMIT 15" },
 
         // Devices come from jira_data (readJiraData_), aggregated separately below.

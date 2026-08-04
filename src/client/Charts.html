@@ -210,33 +210,6 @@ var Charts = (function () {
   }
 
 
-  /** Top hubs ranked by SPOKE COUNT (distinct centers per hub). rows = [{hub, spokes}]. */
-  function hubs(rows) {
-    if (!rows || !rows.length) return showEmpty('chartHubs');
-    var sorted = rows.slice().reverse(); // largest at top of horizontal chart
-    render('chartHubs', base({
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' },
-        valueFormatter: function (v) { return (+v).toLocaleString() + ' spokes'; } },
-      grid: { left: 8, right: 24, top: 8, bottom: 8, containLabel: true },
-      xAxis: valAxis(),
-      yAxis: catAxis({ data: sorted.map(function (r) { return r.hub; }),
-        axisLabel: { color: C.text, fontSize: 11, width: 150, overflow: 'truncate' } }),
-      series: [{
-        name: 'Spokes', type: 'bar', barMaxWidth: 16,
-        label: { show: true, position: 'right', color: C.textDim, fontSize: 11,
-          formatter: function (p) { return (+p.value).toLocaleString(); } },
-        itemStyle: {
-          borderRadius: [0, 6, 6, 0],
-          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: 'rgba(46,155,214,0.45)' },
-            { offset: 1, color: C.primary }
-          ])
-        },
-        data: sorted.map(function (r) { return r.spokes; })
-      }]
-    }));
-  }
-
   function geo(rows, id) {
     id = id || 'chartGeo';
     if (!rows || !rows.length) return showEmpty(id);
@@ -289,7 +262,8 @@ var Charts = (function () {
   function firmware(rows)    { horizontalBar('chartFirmware', rows, 'firmware', 'devices', C.info); }
   function zohoSegment(rows) { horizontalBar('chartZohoSegment', rows, 'segment', 'cnt', C.primary); }
 
-  var AGE_ORDER = ['<3 mo', '3-6 mo', '6-12 mo', '1-2 yr', '2+ yr'];
+  // Matches the Asset-page Device age chart's bands exactly (see deviceAges below).
+  var AGE_ORDER = ['<1y', '1-2y', '2-3y', '3-5y', '5y+'];
 
   function deploymentAge(rows) {
     if (!rows || !rows.length) return showEmpty('chartDeploymentAge');
@@ -345,10 +319,11 @@ var Charts = (function () {
     if (!rows || !rows.length) return showEmpty('chartActiveEnded');
     // Card was repurposed to a hub_master_segment breakdown — color each known
     // segment deliberately; unknown values take the rotating palette.
+    // Keys are the MERGED names (segmentGroupSql_, server-side — SME/LE
+    // variants collapsed), not the old raw "Private - SME"/"LE - Cath Lab" etc.
     var SEGMENT_COLORS = {
-      'private - sme': C.primary, 'government': C.info, 'le - cath lab': C.violet,
-      'le - diagnostic chain': C.accent, 'echo': C.warn, 'le - large hospital': C.ok,
-      'project': C.muted
+      'sme': C.primary, 'government': C.info, 'le': C.violet,
+      'echo': C.warn, 'project': C.muted
     };
     function segColor(name, i) {
       return SEGMENT_COLORS[String(name || '').trim().toLowerCase()] || STATUS_PALETTE[i % STATUS_PALETTE.length];
@@ -604,7 +579,6 @@ var Charts = (function () {
     centersByState: centersByState,
     fleetStatus: fleetStatus,
     jiraStatus: jiraStatus,
-    hubs: hubs,
     geo: geo,
     firmware: firmware,
     deploymentAge: deploymentAge,

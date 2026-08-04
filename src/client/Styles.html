@@ -931,6 +931,23 @@ a.ticket-row:hover .ticket-ext { color: var(--primary); }
 .ticket-toggle-btn:hover { color: var(--text-1); }
 .ticket-toggle-btn.is-active { background: var(--primary); color: #fff; }
 
+/* ── drawer list pager (Jira devices / Open / All tickets, >5 items) ──── */
+.list-pager {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 10px 0 2px;
+}
+.list-pager-info { font-size: 12px; color: var(--text-3); }
+.list-pager-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text-2); cursor: pointer;
+  transition: border-color var(--dur-fast), color var(--dur-fast);
+}
+.list-pager-btn svg { width: 16px; height: 16px; }
+.list-pager-btn:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text-1); }
+.list-pager-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
 /* ── toasts ─────────────────────────────────────────────────────── */
 .toast-region {
   position: fixed; bottom: 20px; right: 20px; z-index: 100;

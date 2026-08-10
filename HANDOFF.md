@@ -1,12 +1,53 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-04 · **Version:** 5.17 (glassmorphism-sidebar-redesign) ·
-**Status:** LIVE — Apps Script **version 46** deployed to the stable production URL
+**Last updated:** 2026-08-10 · **Version:** 5.18 (floating-page-panel-filter-restructure) ·
+**Status:** LIVE — Apps Script **version 47** deployed to the stable production URL
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always),
-tagged `v5.17`. Git (commits `d9f4ed5`, `9b7a74e`, tag `v5.17`), the Apps Script editor, and
-production are all in sync. **Deployed 2026-08-04, with the user's explicit "push it to live"
-go-ahead.** (v5.16/@45 — the Customers page rework — was deployed immediately before this in the
+tagged `v5.18`. Git (commit `0fac5dd`, tag `v5.18`), the Apps Script editor, and production are
+all in sync. **Deployed 2026-08-10, with the user's explicit "push it to live" go-ahead.**
+(v5.17/@46 — the glassmorphism/sidebar redesign — was deployed immediately before this in the
 same session lineage; see its own entry below.)
+
+> **2026-08-10 — Floating page panel, topbar logo, filter drawer restructure (commit `0fac5dd`,
+> tagged `v5.18`, DEPLOYED as Apps Script version 47).** Per user request, using `ui-ux-pro-max`
+> for both the build and a follow-up review pass:
+> - **Floating page panel**: each page's content (KPI grid + cards) now sits inside one floating
+>   glass panel, same width/alignment formula as the topbar (`width: min(100% - gutter, 1440px);
+>   margin: auto`) so both line up regardless of viewport width. Inner `.kpi`/`.card` tiles dropped
+>   their own `backdrop-filter` — redundant once nested inside an already-frosted panel, and it was
+>   costing a blur pass per tile for no visible gain; they're flat `--surface-2` tiles now.
+> - **Topbar logo**: the same Tricog heart+pulse mark now also sits in the topbar (left of search),
+>   so the brand stays visible even with the sidebar collapsed.
+> - **Filters drawer**: Status moved to the top and became a toggle (Active-only vs all statuses —
+>   the only two real values) instead of a 2-item checklist; Segment converted to a searchable
+>   multi-select dropdown, matching State/Hub instead of being the odd one out as a plain checklist.
+> - **Search placeholder copy**: Customers tab said "Search centers by..." (stale — the tab was
+>   renamed from Centers in v5.16); Numbers/Raw Data showed "This page shows unfiltered raw data"
+>   in the search box, which reads as a non-sequitur rather than explaining why search is disabled.
+>   Both now say "Search isn't available on this page" / "Search customers by...".
+> - **Mid-build edit conflict**: while implementing, the on-disk files changed twice from a
+>   concurrent source — once a legitimate, self-contained removal of the Overview/Asset executive-
+>   summary narrative bands (CSS comment there literally says "per user", consistent with earlier
+>   sessions retiring the same feature on the Centers page), left untouched; once a direct revert of
+>   the Status toggle back to a dropdown, with a comment implying the toggle itself was the thing
+>   being replaced. Flagged this to the user rather than resolve it silently — user confirmed to
+>   keep the toggle, which was restored across `Index.html`/`App.html`.
+> - **3 bugs found and fixed live during the review pass** (none from this session's own new code —
+>   all latent, exposed by the width/nesting changes above):
+>   1. Sidebar-collapse's resize dispatch fired before `.app-main`'s width transition finished, so
+>      ECharts measured a mid-transition container width and never got corrected afterward. Fixed
+>      by also firing `resize` on `transitionend` (`margin-left` specifically).
+>   2. The new toggle switch's off-state track was `--surface-2`/`--border`, both near-white in
+>      light theme — invisible against the filter drawer's opaque white `--surface-solid`
+>      background. Recolored with a `color-mix(in srgb, var(--text-3) ...)` fill, which is a real
+>      solid color in both themes regardless of what surface it sits on.
+>   3. `.num-card` (Numbers page) carries both `card` and `num-card` classes, and silently inherited
+>      `grid-column: span 12` from the shared `.card` rule — meant for the unrelated 12-column
+>      `.card-grid` system. Inside `.num-grid`'s 3-column layout this collapsed all 4 cards into one
+>      overlapping stack and overflowed the page horizontally. Fixed with `grid-column: auto` +
+>      `min-width: 0` at each nesting level (`.num-card`/`.num-compare`/`.num-tables`).
+> - **Verification**: live-tested in the local preview via browser automation — 0 console errors
+>   and 0 horizontal overflow across all 8 tabs, both themes, sidebar collapsed/expanded.
 
 > **2026-08-04 — Glassmorphism redesign: left sidebar nav + real Tricog logo (commits `d9f4ed5`,
 > `9b7a74e`, tagged `v5.17`, DEPLOYED as Apps Script version 46).** Full visual redesign per user

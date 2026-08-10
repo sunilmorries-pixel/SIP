@@ -642,7 +642,6 @@
     Charts.assetStatus(assets.filter(function (r) { return r.dim === 'status'; }).slice(0, 8));
     Charts.assetTypes(assets.filter(function (r) { return r.dim === 'type'; }).slice(0, 8));
     renderCohort(data.cohortReliability || []);
-    renderAssetSummary(data);
 
     /* Centers charts */
     Charts.geo(data.geo);
@@ -660,45 +659,6 @@
 
     $('statusStrip').classList.remove('is-stale');
     $('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
-  }
-
-  /** Builds .exec-flag chip HTML from [{cls, icon, text}] (icon optional). */
-  function flagChips_(flags) {
-    return flags.map(function (f) {
-      var svg = f.icon ? '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' + f.icon + '</svg>' : '';
-      return '<span class="exec-flag ' + (f.cls || '') + '">' + svg + f.text + '</span>';
-    }).join('');
-  }
-
-  /** Per-page executive summary for the ASSET page — built metric by metric.
-   *  Metric 1: device age. age = today − Created (per device), averaged over the
-   *  Connector + ECG fleet; 5y+ devices are flagged as past their expected life. */
-  function renderAssetSummary(data) {
-    var el = $('assetSummary');
-    if (!el) return;
-    var f = data.fleet || {};
-    var avgYears = f.avg_age_days != null ? (f.avg_age_days / 365) : null;
-
-    var s;
-    if (avgYears != null) {
-      s = 'Average device age is <b>' + avgYears.toFixed(1) + ' years</b> across <b>' +
-        FMT.format(f.total || 0) + '</b> devices (Connector + ECG)';
-      if (f.past_life) {
-        s += ' — <b class="down">' + FMT.format(f.past_life) + '</b> are past their 5-year expected life';
-      }
-      s += '.';
-    } else {
-      s = '<b>' + FMT.format(f.total || 0) + '</b> devices (Connector + ECG).';
-    }
-    el.innerHTML = s;
-
-    var flags = [];
-    if (f.past_life != null && f.total) {
-      var pastPct = Math.round(f.past_life / f.total * 100);
-      flags.push({ cls: pastPct >= 25 ? 'is-alert' : '', icon: ICONS.clock,
-        text: FMT.format(f.past_life) + ' devices 5y+ (' + pastPct + '% past expected life)' });
-    }
-    $('assetSummaryFlags').innerHTML = flagChips_(flags);
   }
 
   /**
@@ -1192,6 +1152,9 @@
   }
 
   var FILTER_DIM_LABELS = { segments: 'segment', statuses: 'status', states: 'state', hubs: 'hub' };
+  // Plain "+ 's'" mispluralizes status -> statuss; only dimension that needs
+  // its own irregular plural (the others already end cleanly in a consonant).
+  var FILTER_DIM_PLURAL = { segments: 'segments', statuses: 'statuses', states: 'states', hubs: 'hubs' };
 
   function openFilterDrawer_(preserveStaged) {
     // preserveStaged: true when the caller (Clear all) already staged the
@@ -1203,8 +1166,11 @@
     // drawer opens from every tab, including the four that never populate a
     // dashboard payload (Map/Top Customers/Numbers/Raw Data), where reading it
     // off the payload rendered empty lists (review finding I3).
-    renderFilterChecklist_('filterSegment', 'segments', (state.segmentOptions || []).map(function (s) { return s.segment; }));
-    renderFilterChecklist_('filterStatus', 'statuses', ['ACTIVE', 'DEACTIVATED']);
+    renderFilterCombo_('filterSegment', 'segments', (state.segmentOptions || []).map(function (s) { return s.segment; }));
+    // Only 2 real values (ACTIVE/DEACTIVATED, plus a handful of blank rows not
+    // offered here — same known gap the old toggle had) — a static list like
+    // Segment/State, not a remote search.
+    renderFilterCombo_('filterStatus', 'statuses', ['ACTIVE', 'DEACTIVATED']);
     renderFilterCombo_('filterState', 'states', (state.stateOptions || []).map(function (s) { return s.state; }));
     // Hub has no option list to read — 13,721 distinct values, searched
     // server-side per keystroke instead (review finding C1).
@@ -1221,25 +1187,6 @@
     $('filterScrim').hidden = true;
     $('filterDrawer').hidden = true;
     $('globalFilterBtn').setAttribute('aria-expanded', 'false');
-  }
-
-  /** Plain checkbox list (Segment/Status — small, known value sets). */
-  function renderFilterChecklist_(containerId, dim, options) {
-    var el = $(containerId);
-    var current = state.globalFiltersPending[dim];
-    el.innerHTML = options.map(function (opt) {
-      var label = dim === 'statuses' && opt === 'ACTIVE' ? 'Active' : (dim === 'statuses' ? 'Deactivated' : opt);
-      var checked = current.indexOf(opt) !== -1 ? ' checked' : '';
-      return '<label><input type="checkbox" value="' + escapeHtml(opt) + '"' + checked + '> ' + escapeHtml(label) + '</label>';
-    }).join('');
-    Array.prototype.forEach.call(el.querySelectorAll('input'), function (cb) {
-      cb.addEventListener('change', function () {
-        var v = cb.value;
-        var arr = state.globalFiltersPending[dim];
-        if (cb.checked && arr.indexOf(v) === -1) arr.push(v);
-        else if (!cb.checked) state.globalFiltersPending[dim] = arr.filter(function (x) { return x !== v; });
-      });
-    });
   }
 
   /**
@@ -1285,7 +1232,7 @@
   function renderFilterCombo_(containerId, dim, allOptions, remoteSearch) {
     var container = $(containerId);
     container.innerHTML =
-      '<input type="text" class="input filter-combo-input" placeholder="Search ' + FILTER_DIM_LABELS[dim] + 's…">' +
+      '<input type="text" class="input filter-combo-input" placeholder="Search ' + FILTER_DIM_PLURAL[dim] + '…">' +
       '<div class="filter-combo-list" hidden></div>' +
       '<div class="filter-combo-selected"></div>';
     var input = container.querySelector('.filter-combo-input');
@@ -1782,7 +1729,20 @@
     if (persist) localStorage.setItem('sip.sidebarCollapsed', collapsed ? '1' : '0');
     // Charts/maps size themselves off the viewport at render time — the
     // sidebar width change needs a resize tick so they don't stay stale.
+    // .app-main's width transitions over --dur, so a resize fired only now
+    // makes ECharts measure the container mid-transition and freeze at that
+    // transient (wrong) width — nothing fires again to correct it once the
+    // transition settles. Fire once now (covers non-animated cases) and once
+    // more when the transition actually finishes.
     window.dispatchEvent(new Event('resize'));
+    var appMain = document.querySelector('.app-main');
+    if (appMain) {
+      appMain.addEventListener('transitionend', function onSidebarTransitionEnd(e) {
+        if (e.propertyName !== 'margin-left') return;
+        appMain.removeEventListener('transitionend', onSidebarTransitionEnd);
+        window.dispatchEvent(new Event('resize'));
+      });
+    }
   }
 
   /* ── Executive Overview (landing) ────────────────────────────── */
@@ -1792,14 +1752,12 @@
     gsCall(ep('apiGetExecOverview'), { filters: state.globalFilters })
       .then(function (data) { state.execLoaded = true; state.execData = data; renderExec(data); })
       .catch(function (err) {
-        $('execNarrative').textContent = 'Could not load the overview: ' + err.message;
         toast('Overview failed: ' + err.message, 'error');
       });
   }
 
   function renderExec(d) {
     var k = d.kpis || {}, z = d.zohoKpis || {}, roll = d.rollup || {}, tt = d.topTotals || {};
-    var onlinePct = k.total_devices ? Math.round((k.online_24h / k.total_devices) * 100) : 0;
 
     /* KPI strip */
     uptimeKpi('exUptime', d.uptimeFleet || null);
@@ -1829,23 +1787,6 @@
         requestAnimationFrame(function () { ring.style.setProperty('--pct', agePct); });
       });
     }
-
-    /* Narrative sentence */
-    $('execNarrative').innerHTML =
-      '<b>' + FMT.format(k.total_devices || 0) + '</b> devices across <b>' + FMT.format(roll.centers || 0) +
-      '</b> centers. <b class="' + (onlinePct >= 50 ? 'up' : 'down') + '">' + onlinePct + '%</b> reported in the last 24 hours' +
-      (k.offline_7d ? ', while <b>' + FMT.format(k.offline_7d) + '</b> have been silent for a week or more' : '') +
-      '. <b>' + FMT.format(z.open_tickets || 0) + '</b> support tickets are open' +
-      (tt.devices ? ', and your <b>' + tt.customers + '</b> Top LE accounts run <b>' + FMT.format(tt.devices) + '</b> devices' : '') + '.';
-
-    /* Attention flags */
-    var flags = [];
-    if (roll.attention_centers) flags.push({ cls: 'is-alert', icon: ICONS.inbox, text: FMT.format(roll.attention_centers) + ' centers with 4+ open tickets' });
-    if (z.closed_7d >= z.created_7d && z.created_7d) flags.push({ cls: 'is-good', icon: ICONS.online, text: 'Closing tickets faster than they open' });
-    else if (z.created_7d) flags.push({ cls: '', icon: ICONS.inbox, text: FMT.format(z.created_7d) + ' new tickets this week' });
-    $('execFlags').innerHTML = flags.map(function (f) {
-      return '<span class="exec-flag ' + f.cls + '"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' + f.icon + '</svg>' + f.text + '</span>';
-    }).join('');
 
     /* Charts */
     Charts.jiraStatus((d.fleet && d.fleet.by_status) || [], 'execFleet');
@@ -2582,7 +2523,7 @@
     });
     $('filterClearBtn').addEventListener('click', function () {
       state.globalFiltersPending = { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], dateFrom: '', dateTo: '' };
-      openFilterDrawer_(true); // re-render the checklists/combos to reflect the cleared state (don't re-snapshot over it)
+      openFilterDrawer_(true); // re-render the toggle/combos to reflect the cleared state (don't re-snapshot over it)
     });
     document.addEventListener('keydown', function (event) {
       if (event.key === 'Escape' && !$('filterDrawer').hidden) closeFilterDrawer_();
@@ -2692,12 +2633,12 @@
   var SEARCH_TAB_INFO = {
     'tab-overview': { disabled: true, placeholder: "Search isn't available on this page" },
     'tab-asset': { placeholder: 'Search devices by ID, center or hub…' },
-    'tab-centers': { placeholder: 'Search centers by name, ID, hub or state…' },
+    'tab-centers': { placeholder: 'Search customers by name, ID, hub or state…' },
     'tab-support': { placeholder: 'Search by center ID or ticket number…' },
     'tab-map': { placeholder: 'Search the map: center, hub, device or serial…' },
     'tab-topcust': { placeholder: 'Search customers by name or hub ID…' },
-    'tab-numbers': { disabled: true, placeholder: 'This page shows unfiltered raw data' },
-    'tab-rawdata': { disabled: true, placeholder: 'This page shows unfiltered raw data' }
+    'tab-numbers': { disabled: true, placeholder: "Search isn't available on this page" },
+    'tab-rawdata': { disabled: true, placeholder: "Search isn't available on this page" }
   };
 
   function updateSearchPlaceholder() {

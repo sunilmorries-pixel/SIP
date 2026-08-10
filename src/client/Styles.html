@@ -242,11 +242,15 @@ body.sidebar-collapsed .sidebar-collapse-btn .icon { transform: rotate(180deg); 
 body.sidebar-collapsed .sidebar-collapse-btn span { display: none; }
 
 /* ── top bar (floats as its own glass card inside .app-main) ──────── */
+/* Same width formula as .page below, so both floating panels line up:
+   edge-to-edge minus a gutter on narrow/medium screens, capped + centered
+   on wide ones so KPI/card grids (fixed column counts) don't over-stretch. */
 .topbar {
   position: sticky; top: 14px; z-index: 40;
   display: flex; align-items: center; justify-content: space-between;
   gap: var(--gap); flex-wrap: wrap;
-  margin: 14px clamp(16px, 3vw, 28px) 0;
+  width: min(100% - clamp(32px, 6vw, 56px), 1440px);
+  margin: 14px auto 0;
   padding: 10px 16px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -255,6 +259,7 @@ body.sidebar-collapsed .sidebar-collapse-btn span { display: none; }
   backdrop-filter: blur(var(--blur-glass)) saturate(160%);
   -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(160%);
 }
+.topbar-logo { height: 26px; width: auto; flex: none; }
 
 .topbar-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .global-search { position: relative; display: flex; align-items: center; }
@@ -391,10 +396,20 @@ body.sidebar-collapsed .tab { justify-content: center; padding: 0; }
 body.sidebar-collapsed .tab .nav-label { display: none; }
 
 /* ── layout ─────────────────────────────────────────────────────── */
+/* One floating glass panel per page, same width formula as .topbar so
+   both line up. Inner .kpi/.card tiles drop their own blur — they sit on
+   this panel's already-frosted surface, not on the raw background, so a
+   second backdrop-filter would just cost GPU time for no visible gain. */
 .page {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: clamp(16px, 3vw, 28px) clamp(16px, 4vw, 32px) 64px;
+  width: min(100% - clamp(32px, 6vw, 56px), 1440px);
+  margin: 14px auto 32px;
+  padding: clamp(18px, 3vw, 28px) clamp(18px, 3vw, 28px) 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card), inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: blur(var(--blur-glass)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(160%);
 }
 .panel[hidden] { display: none; }
 .panel.is-active { animation: panel-in var(--dur) var(--ease-out); }
@@ -427,12 +442,10 @@ body.sidebar-collapsed .tab .nav-label { display: none; }
 .kpi {
   position: relative; overflow: hidden;
   padding: 18px 18px 16px;
-  background: var(--surface);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-card), inset 0 1px 0 var(--glass-highlight);
-  backdrop-filter: blur(var(--blur-glass)) saturate(160%);
-  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
   transition: border-color var(--dur-fast), box-shadow var(--dur-fast), transform var(--dur-fast);
 }
 .kpi:hover { border-color: var(--border-strong); transform: translateY(-3px);
@@ -475,12 +488,10 @@ body.sidebar-collapsed .tab .nav-label { display: none; }
 .span-8 { grid-column: span 8; }
 .span-12 { grid-column: span 12; }
 .card {
-  background: var(--surface);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-card), inset 0 1px 0 var(--glass-highlight);
-  backdrop-filter: blur(var(--blur-glass)) saturate(160%);
-  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
   padding: var(--pad);
   transition: border-color var(--dur-fast), box-shadow var(--dur-fast), transform var(--dur-fast);
 }
@@ -624,43 +635,15 @@ body.sidebar-collapsed .tab .nav-label { display: none; }
 .page-indicator { font-family: var(--font-head); font-size: 13px; color: var(--text-2); min-width: 72px; text-align: center; }
 
 /* ── executive overview ─────────────────────────────────────────── */
+/* Single remaining child (the device-age ring) since the narrative/flags
+   band was removed (per user) — centered rather than space-between. */
 .exec-hero {
-  display: flex; align-items: center; justify-content: space-between; gap: 28px;
+  display: flex; align-items: center; justify-content: center; gap: 28px;
   margin-bottom: var(--gap);
   background:
     radial-gradient(30rem 16rem at 100% 0%, rgba(229, 52, 79, 0.10), transparent 60%),
     var(--surface);
 }
-.exec-hero-main { flex: 1; }
-.exec-eyebrow {
-  font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
-  color: var(--primary);
-}
-.exec-narrative {
-  font-size: clamp(18px, 2vw, 23px); line-height: 1.5; font-weight: 400;
-  color: var(--text-1); margin: 8px 0 0; max-width: 60ch;
-}
-.exec-narrative b { font-weight: 700; }
-.exec-narrative .up { color: var(--ok); } .exec-narrative .down { color: var(--danger); }
-.exec-flags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.exec-flag {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 6px 12px; font-size: 13px; font-weight: 500;
-  border-radius: 99px; border: 1px solid var(--border-strong);
-  background: var(--surface-2); color: var(--text-2);
-}
-.exec-flag svg { width: 15px; height: 15px; }
-.exec-flag.is-alert { color: var(--danger); border-color: rgba(255,98,98,.4); background: rgba(255,98,98,.08); }
-.exec-flag.is-good { color: var(--ok); border-color: rgba(47,211,155,.4); background: rgba(47,211,155,.08); }
-
-/* per-page executive summary band — lighter than the Overview hero (no ring) */
-.page-summary {
-  margin-bottom: var(--gap);
-  background:
-    radial-gradient(28rem 14rem at 100% 0%, rgba(229, 52, 79, 0.07), transparent 60%),
-    var(--surface);
-}
-.page-summary .exec-narrative { font-size: clamp(16px, 1.5vw, 19px); max-width: 82ch; }
 
 /* ── global filter control (topbar button + chips) ───────────────── */
 .filter-control { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -690,8 +673,6 @@ body.sidebar-collapsed .tab .nav-label { display: none; }
   font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
   color: var(--text-3); margin: 0 0 8px;
 }
-.filter-checklist { display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; }
-.filter-checklist label { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-2); }
 .filter-daterange { display: flex; gap: 12px; flex-wrap: wrap; }
 .filter-daterange label { font-size: 12px; color: var(--text-3); display: flex; flex-direction: column; gap: 4px; }
 .filter-note { font-size: 11.5px; color: var(--text-3); margin: 8px 0 0; }
@@ -1158,8 +1139,16 @@ tr.row-flagged > td { background: rgba(248, 113, 113, 0.06); }
 }
 /* auto-fit → columns grow/shrink with the viewport width (resolution-adaptive) */
 .num-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; }
-.num-card { display: flex; flex-direction: column; gap: 16px; }
-.num-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+/* min-width:0 at every level: .num-card is a .num-grid item, .num-compare/
+   .num-tables are its flex children — without it each defaults to its
+   content's min-content and forces the 340px grid track wider than the
+   card, which was overflowing the page at desktop widths. grid-column
+   overrides the shared .card rule's "span 12" (the .card-grid 12-column
+   system) — .num-grid isn't that grid, so every .num-card was demanding a
+   12-wide span it couldn't get, collapsing all cards into one overlapping
+   stack instead of laying them out side by side. */
+.num-card { display: flex; flex-direction: column; gap: 16px; min-width: 0; grid-column: auto; }
+.num-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; min-width: 0; }
 .num-cell {
   display: flex; flex-direction: column; gap: 4px; padding: 14px 16px;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -1168,7 +1157,7 @@ tr.row-flagged > td { background: rgba(248, 113, 113, 0.06); }
 .num-cell-val { font-family: var(--font-head); font-size: 26px; font-weight: 800; color: var(--text-1); font-variant-numeric: tabular-nums; line-height: 1.1; }
 .num-cell.is-hi .num-cell-val { color: var(--primary); }
 .num-cell-label { font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-3); }
-.num-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.num-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; min-width: 0; }
 .num-table { min-width: 0; }
 .num-table h3 {
   margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;

@@ -541,18 +541,24 @@ function apiGetDashboardCD(options) {
     // payload can exceed withCache's 100KB-per-key limit. cachePutLarge/
     // cacheGetLarge (gzip + chunked, already used for Center-360) replace
     // withCache here — same TTL, no size ceiling.
-    var cacheKey = 'dashcd_v7_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
+    // v8: Support/CS-vs-Service split added 10 new zoho*/sla* Tech/Nontech
+    // spec keys to the payload (see Queries.js).
+    var cacheKey = 'dashcd_v8_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
     }
     // assetHealth is excluded here (2026-07-30): Center 360 now carries
     // mtbf_hrs/failures directly, so nothing consumes this endpoint's
-    // assetHealth anymore. reliability is NOT excluded — it stays computed
-    // (Overview's separate apiGetExecOverviewCD endpoint depends on the same
-    // spec definition, and this array is otherwise harmless/unused here).
+    // assetHealth anymore. zohoKpis/slaKpis/zohoTrend are excluded here
+    // (Support/CS-vs-Service split): this endpoint reads only the
+    // *Tech/*Nontech siblings now (see Queries.js), so the combined versions
+    // would just be 3 wasted BigQuery queries. reliability/zohoKpis/slaKpis/
+    // zohoTrend are NOT excluded from the SPEC BUILDER itself — Overview's
+    // separate apiGetExecOverviewCD endpoint depends on that same spec
+    // definition; only THIS endpoint's own query list drops them.
     var dashSpecs = buildDashboardQuerySpecsCD(hub, filters).filter(function (s) {
-      return s.key !== 'assetHealth';
+      return ['assetHealth', 'zohoKpis', 'slaKpis', 'zohoTrend'].indexOf(s.key) === -1;
     });
     var results = runQueriesParallel(dashSpecs);
     enrichCenterNamesCD_(results.reliability);

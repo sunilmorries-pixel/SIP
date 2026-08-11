@@ -258,9 +258,9 @@ var Charts = (function () {
 
   function assetStatus(rows) { horizontalBar('chartAssetStatus', rows, 'label', 'cnt', C.primary); }
   function assetTypes(rows)  { horizontalBar('chartAssetTypes', rows, 'label', 'cnt', C.violet); }
-  function zohoCategories(rows) { horizontalBar('chartZohoCategories', rows, 'category', 'cnt', C.info); }
+  function zohoCategories(rows, id) { horizontalBar(id || 'chartZohoCategories', rows, 'category', 'cnt', C.info); }
   function firmware(rows)    { horizontalBar('chartFirmware', rows, 'firmware', 'devices', C.info); }
-  function zohoSegment(rows) { horizontalBar('chartZohoSegment', rows, 'segment', 'cnt', C.primary); }
+  function zohoSegment(rows, id) { horizontalBar(id || 'chartZohoSegment', rows, 'segment', 'cnt', C.primary); }
 
   // Matches the Asset-page Device age chart's bands exactly (see deviceAges below).
   var AGE_ORDER = ['<1y', '1-2y', '2-3y', '3-5y', '5y+'];
@@ -350,9 +350,10 @@ var Charts = (function () {
 
   var CHANNEL_PALETTE = [C.primary, C.info, C.accent, C.ok, C.violet, C.warn, C.orange, C.muted];
 
-  function zohoChannel(rows) {
-    if (!rows || !rows.length) return showEmpty('chartZohoChannel');
-    render('chartZohoChannel', base({
+  function zohoChannel(rows, id) {
+    id = id || 'chartZohoChannel';
+    if (!rows || !rows.length) return showEmpty(id);
+    render(id, base({
       legend: { bottom: 0, icon: 'circle', textStyle: { color: C.text, fontSize: 12 }, itemWidth: 9, itemHeight: 9 },
       series: [{
         type: 'pie', radius: ['55%', '78%'], center: ['50%', '42%'],
@@ -400,9 +401,10 @@ var Charts = (function () {
     }));
   }
 
-  function zohoStatus(rows) {
-    if (!rows || !rows.length) return showEmpty('chartZohoStatus');
-    render('chartZohoStatus', base({
+  function zohoStatus(rows, id) {
+    id = id || 'chartZohoStatus';
+    if (!rows || !rows.length) return showEmpty(id);
+    render(id, base({
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
       xAxis: catAxis({ data: rows.map(function (r) { return r.status; }),
         axisLabel: { color: C.textDim, fontSize: 10, interval: 0, rotate: 28, width: 110, overflow: 'truncate' } }),
@@ -419,9 +421,10 @@ var Charts = (function () {
     High: C.danger, Medium: C.warn, Low: C.ok, Unset: C.muted, None: C.muted
   };
 
-  function zohoPriority(rows) {
-    if (!rows || !rows.length) return showEmpty('chartZohoPriority');
-    render('chartZohoPriority', base({
+  function zohoPriority(rows, id) {
+    id = id || 'chartZohoPriority';
+    if (!rows || !rows.length) return showEmpty(id);
+    render(id, base({
       legend: { bottom: 0, icon: 'circle', textStyle: { color: C.text, fontSize: 12 }, itemWidth: 9, itemHeight: 9 },
       series: [{
         type: 'pie', radius: ['55%', '78%'], center: ['50%', '44%'],

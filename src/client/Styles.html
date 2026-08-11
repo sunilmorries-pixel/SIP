@@ -1076,15 +1076,6 @@ tr.row-flagged > td { background: rgba(248, 113, 113, 0.06); }
   font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--text-3);
 }
-.sla-split { display: flex; flex-direction: column; gap: 10px; }
-.sla-bar-row { display: grid; grid-template-columns: 76px 1fr 46px; align-items: center; gap: 10px; }
-.sla-bar-label { font-size: 12px; color: var(--text-2); }
-.sla-bar-track { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
-.sla-bar-fill { display: block; height: 100%; border-radius: 999px; background: var(--info); transition: width 0.4s ease; }
-.sla-bar-fill.sev-ok { background: var(--ok); }
-.sla-bar-fill.sev-warn { background: var(--warn); }
-.sla-bar-fill.sev-danger { background: var(--danger); }
-.sla-bar-val { font-size: 13px; font-weight: 600; text-align: right; color: var(--text-1); font-variant-numeric: tabular-nums; }
 .sla-foot { font-size: 13px; color: var(--text-2); }
 .sla-foot strong { color: var(--text-1); }
 .batch-signal-meta dd.txt-danger { color: var(--danger); }
@@ -1132,8 +1123,8 @@ tr.row-flagged > td { background: rgba(248, 113, 113, 0.06); }
 .btn.is-active:hover { background: var(--primary); }
 
 /* ── Numbers page (source reconciliation, responsive by resolution) ─ */
-.num-lead { margin: 4px 4px 20px; font-size: 13px; line-height: 1.6; color: var(--text-2); max-width: 90ch; }
-.num-lead code {
+.page-lead { margin: 4px 4px 20px; font-size: 13px; line-height: 1.6; color: var(--text-2); max-width: 90ch; }
+.page-lead code {
   font-family: var(--font-mono, monospace); font-size: 12px;
   background: var(--surface-2); padding: 1px 6px; border-radius: 6px; color: var(--text-1);
 }

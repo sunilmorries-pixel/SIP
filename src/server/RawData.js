@@ -17,6 +17,10 @@ function rawSources_() {
   return {
     center_details: { label: 'Center Details', kind: 'bq', table: 'center_details', orderBy: 'CenterID' },
     cloud_devices: { label: 'Cloud Devices', kind: 'bq', table: 'cloud_devices', orderBy: 'DeviceID' },
+    // Deliberately points at the raw table, not zohoDedupSql_() (Queries.js) —
+    // this page's whole purpose is reconciliation against Zoho itself, so it
+    // must show the true row count including the sync's duplicate inserts,
+    // not a cleaned-up view that would disagree with Zoho's own export.
     zoho_data: { label: 'Zoho Tickets', kind: 'bq', table: 'zoho_data', orderBy: 'ticketNumber' },
     jira_data: { label: 'Jira Devices', kind: 'bq', table: 'jira_data', orderBy: 'issue_key' }
     // Removed as user-facing sources: device_metrics (no other app usage),

@@ -22,6 +22,37 @@ function T(table) {
 }
 
 /**
+ * Deduplicated zoho_data — the Zoho→BigQuery sync writes some tickets more
+ * than once (confirmed 2026-08-12: ~37 tickets tripled in the sandbox,
+ * ticketNumber IS NOT NULL for 100% of rows there), which silently inflates
+ * every COUNT(*)/row-list query reading the base table directly. Collapses
+ * to one row per ticketNumber (the most-recently-created copy) via QUALIFY,
+ * evaluated on a SELECT * so ticketNumber/CreatedAt stay in scope even for
+ * callers that only project a narrow column list afterward.
+ *
+ * Drop-in replacement for T('zoho_data') at every real call site (verified:
+ * none of them alias the table or use a `zoho_data.column`-qualified
+ * reference, so an unaliased parenthesized subquery substitutes cleanly).
+ * Deliberately NOT used by RawData.js's raw browser/export — that page's
+ * whole purpose is showing the true unfiltered rows for reconciliation
+ * against Zoho itself, duplicates included.
+ *
+ * CreatedAt is a STRING (CONFIG.ZOHO_DT_FORMAT), not a native timestamp — the
+ * ORDER BY must parse it (SAFE.PARSE_DATETIME), not sort the raw string,
+ * which would order by day-of-month/month-name text instead of real time.
+ * The IFNULL fallback guards against any future NULL ticketNumber row
+ * merging with others of the same NULL rather than staying its own row.
+ * @return {string}
+ */
+function zohoDedupSql_() {
+  return "(SELECT * FROM " + T('zoho_data') +
+    " QUALIFY ROW_NUMBER() OVER (" +
+    "PARTITION BY IFNULL(CAST(ticketNumber AS STRING), GENERATE_UUID()) " +
+    "ORDER BY SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) DESC" +
+    ") = 1)";
+}
+
+/**
  * LastTimeStamp is IST wall-time (see CONFIG.IST_OFFSET_MINUTES), so "now"
  * for heartbeat-recency comparisons must also be IST.
  * Functions (not top-level consts) because Apps Script executes files
@@ -189,7 +220,7 @@ function centerUptimeSql_(tailSelect) {
   return "WITH tix AS (" +
     " SELECT CenterID AS center_id, " + P + "CreatedAt) AS s, " +
     "  COALESCE(" + P + "ClosedAt), CURRENT_DATETIME()) AS e " +
-    " FROM " + T('zoho_data') + " WHERE CenterID IS NOT NULL " +
+    " FROM " + zohoDedupSql_() + " WHERE CenterID IS NOT NULL " +
     "  AND " + techBoolSql_("IFNULL(IssueCategory,'')") + " " +
     "  AND " + P + "CreatedAt) IS NOT NULL), " +
     "birth AS (SELECT centerid AS center_id, MIN(startdatetime) AS b " +
@@ -363,50 +394,13 @@ function buildDashboardQuerySpecs(hub, filters) {
         "FROM " + T('device_center_mapping') + " GROUP BY status"
     },
 
-    /* ═══════════ SUPPORT / CS VIEW — Zoho ticket analytics ══════════════ */
-    // zohoKpis/zohoTrend/slaKpis stay COMBINED (all tickets, no tech filter)
-    // — apiGetExecOverviewCD pulls these exact 3 keys for the Overview page,
-    // so they can't be scoped in place. The Tech/Non-Tech split for the
-    // Support/CS-vs-Service page split lives entirely in the *Tech/*Nontech
-    // siblings added right after each.
+    /* ═══════════ SUPPORT VIEW — Zoho ticket analytics (all tickets) ═════ */
     {
       key: 'zohoKpis',
       params: p,
       sql:
         "WITH t AS (SELECT status, " + zohoParsedDates_() + " " +
-        " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + ") " +
-        "SELECT " +
-        " COUNT(*) AS total_tickets, " +
-        " COUNTIF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS open_tickets, " +
-        " COUNTIF(created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 7 DAY)) AS created_7d, " +
-        " COUNTIF(closed >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 7 DAY)) AS closed_7d, " +
-        " ROUND(AVG(IF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + " AND created IS NOT NULL, " +
-        "   DATETIME_DIFF(CURRENT_DATETIME(), created, HOUR) / 24.0, NULL)), 1) AS avg_open_age_days " +
-        "FROM t"
-    },
-    {
-      key: 'zohoKpisTech',
-      params: p,
-      sql:
-        "WITH t AS (SELECT status, " + zohoParsedDates_() + " " +
-        " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond +
-        " AND " + techBoolSql_("IFNULL(IssueCategory,'')") + ") " +
-        "SELECT " +
-        " COUNT(*) AS total_tickets, " +
-        " COUNTIF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS open_tickets, " +
-        " COUNTIF(created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 7 DAY)) AS created_7d, " +
-        " COUNTIF(closed >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 7 DAY)) AS closed_7d, " +
-        " ROUND(AVG(IF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + " AND created IS NOT NULL, " +
-        "   DATETIME_DIFF(CURRENT_DATETIME(), created, HOUR) / 24.0, NULL)), 1) AS avg_open_age_days " +
-        "FROM t"
-    },
-    {
-      key: 'zohoKpisNontech',
-      params: p,
-      sql:
-        "WITH t AS (SELECT status, " + zohoParsedDates_() + " " +
-        " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond +
-        " AND NOT " + techBoolSql_("IFNULL(IssueCategory,'')") + ") " +
+        " FROM " + zohoDedupSql_() + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + ") " +
         "SELECT " +
         " COUNT(*) AS total_tickets, " +
         " COUNTIF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS open_tickets, " +
@@ -419,15 +413,12 @@ function buildDashboardQuerySpecs(hub, filters) {
     {
       // SLA compliance (CS-team catalog): resolved-within-target %, Tech vs
       // Non-Tech split, and breached / at-risk open tickets vs per-type SLA.
-      // Combined (all tickets) — Overview depends on this exact shape; see
-      // slaKpisTech/slaKpisNontech for the single-scoped Service/Support
-      // page versions (each drops the now-redundant is_tech split fields).
       key: 'slaKpis',
       params: p,
       sql:
         "WITH t AS (SELECT status, " + slaDaysCaseSql_("IFNULL(IssueCategory,'')") + " AS sla_days, " +
         techBoolSql_("IFNULL(IssueCategory,'')") + " AS is_tech, " + zohoParsedDates_() + " " +
-        " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + "), " +
+        " FROM " + zohoDedupSql_() + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + "), " +
         "s AS (SELECT sla_days, is_tech, " +
         " (status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL) AS resolved, " +
         " CASE WHEN status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL " +
@@ -445,91 +436,19 @@ function buildDashboardQuerySpecs(hub, filters) {
         "FROM s"
     },
     {
-      key: 'slaKpisTech',
-      params: p,
-      sql:
-        "WITH t AS (SELECT status, " + slaDaysCaseSql_("IFNULL(IssueCategory,'')") + " AS sla_days, " + zohoParsedDates_() + " " +
-        " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond +
-        " AND " + techBoolSql_("IFNULL(IssueCategory,'')") + "), " +
-        "s AS (SELECT sla_days, " +
-        " (status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL) AS resolved, " +
-        " CASE WHEN status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL " +
-        "   THEN DATETIME_DIFF(closed, created, HOUR) / 24.0 END AS res_days, " +
-        " (status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS is_open, " +
-        " CASE WHEN created IS NOT NULL THEN DATETIME_DIFF(CURRENT_DATETIME(), created, HOUR) / 24.0 END AS age_days " +
-        " FROM t) " +
-        "SELECT COUNTIF(resolved) AS resolved_n, " +
-        " ROUND(COUNTIF(resolved AND res_days <= sla_days) / NULLIF(COUNTIF(resolved), 0) * 100, 1) AS within_pct, " +
-        " COUNTIF(is_open AND age_days > sla_days) AS breached_open, " +
-        " COUNTIF(is_open AND age_days <= sla_days AND age_days > 0.75 * sla_days) AS atrisk_open, " +
-        " ROUND(AVG(IF(resolved, res_days, NULL)), 1) AS avg_res_days " +
-        "FROM s"
-    },
-    {
-      key: 'slaKpisNontech',
-      params: p,
-      sql:
-        "WITH t AS (SELECT status, " + slaDaysCaseSql_("IFNULL(IssueCategory,'')") + " AS sla_days, " + zohoParsedDates_() + " " +
-        " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond +
-        " AND NOT " + techBoolSql_("IFNULL(IssueCategory,'')") + "), " +
-        "s AS (SELECT sla_days, " +
-        " (status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL) AS resolved, " +
-        " CASE WHEN status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL " +
-        "   THEN DATETIME_DIFF(closed, created, HOUR) / 24.0 END AS res_days, " +
-        " (status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS is_open, " +
-        " CASE WHEN created IS NOT NULL THEN DATETIME_DIFF(CURRENT_DATETIME(), created, HOUR) / 24.0 END AS age_days " +
-        " FROM t) " +
-        "SELECT COUNTIF(resolved) AS resolved_n, " +
-        " ROUND(COUNTIF(resolved AND res_days <= sla_days) / NULLIF(COUNTIF(resolved), 0) * 100, 1) AS within_pct, " +
-        " COUNTIF(is_open AND age_days > sla_days) AS breached_open, " +
-        " COUNTIF(is_open AND age_days <= sla_days AND age_days > 0.75 * sla_days) AS atrisk_open, " +
-        " ROUND(AVG(IF(resolved, res_days, NULL)), 1) AS avg_res_days " +
-        "FROM s"
-    },
-    // slaByType/zohoOpenByStatus/zohoCategories/zohoPriority/zohoChannel/
-    // zohoSegment are exclusive to Support/CS+Service (not read by Overview
-    // or any other endpoint), so — unlike the 3 combined keys above — these
-    // are scoped to Non-Tech IN PLACE (keeping the original key = the
-    // Support/CS page) with a *Tech sibling added for the Service page.
-    // Each pair keeps its own LIMIT/HAVING cutoff independently scoped
-    // (rather than fetching one combined top-N and filtering client-side)
-    // so a page's "top N" is genuinely that scope's top N, not a filtered
-    // slice of the combined ranking.
-    {
       // Worst issue types by SLA breach rate (min 20 resolved for signal).
-      // Non-Tech scope (Support/CS) — see slaByTypeTech for Service.
       key: 'slaByType',
       params: p,
       sql:
         "WITH t AS (SELECT IFNULL(NULLIF(TRIM(IssueCategory), ''), 'Uncategorised') AS category, status, " +
-        slaDaysCaseSql_("IFNULL(IssueCategory,'')") + " AS sla_days, " +
-        zohoParsedDates_() + " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond +
-        " AND NOT " + techBoolSql_("IFNULL(IssueCategory,'')") + "), " +
-        "s AS (SELECT category, sla_days, " +
+        slaDaysCaseSql_("IFNULL(IssueCategory,'')") + " AS sla_days, " + techBoolSql_("IFNULL(IssueCategory,'')") + " AS is_tech, " +
+        zohoParsedDates_() + " FROM " + zohoDedupSql_() + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + "), " +
+        "s AS (SELECT category, sla_days, is_tech, " +
         " (status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL) AS resolved, " +
         " CASE WHEN status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL " +
         "   THEN DATETIME_DIFF(closed, created, HOUR) / 24.0 END AS res_days " +
         " FROM t) " +
-        "SELECT category, ANY_VALUE(sla_days) AS sla_days, " +
-        " COUNT(*) AS tickets, COUNTIF(resolved) AS resolved_n, " +
-        " ROUND(COUNTIF(resolved AND res_days > sla_days) / NULLIF(COUNTIF(resolved), 0) * 100, 1) AS breach_pct, " +
-        " ROUND(AVG(IF(resolved, res_days, NULL)), 1) AS avg_res_days " +
-        "FROM s GROUP BY category HAVING resolved_n >= 20 ORDER BY breach_pct DESC, tickets DESC LIMIT 15"
-    },
-    {
-      key: 'slaByTypeTech',
-      params: p,
-      sql:
-        "WITH t AS (SELECT IFNULL(NULLIF(TRIM(IssueCategory), ''), 'Uncategorised') AS category, status, " +
-        slaDaysCaseSql_("IFNULL(IssueCategory,'')") + " AS sla_days, " +
-        zohoParsedDates_() + " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond +
-        " AND " + techBoolSql_("IFNULL(IssueCategory,'')") + "), " +
-        "s AS (SELECT category, sla_days, " +
-        " (status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL) AS resolved, " +
-        " CASE WHEN status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL " +
-        "   THEN DATETIME_DIFF(closed, created, HOUR) / 24.0 END AS res_days " +
-        " FROM t) " +
-        "SELECT category, ANY_VALUE(sla_days) AS sla_days, " +
+        "SELECT category, ANY_VALUE(sla_days) AS sla_days, ANY_VALUE(is_tech) AS is_tech, " +
         " COUNT(*) AS tickets, COUNTIF(resolved) AS resolved_n, " +
         " ROUND(COUNTIF(resolved AND res_days > sla_days) / NULLIF(COUNTIF(resolved), 0) * 100, 1) AS breach_pct, " +
         " ROUND(AVG(IF(resolved, res_days, NULL)), 1) AS avg_res_days " +
@@ -539,35 +458,7 @@ function buildDashboardQuerySpecs(hub, filters) {
       key: 'zohoTrend',
       params: p,
       sql:
-        "WITH t AS (SELECT " + zohoParsedDates_() + " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + ") " +
-        "SELECT month, SUM(created_n) AS created, SUM(closed_n) AS closed FROM (" +
-        " SELECT FORMAT_DATETIME('%Y-%m', created) AS month, COUNT(*) AS created_n, 0 AS closed_n " +
-        "  FROM t WHERE created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 12 MONTH) GROUP BY month " +
-        " UNION ALL " +
-        " SELECT FORMAT_DATETIME('%Y-%m', closed), 0, COUNT(*) " +
-        "  FROM t WHERE closed >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 12 MONTH) GROUP BY 1" +
-        ") GROUP BY month ORDER BY month"
-    },
-    {
-      key: 'zohoTrendTech',
-      params: p,
-      sql:
-        "WITH t AS (SELECT " + zohoParsedDates_() + " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond +
-        " AND " + techBoolSql_("IFNULL(IssueCategory,'')") + ") " +
-        "SELECT month, SUM(created_n) AS created, SUM(closed_n) AS closed FROM (" +
-        " SELECT FORMAT_DATETIME('%Y-%m', created) AS month, COUNT(*) AS created_n, 0 AS closed_n " +
-        "  FROM t WHERE created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 12 MONTH) GROUP BY month " +
-        " UNION ALL " +
-        " SELECT FORMAT_DATETIME('%Y-%m', closed), 0, COUNT(*) " +
-        "  FROM t WHERE closed >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 12 MONTH) GROUP BY 1" +
-        ") GROUP BY month ORDER BY month"
-    },
-    {
-      key: 'zohoTrendNontech',
-      params: p,
-      sql:
-        "WITH t AS (SELECT " + zohoParsedDates_() + " FROM " + T('zoho_data') + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond +
-        " AND NOT " + techBoolSql_("IFNULL(IssueCategory,'')") + ") " +
+        "WITH t AS (SELECT " + zohoParsedDates_() + " FROM " + zohoDedupSql_() + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + ") " +
         "SELECT month, SUM(created_n) AS created, SUM(closed_n) AS closed FROM (" +
         " SELECT FORMAT_DATETIME('%Y-%m', created) AS month, COUNT(*) AS created_n, 0 AS closed_n " +
         "  FROM t WHERE created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 12 MONTH) GROUP BY month " +
@@ -580,18 +471,8 @@ function buildDashboardQuerySpecs(hub, filters) {
       key: 'zohoOpenByStatus',
       params: p,
       sql:
-        "SELECT status, COUNT(*) AS cnt FROM " + T('zoho_data') + " " +
-        "WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES +
-        " AND NOT " + techBoolSql_("IFNULL(IssueCategory,'')") + " " +
-        "GROUP BY status ORDER BY cnt DESC LIMIT 10"
-    },
-    {
-      key: 'zohoOpenByStatusTech',
-      params: p,
-      sql:
-        "SELECT status, COUNT(*) AS cnt FROM " + T('zoho_data') + " " +
-        "WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES +
-        " AND " + techBoolSql_("IFNULL(IssueCategory,'')") + " " +
+        "SELECT status, COUNT(*) AS cnt FROM " + zohoDedupSql_() + " " +
+        "WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + " " +
         "GROUP BY status ORDER BY cnt DESC LIMIT 10"
     },
     {
@@ -600,18 +481,7 @@ function buildDashboardQuerySpecs(hub, filters) {
       sql:
         "WITH t AS (SELECT IssueCategory, HubName, hub_master_segment, CenterID, CreatedAt, " +
         " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
-        " FROM " + T('zoho_data') + " WHERE NOT " + techBoolSql_("IFNULL(IssueCategory,'')") + ") " +
-        "SELECT IFNULL(NULLIF(TRIM(IssueCategory), ''), 'Uncategorised') AS category, COUNT(*) AS cnt " +
-        "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
-        "GROUP BY category ORDER BY cnt DESC LIMIT 10"
-    },
-    {
-      key: 'zohoCategoriesTech',
-      params: p,
-      sql:
-        "WITH t AS (SELECT IssueCategory, HubName, hub_master_segment, CenterID, CreatedAt, " +
-        " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
-        " FROM " + T('zoho_data') + " WHERE " + techBoolSql_("IFNULL(IssueCategory,'')") + ") " +
+        " FROM " + zohoDedupSql_() + ") " +
         "SELECT IFNULL(NULLIF(TRIM(IssueCategory), ''), 'Uncategorised') AS category, COUNT(*) AS cnt " +
         "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
         "GROUP BY category ORDER BY cnt DESC LIMIT 10"
@@ -622,18 +492,7 @@ function buildDashboardQuerySpecs(hub, filters) {
       sql:
         "WITH t AS (SELECT priority, HubName, hub_master_segment, CenterID, CreatedAt, " +
         " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
-        " FROM " + T('zoho_data') + " WHERE NOT " + techBoolSql_("IFNULL(IssueCategory,'')") + ") " +
-        "SELECT IFNULL(NULLIF(TRIM(priority), ''), 'Unset') AS priority, COUNT(*) AS cnt " +
-        "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
-        "GROUP BY priority ORDER BY cnt DESC LIMIT 6"
-    },
-    {
-      key: 'zohoPriorityTech',
-      params: p,
-      sql:
-        "WITH t AS (SELECT priority, HubName, hub_master_segment, CenterID, CreatedAt, " +
-        " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
-        " FROM " + T('zoho_data') + " WHERE " + techBoolSql_("IFNULL(IssueCategory,'')") + ") " +
+        " FROM " + zohoDedupSql_() + ") " +
         "SELECT IFNULL(NULLIF(TRIM(priority), ''), 'Unset') AS priority, COUNT(*) AS cnt " +
         "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
         "GROUP BY priority ORDER BY cnt DESC LIMIT 6"
@@ -644,18 +503,7 @@ function buildDashboardQuerySpecs(hub, filters) {
       sql:
         "WITH t AS (SELECT Channel, HubName, hub_master_segment, CenterID, CreatedAt, " +
         " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
-        " FROM " + T('zoho_data') + " WHERE NOT " + techBoolSql_("IFNULL(IssueCategory,'')") + ") " +
-        "SELECT IFNULL(NULLIF(TRIM(Channel), ''), 'Unknown') AS channel, COUNT(*) AS cnt " +
-        "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
-        "GROUP BY channel ORDER BY cnt DESC LIMIT 8"
-    },
-    {
-      key: 'zohoChannelTech',
-      params: p,
-      sql:
-        "WITH t AS (SELECT Channel, HubName, hub_master_segment, CenterID, CreatedAt, " +
-        " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
-        " FROM " + T('zoho_data') + " WHERE " + techBoolSql_("IFNULL(IssueCategory,'')") + ") " +
+        " FROM " + zohoDedupSql_() + ") " +
         "SELECT IFNULL(NULLIF(TRIM(Channel), ''), 'Unknown') AS channel, COUNT(*) AS cnt " +
         "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
         "GROUP BY channel ORDER BY cnt DESC LIMIT 8"
@@ -666,18 +514,7 @@ function buildDashboardQuerySpecs(hub, filters) {
       sql:
         "WITH t AS (SELECT hub_master_segment, HubName, CenterID, CreatedAt, " +
         " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
-        " FROM " + T('zoho_data') + " WHERE NOT " + techBoolSql_("IFNULL(IssueCategory,'')") + ") " +
-        "SELECT " + segmentGroupSql_('hub_master_segment', 'Unknown') + " AS segment, COUNT(*) AS cnt " +
-        "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
-        "GROUP BY segment ORDER BY cnt DESC LIMIT 8"
-    },
-    {
-      key: 'zohoSegmentTech',
-      params: p,
-      sql:
-        "WITH t AS (SELECT hub_master_segment, HubName, CenterID, CreatedAt, " +
-        " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
-        " FROM " + T('zoho_data') + " WHERE " + techBoolSql_("IFNULL(IssueCategory,'')") + ") " +
+        " FROM " + zohoDedupSql_() + ") " +
         "SELECT " + segmentGroupSql_('hub_master_segment', 'Unknown') + " AS segment, COUNT(*) AS cnt " +
         "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
         "GROUP BY segment ORDER BY cnt DESC LIMIT 8"
@@ -794,7 +631,7 @@ function buildCenterSourceSpecs() {
         " COUNTIF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS open_tickets, " +
         " ANY_VALUE(CASE WHEN NULLIF(TRIM(hub_master_segment), '') IS NULL THEN NULL " +
         "  ELSE " + segmentGroupSql_('hub_master_segment') + " END) AS segment " +
-        "FROM " + T('zoho_data') + " WHERE CenterID IS NOT NULL " +
+        "FROM " + zohoDedupSql_() + " WHERE CenterID IS NOT NULL " +
         "GROUP BY CenterID"
     }
   ];
@@ -842,7 +679,7 @@ function buildCenterDetailSpecs(centerId) {
         // blank-LABEL default would otherwise show the literal string "(blank)".
         " ANY_VALUE(CASE WHEN NULLIF(TRIM(hub_master_segment), '') IS NULL THEN NULL " +
         "  ELSE " + segmentGroupSql_('hub_master_segment') + " END) AS segment " +
-        "FROM " + T('zoho_data') + " WHERE CenterID = @cid"
+        "FROM " + zohoDedupSql_() + " WHERE CenterID = @cid"
     },
     {
       key: 'openTickets',
@@ -852,7 +689,7 @@ function buildCenterDetailSpecs(centerId) {
         " IFNULL(NULLIF(TRIM(subject),''),'(no subject)') AS subject, " +
         " IFNULL(NULLIF(TRIM(IssueCategory),''),'') AS category, " +
         " IFNULL(TicketLink,'') AS link " +
-        "FROM " + T('zoho_data') + " " +
+        "FROM " + zohoDedupSql_() + " " +
         "WHERE CenterID = @cid AND status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + " " +
         "ORDER BY SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) DESC " +
         "LIMIT 25"
@@ -869,7 +706,7 @@ function buildCenterDetailSpecs(centerId) {
         " IFNULL(NULLIF(TRIM(IssueCategory),''),'') AS category, " +
         " IFNULL(TicketLink,'') AS link, " +
         " CAST(SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS STRING) AS created " +
-        "FROM " + T('zoho_data') + " " +
+        "FROM " + zohoDedupSql_() + " " +
         "WHERE CenterID = @cid " +
         "ORDER BY SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) DESC " +
         "LIMIT 50"

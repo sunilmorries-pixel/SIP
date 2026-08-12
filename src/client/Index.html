@@ -28,11 +28,15 @@
     </button>
     <button class="tab" id="tab-support" role="tab" aria-selected="false" aria-controls="panel-support" tabindex="-1">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span class="nav-label">Support / CS</span>
+      <span class="nav-label">Support</span>
     </button>
     <button class="tab" id="tab-service" role="tab" aria-selected="false" aria-controls="panel-service" tabindex="-1">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span class="nav-label">Service</span>
+    </button>
+    <button class="tab" id="tab-tom" role="tab" aria-selected="false" aria-controls="panel-tom" tabindex="-1">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 3h6v3H9zM8 10h8M8 14h8M8 18h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="nav-label">TOM</span>
     </button>
     <button class="tab" id="tab-asset" role="tab" aria-selected="false" aria-controls="panel-asset" tabindex="-1">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m3.27 6.96 8.73 5.05 8.73-5.05M12 22.08V12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -416,17 +420,15 @@
     </div>
   </section>
 
-  <!-- ══════════════ VIEW 3 · SUPPORT / CS ══════════════ -->
+  <!-- ══════════════ VIEW 3 · SUPPORT ══════════════ -->
   <section id="panel-support" class="panel" role="tabpanel" aria-labelledby="tab-support" hidden>
-    <p class="page-lead">Non-Tech tickets — billing, admin, and general customer queries. Device/hardware/network
-      issues are on the <strong>Service</strong> page instead.</p>
     <div id="supportKpiGrid" class="kpi-grid"></div>
 
     <div class="card-grid">
       <article class="card span-5">
         <header class="card-head">
           <h2 class="card-title">SLA compliance</h2>
-          <p class="card-sub">Resolved within target · Non-Tech tickets</p>
+          <p class="card-sub">Resolved within target · SLA catalog (Tech / Non-Tech)</p>
         </header>
         <div id="slaCompliance" class="sla-compliance"><!-- rendered by App.html --></div>
       </article>
@@ -442,6 +444,7 @@
             <thead>
               <tr>
                 <th scope="col">Issue type</th>
+                <th scope="col">Class</th>
                 <th scope="col" class="num">SLA</th>
                 <th scope="col" class="num">Tickets</th>
                 <th scope="col" class="num">Breach %</th>
@@ -510,101 +513,34 @@
     </div>
   </section>
 
-  <!-- ══════════════ VIEW 4 · SERVICE (Tech tickets) ══════════════ -->
+  <!-- ══════════════ VIEW 4 · SERVICE ══════════════ -->
   <section id="panel-service" class="panel" role="tabpanel" aria-labelledby="tab-service" hidden>
-    <p class="page-lead">Tech tickets — device, hardware, and network issues. Billing/admin/general queries are
-      on the <strong>Support / CS</strong> page instead.</p>
+    <p class="page-lead">Service tickets — this page is awaiting its own data source (not Zoho). The
+      <strong>Support</strong> page keeps every Zoho ticket in the meantime.</p>
     <div id="serviceKpiGrid" class="kpi-grid"></div>
 
     <div class="card-grid">
-      <article class="card span-5">
-        <header class="card-head">
-          <h2 class="card-title">SLA compliance</h2>
-          <p class="card-sub">Resolved within target · Tech tickets</p>
-        </header>
-        <div id="slaComplianceSvc" class="sla-compliance"><!-- rendered by App.html --></div>
+      <article class="card span-12 empty-state-card">
+        <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <h2 class="card-title">Data source not yet connected</h2>
+        <p class="card-sub">Service will show its own charts and SLA breakdown once that source is wired up.</p>
       </article>
-
-      <article class="card span-7">
-        <header class="card-head">
-          <h2 class="card-title">SLA breach by issue type</h2>
-          <p class="card-sub">Highest breach rate first · ≥20 resolved tickets</p>
-        </header>
-        <div class="table-scroll">
-          <table class="data-table" id="slaTypeTableSvc">
-            <caption class="sr-only">Tech issue types ranked by SLA breach rate</caption>
-            <thead>
-              <tr>
-                <th scope="col">Issue type</th>
-                <th scope="col" class="num">SLA</th>
-                <th scope="col" class="num">Tickets</th>
-                <th scope="col" class="num">Breach %</th>
-                <th scope="col" class="num">Avg days</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </article>
-
-      <article class="card span-8">
-        <header class="card-head">
-          <h2 class="card-title">Service ticket flow</h2>
-          <p class="card-sub">Zoho tickets created vs closed, last 12 months</p>
-        </header>
-        <div id="chartZohoTrendSvc" class="chart chart-tall" role="img"
-             aria-label="Line chart of service tickets created versus closed per month"></div>
-      </article>
-
-      <article class="card span-4">
-        <header class="card-head">
-          <h2 class="card-title">Priority mix</h2>
-          <p class="card-sub">Tickets created in the last 90 days</p>
-        </header>
-        <div id="chartZohoPrioritySvc" class="chart chart-tall" role="img"
-             aria-label="Donut chart of service ticket priorities"></div>
-      </article>
-
-      <article class="card span-4">
-        <header class="card-head">
-          <h2 class="card-title">Service backlog</h2>
-          <p class="card-sub">Current open backlog by status · all-time</p>
-        </header>
-        <div id="chartZohoStatusSvc" class="chart" role="img"
-             aria-label="Bar chart of open service tickets by status"></div>
-      </article>
-
-      <article class="card span-4">
-        <header class="card-head">
-          <h2 class="card-title">Top device issue categories</h2>
-          <p class="card-sub">Last 90 days</p>
-        </header>
-        <div id="chartZohoCategoriesSvc" class="chart" role="img"
-             aria-label="Horizontal bar chart of most frequent device issue categories"></div>
-      </article>
-
-      <article class="card span-4">
-        <header class="card-head">
-          <h2 class="card-title">Intake channels</h2>
-          <p class="card-sub">Where service tickets come from · last 90 days</p>
-        </header>
-        <div id="chartZohoChannelSvc" class="chart" role="img"
-             aria-label="Donut chart of service tickets by intake channel"></div>
-      </article>
-
-      <article class="card span-12">
-        <header class="card-head">
-          <h2 class="card-title">Service tickets by customer segment</h2>
-          <p class="card-sub">Hub master segment · last 90 days</p>
-        </header>
-        <div id="chartZohoSegmentSvc" class="chart" role="img"
-             aria-label="Horizontal bar chart of service tickets by customer segment"></div>
-      </article>
-
     </div>
   </section>
 
-  <!-- ══════════════ VIEW 5 · MAP (Assets & Centers) ══════════════ -->
+  <!-- ══════════════ VIEW 5 · TOM ══════════════ -->
+  <section id="panel-tom" class="panel" role="tabpanel" aria-labelledby="tab-tom" hidden>
+    <p class="page-lead">TOM — this page is awaiting its data source.</p>
+    <div class="card-grid">
+      <article class="card span-12 empty-state-card">
+        <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 3h6v3H9zM8 10h8M8 14h8M8 18h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <h2 class="card-title">Data source not yet connected</h2>
+        <p class="card-sub">TOM will show its own charts and metrics once that source is wired up.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ══════════════ VIEW 6 · MAP (Assets & Centers) ══════════════ -->
   <section id="panel-map" class="panel" role="tabpanel" aria-labelledby="tab-map" hidden>
     <div id="mapKpiGrid" class="kpi-grid kpi-grid-4"></div>
 
@@ -661,7 +597,7 @@
     </div>
   </section>
 
-  <!-- ══════════════ VIEW 6 · TOP CUSTOMERS ══════════════ -->
+  <!-- ══════════════ VIEW 7 · TOP CUSTOMERS ══════════════ -->
   <section id="panel-topcust" class="panel" role="tabpanel" aria-labelledby="tab-topcust" hidden>
     <div id="tcKpiGrid" class="kpi-grid"></div>
 
@@ -721,7 +657,7 @@
     </div>
   </section>
 
-  <!-- ══════════════ VIEW 7 · NUMBERS (source reconciliation) ══════════════ -->
+  <!-- ══════════════ VIEW 8 · NUMBERS (source reconciliation) ══════════════ -->
   <section id="panel-numbers" class="panel" role="tabpanel" aria-labelledby="tab-numbers" hidden>
     <p class="page-lead">Counts only, from <code>center_details</code> — <strong>no baseline filter</strong>.
       <strong>Devices</strong> (Jira) and <strong>Tickets</strong> (Zoho) are source-independent.</p>
@@ -802,7 +738,7 @@
     </article>
   </section>
 
-  <!-- ══════════════ VIEW 8 · RAW DATA (source export/reconciliation) ══════════════ -->
+  <!-- ══════════════ VIEW 9 · RAW DATA (source export/reconciliation) ══════════════ -->
   <section id="panel-rawdata" class="panel" role="tabpanel" aria-labelledby="tab-rawdata" hidden>
     <p class="num-lead">Every column, straight from the source — <strong>no site filters apply on this page</strong>
       (no F2P exclusion, no Active-centers baseline, no segment/search).</p>

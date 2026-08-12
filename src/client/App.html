@@ -369,38 +369,24 @@
       geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
       deploymentAge: ['<1y', '1-2y', '2-3y', '3-5y', '5y+'].map(function (b) { return { band: b, devices: rnd(400, 3200) }; }),
       activeVsEnded: [{ status: 'SME', devices: 14316 }, { status: 'Government', devices: 4754 }, { status: 'LE', devices: 5107 }, { status: 'ECHO', devices: 788 }, { status: 'Project', devices: 65 }],
-      // Support/CS (Non-Tech) vs Service (Tech) — apiGetDashboardCD drops the
-      // combined zohoKpis/slaKpis/zohoTrend (Overview's own separate mock/
-      // endpoint still uses those), so only the *Tech/*Nontech siblings are
-      // mocked here, matching the real payload shape.
-      zohoKpisNontech: [{ open_tickets: 132, created_7d: 210, closed_7d: 224, avg_open_age_days: 5.1, total_tickets: 52340 }],
-      zohoKpisTech: [{ open_tickets: 79, created_7d: 130, closed_7d: 137, avg_open_age_days: 7.8, total_tickets: 32205 }],
-      slaKpisNontech: [{ resolved_n: 48210, within_pct: 74.6, breached_open: 198, atrisk_open: 11, avg_res_days: 12.4 }],
-      slaKpisTech: [{ resolved_n: 29468, within_pct: 51.0, breached_open: 286, atrisk_open: 14, avg_res_days: 22.9 }],
+      zohoKpis: [{ open_tickets: 211, created_7d: 340, closed_7d: 361, avg_open_age_days: 6.2, total_tickets: 84545 }],
+      slaKpis: [{ resolved_n: 77678, within_pct: 65.5, within_tech: 51.0, within_nontech: 74.6, breached_open: 484, atrisk_open: 25, avg_res_days: 16.7 }],
       slaByType: [
-        { category: 'Plan Change Request', sla_days: 3, tickets: 97, resolved_n: 93, breach_pct: 87.1, avg_res_days: 89.0 },
-        { category: 'Scheduled Servicing Request', sla_days: 5, tickets: 713, resolved_n: 693, breach_pct: 71.9, avg_res_days: 72.3 }
+        { category: 'Mac 600 To V-Cardia(Swapping)', sla_days: 5, is_tech: true, tickets: 85, resolved_n: 76, breach_pct: 88.2, avg_res_days: 44.1 },
+        { category: 'Plan Change Request', sla_days: 3, is_tech: false, tickets: 97, resolved_n: 93, breach_pct: 87.1, avg_res_days: 89.0 },
+        { category: 'Mother Board', sla_days: 5, is_tech: true, tickets: 54, resolved_n: 52, breach_pct: 78.8, avg_res_days: 28.5 },
+        { category: 'V-Cardia keypad', sla_days: 6, is_tech: true, tickets: 272, resolved_n: 245, breach_pct: 77.6, avg_res_days: 34.8 },
+        { category: 'Bulbs/ Clamps', sla_days: 3, is_tech: true, tickets: 229, resolved_n: 221, breach_pct: 76.9, avg_res_days: 11.2 },
+        { category: 'Power Adapter Damage', sla_days: 6, is_tech: true, tickets: 204, resolved_n: 198, breach_pct: 76.8, avg_res_days: 18.3 },
+        { category: 'Keypad', sla_days: 5, is_tech: true, tickets: 235, resolved_n: 225, breach_pct: 74.2, avg_res_days: 24.8 },
+        { category: 'Scheduled Servicing Request', sla_days: 5, is_tech: false, tickets: 713, resolved_n: 693, breach_pct: 71.9, avg_res_days: 72.3 }
       ],
-      slaByTypeTech: [
-        { category: 'Mac 600 To V-Cardia(Swapping)', sla_days: 5, tickets: 85, resolved_n: 76, breach_pct: 88.2, avg_res_days: 44.1 },
-        { category: 'Mother Board', sla_days: 5, tickets: 54, resolved_n: 52, breach_pct: 78.8, avg_res_days: 28.5 },
-        { category: 'V-Cardia keypad', sla_days: 6, tickets: 272, resolved_n: 245, breach_pct: 77.6, avg_res_days: 34.8 },
-        { category: 'Bulbs/ Clamps', sla_days: 3, tickets: 229, resolved_n: 221, breach_pct: 76.9, avg_res_days: 11.2 },
-        { category: 'Power Adapter Damage', sla_days: 6, tickets: 204, resolved_n: 198, breach_pct: 76.8, avg_res_days: 18.3 },
-        { category: 'Keypad', sla_days: 5, tickets: 235, resolved_n: 225, breach_pct: 74.2, avg_res_days: 24.8 }
-      ],
-      zohoTrendNontech: months.map(function (mo) { return { month: mo, created: rnd(400, 1400), closed: rnd(400, 1400) }; }),
-      zohoTrendTech: months.map(function (mo) { return { month: mo, created: rnd(300, 1100), closed: rnd(300, 1100) }; }),
-      zohoOpenByStatus: ['Pending on Customer Success Team', 'In Progress', 'On Hold'].map(function (s) { return { status: s, cnt: rnd(10, 120) }; }),
-      zohoOpenByStatusTech: ['Open', 'Pending on Logistics Team', 'In Progress'].map(function (s) { return { status: s, cnt: rnd(10, 150) }; }),
-      zohoCategories: ['Prepaid Recharge Request', 'Billing Query', 'Report Related Query'].map(function (c) { return { category: c, cnt: rnd(60, 500) }; }),
-      zohoCategoriesTech: ['Network Issue', 'Lead Cable Issue', 'Keypad', 'Battery'].map(function (c) { return { category: c, cnt: rnd(60, 800) }; }),
-      zohoPriority: [{ priority: 'High', cnt: 120 }, { priority: 'Medium', cnt: 310 }, { priority: 'Low', cnt: 70 }, { priority: 'Unset', cnt: 210 }],
-      zohoPriorityTech: [{ priority: 'High', cnt: 200 }, { priority: 'Medium', cnt: 300 }, { priority: 'Low', cnt: 50 }, { priority: 'Unset', cnt: 200 }],
-      zohoChannel: ['Email', 'Phone', 'Web', 'Chat', 'Forums'].map(function (ch) { return { channel: ch, cnt: rnd(80, 1400) }; }),
-      zohoChannelTech: ['Email', 'Phone', 'Web', 'Chat', 'Forums'].map(function (ch) { return { channel: ch, cnt: rnd(80, 1000) }; }),
-      zohoSegment: ['Enterprise', 'SMB', 'Government', 'Distributor', 'Direct'].map(function (sg) { return { segment: sg, cnt: rnd(120, 1100) }; }),
-      zohoSegmentTech: ['Enterprise', 'SMB', 'Government', 'Distributor', 'Direct'].map(function (sg) { return { segment: sg, cnt: rnd(120, 900) }; }),
+      zohoTrend: months.map(function (mo) { return { month: mo, created: rnd(800, 2400), closed: rnd(800, 2400) }; }),
+      zohoOpenByStatus: ['Open', 'Pending on Logistics Team', 'Pending on Customer Success Team', 'In Progress', 'On Hold'].map(function (s) { return { status: s, cnt: rnd(10, 210) }; }),
+      zohoCategories: ['Prepaid Recharge Request', 'Billing Query', 'Report Related Query', 'Network Issue', 'Lead Cable Issue'].map(function (c) { return { category: c, cnt: rnd(60, 800) }; }),
+      zohoPriority: [{ priority: 'High', cnt: 320 }, { priority: 'Medium', cnt: 610 }, { priority: 'Low', cnt: 120 }, { priority: 'Unset', cnt: 410 }],
+      zohoChannel: ['Email', 'Phone', 'Web', 'Chat', 'Forums'].map(function (ch) { return { channel: ch, cnt: rnd(80, 2400) }; }),
+      zohoSegment: ['Enterprise', 'SMB', 'Government', 'Distributor', 'Direct'].map(function (sg) { return { segment: sg, cnt: rnd(120, 1900) }; }),
       // No hubOptions: Hub is served by the apiSearchHubs mock branch above, the
       // same as the real payload no longer carrying a hub list (finding C1).
       segmentOptions: ['SME', 'Government', 'LE', 'ECHO', 'Project'].map(function (sg) { return { segment: sg }; }),
@@ -642,19 +628,20 @@
     setKpi('kpiStates', ck.states, 'geographic reach');
     setKpi('kpiMtbf', up && up.avg_mtbf_days != null ? up.avg_mtbf_days : null, 'avg days between failures');
 
-    /* Support KPIs (Non-Tech) */
-    var zoho = (data.zohoKpisNontech && data.zohoKpisNontech[0]) || {};
+    /* Support KPIs (all Zoho tickets) */
+    var zoho = (data.zohoKpis && data.zohoKpis[0]) || {};
     setKpi('kpiZOpen', zoho.open_tickets, 'active backlog');
     setKpi('kpiZIn', zoho.created_7d, 'new this week');
     setKpi('kpiZOut', zoho.closed_7d, 'resolved this week');
     setKpi('kpiZAge', zoho.avg_open_age_days, 'days per open ticket');
 
-    /* Service KPIs (Tech) */
-    var svc = (data.zohoKpisTech && data.zohoKpisTech[0]) || {};
-    setKpi('kpiSvcOpen', svc.open_tickets, 'active backlog');
-    setKpi('kpiSvcIn', svc.created_7d, 'new this week');
-    setKpi('kpiSvcOut', svc.closed_7d, 'resolved this week');
-    setKpi('kpiSvcAge', svc.avg_open_age_days, 'days per open ticket');
+    // Service KPIs: awaiting its own data source (2026-08-12), no longer
+    // wired to Zoho like Support — setKpiText's null→'—' fallback clears the
+    // loading shimmer instead of leaving it spinning forever.
+    setKpiText('kpiSvcOpen', null, 'data source pending');
+    setKpiText('kpiSvcIn', null, 'data source pending');
+    setKpiText('kpiSvcOut', null, 'data source pending');
+    setKpiText('kpiSvcAge', null, 'data source pending');
 
     /* Asset charts */
     Charts.fleetStatus(data.fleetStatus, function (statusName) {
@@ -674,23 +661,19 @@
     Charts.deploymentAge(data.deploymentAge);
     Charts.activeVsEnded(data.activeVsEnded);
 
-    /* Support charts (Non-Tech) */
-    Charts.zohoTrend(data.zohoTrendNontech);
+    /* Support charts (all Zoho tickets) */
+    Charts.zohoTrend(data.zohoTrend);
     Charts.zohoStatus(data.zohoOpenByStatus);
     Charts.zohoCategories(data.zohoCategories);
     Charts.zohoPriority(data.zohoPriority);
     Charts.zohoChannel(data.zohoChannel);
     Charts.zohoSegment(data.zohoSegment);
-    renderSla({ compliance: 'slaCompliance', table: 'slaTypeTable' }, data.slaKpisNontech, data.slaByType || []);
+    renderSla(data.slaKpis, data.slaByType || []);
 
-    /* Service charts (Tech) */
-    Charts.zohoTrend(data.zohoTrendTech, 'chartZohoTrendSvc');
-    Charts.zohoStatus(data.zohoOpenByStatusTech, 'chartZohoStatusSvc');
-    Charts.zohoCategories(data.zohoCategoriesTech, 'chartZohoCategoriesSvc');
-    Charts.zohoPriority(data.zohoPriorityTech, 'chartZohoPrioritySvc');
-    Charts.zohoChannel(data.zohoChannelTech, 'chartZohoChannelSvc');
-    Charts.zohoSegment(data.zohoSegmentTech, 'chartZohoSegmentSvc');
-    renderSla({ compliance: 'slaComplianceSvc', table: 'slaTypeTableSvc' }, data.slaKpisTech, data.slaByTypeTech || []);
+    // Service charts: awaiting its own data source (2026-08-12) — the
+    // Zoho-Tech scope this used to read no longer exists server-side, so
+    // these are left unrendered (each Charts.* call's own showEmpty()
+    // fallback keeps the cards from looking broken in the meantime).
 
     $('statusStrip').classList.remove('is-stale');
     $('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
@@ -754,14 +737,12 @@
   }
 
   /**
-   * SLA compliance (CS-team catalog): the within-SLA callout + the
-   * worst-issue-types breach table. ids = {compliance, table} — target DOM
-   * ids, since both the Support/CS (Non-Tech) and Service (Tech) pages call
-   * this against their own scoped kpisArr/byType with the same logic.
+   * SLA compliance (CS-team catalog): the within-SLA callout + Tech/Non-Tech
+   * split bars, plus the worst-issue-types breach table.
    */
-  function renderSla(ids, kpisArr, byType) {
+  function renderSla(kpisArr, byType) {
     var k = (kpisArr && kpisArr[0]) || null;
-    var el = $(ids.compliance);
+    var el = $('slaCompliance');
     if (el) {
       if (!k || k.resolved_n == null) {
         el.innerHTML = '<p class="batch-signal-empty">No SLA data yet</p>';
@@ -770,6 +751,7 @@
         el.innerHTML =
           '<div class="sla-pct sev-' + sev + '">' + slaPctText(k.within_pct) +
             '<span class="sla-pct-label">resolved within SLA</span></div>' +
+          '<div class="sla-split">' + slaBar('Tech', k.within_tech) + slaBar('Non-Tech', k.within_nontech) + '</div>' +
           '<dl class="batch-signal-meta sla-meta">' +
             '<div><dt>Resolved</dt><dd>' + FMT.format(k.resolved_n || 0) + '</dd></div>' +
             '<div><dt>Open breached</dt><dd class="txt-danger">' + FMT.format(k.breached_open || 0) + '</dd></div>' +
@@ -780,9 +762,9 @@
       }
     }
 
-    var body = $(ids.table).querySelector('tbody');
+    var body = $('slaTypeTable').querySelector('tbody');
     if (!byType || !byType.length) {
-      body.innerHTML = '<tr><td colspan="5" class="chart-empty">No SLA breakdown yet</td></tr>';
+      body.innerHTML = '<tr><td colspan="6" class="chart-empty">No SLA breakdown yet</td></tr>';
       return;
     }
     body.innerHTML = byType.map(function (r) {
@@ -790,6 +772,8 @@
       var sev = bp >= 60 ? 'danger' : (bp >= 30 ? 'warn' : 'ok');
       return '<tr>' +
         '<td><strong>' + escapeHtml(r.category) + '</strong></td>' +
+        '<td><span class="badge ' + (r.is_tech ? 'badge-info' : 'badge-muted') + '">' +
+          (r.is_tech ? 'Tech' : 'Non-Tech') + '</span></td>' +
         '<td class="num">' + escapeHtml(r.sla_days) + 'd</td>' +
         '<td class="num">' + FMT.format(r.tickets || 0) + '</td>' +
         '<td class="num"><span class="badge badge-' + sev + '">' + slaPctText(bp) + '</span></td>' +
@@ -801,6 +785,14 @@
   /** Within-SLA severity band: ok ≥85, warn ≥70, else danger. */
   function slaSev(p) { return p >= 85 ? 'ok' : (p >= 70 ? 'warn' : 'danger'); }
   function slaPctText(p) { return (p == null ? '—' : p + '%'); }
+  function slaBar(label, pct) {
+    var v = pct == null ? 0 : Math.max(0, Math.min(100, pct));
+    return '<div class="sla-bar-row">' +
+      '<span class="sla-bar-label">' + label + '</span>' +
+      '<span class="sla-bar-track"><span class="sla-bar-fill sev-' + slaSev(pct || 0) +
+        '" style="width:' + v + '%"></span></span>' +
+      '<span class="sla-bar-val">' + slaPctText(pct) + '</span></div>';
+  }
 
   /** Compact day count → "18mo" / "2.1y" / "42d". */
   function humanDays(d) {
@@ -1990,7 +1982,7 @@
   }
 
   /* ── tabs ────────────────────────────────────────────────────── */
-  var TAB_IDS = ['tab-overview', 'tab-asset', 'tab-centers', 'tab-support', 'tab-service', 'tab-map', 'tab-topcust', 'tab-numbers', 'tab-rawdata'];
+  var TAB_IDS = ['tab-overview', 'tab-asset', 'tab-centers', 'tab-support', 'tab-service', 'tab-tom', 'tab-map', 'tab-topcust', 'tab-numbers', 'tab-rawdata'];
 
   /* ── hash routing (#overview, #asset, …) ─────────────────────── */
   function pageOf(tabId) { return tabId.replace('tab-', ''); }
@@ -2422,8 +2414,6 @@
     'sla compliance': 'sla', 'sla breach by issue type': 'slaType',
     'priority mix': 'priority', 'active backlog': 'backlog', 'top issue categories': 'categories',
     'intake channels': 'channels', 'tickets by customer segment': 'segment',
-    'service ticket flow': 'ticketFlow', 'service backlog': 'backlog',
-    'top device issue categories': 'categories', 'service tickets by customer segment': 'segment',
     'assets by machine type': 'assetLifecycle', 'asset lifecycle age': 'assetAge',
     'assets by category': 'assetLifecycle', 'centers by state': 'geo',
     'devices per customer': 'topLeDevices', 'centers per customer': 'centersPerCust',
@@ -2531,16 +2521,15 @@
     state.autoRefresh = true;
     setInterval(tickCountdown, 1000);
 
-    // Global search — one box drives the active list page. Support/CS and
-    // Service have no list to filter, so it's a lookup instead, fired on
-    // Enter (not per keystroke — a partial ID mid-type shouldn't trigger a
-    // BigQuery call).
+    // Global search — one box drives the active list page. Support has no
+    // list to filter, so it's a lookup instead, fired on Enter (not per
+    // keystroke — a partial ID mid-type shouldn't trigger a BigQuery call).
     $('globalSearch').addEventListener('input', debounce(function (e) {
       state.search = e.target.value.trim();
       reloadActiveList();
     }, 350));
     $('globalSearch').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && (state.activeTab === 'tab-support' || state.activeTab === 'tab-service')) {
+      if (e.key === 'Enter' && state.activeTab === 'tab-support') {
         e.preventDefault();
         supportSearchLookup_(e.target.value.trim());
       }
@@ -2678,7 +2667,8 @@
     'tab-asset': { placeholder: 'Search devices by ID, center or hub…' },
     'tab-centers': { placeholder: 'Search customers by name, ID, hub or state…' },
     'tab-support': { placeholder: 'Search by center ID or ticket number…' },
-    'tab-service': { placeholder: 'Search by center ID or ticket number…' },
+    'tab-service': { disabled: true, placeholder: "Search isn't available on this page" },
+    'tab-tom': { disabled: true, placeholder: "Search isn't available on this page" },
     'tab-map': { placeholder: 'Search the map: center, hub, device or serial…' },
     'tab-topcust': { placeholder: 'Search customers by name or hub ID…' },
     'tab-numbers': { disabled: true, placeholder: "Search isn't available on this page" },

@@ -97,7 +97,7 @@ function centerUptimeSqlCD_(tailSelect, filters) {
   return "WITH tix AS (" +
     " SELECT CenterID AS center_id, " + P + "CreatedAt) AS s, " +
     "  COALESCE(" + P + "ClosedAt), CURRENT_DATETIME()) AS e " +
-    " FROM " + T('zoho_data') + " WHERE CenterID IS NOT NULL " +
+    " FROM " + zohoDedupSql_() + " WHERE CenterID IS NOT NULL " +
     "  AND " + techBoolSql_("IFNULL(IssueCategory,'')") + " " +
     "  AND " + P + "CreatedAt) IS NOT NULL), " +
     "birth AS (SELECT CenterID AS center_id, MIN(DATETIME(deploymentdate)) AS b " +
@@ -247,7 +247,7 @@ function buildDashboardQuerySpecsCD(hub, filters) {
     key: 'zohoFailByCenter', maxRows: 60000,
     sql:
       "WITH ftix AS (SELECT CenterID AS cid, " + P + "CreatedAt) AS created, IssueCategory AS cat " +
-      " FROM " + T('zoho_data') + " WHERE CenterID IS NOT NULL AND " +
+      " FROM " + zohoDedupSql_() + " WHERE CenterID IS NOT NULL AND " +
       techBoolSql_("IFNULL(IssueCategory,'')") + " AND " + P + "CreatedAt) IS NOT NULL), " +
       "pc AS (SELECT cid, CAST(MIN(created) AS STRING) AS first_fail, COUNT(*) AS n_fail FROM ftix GROUP BY cid), " +
       "cr AS (SELECT cid, cat, ROW_NUMBER() OVER (PARTITION BY cid ORDER BY COUNT(*) DESC) AS rn " +
@@ -376,7 +376,7 @@ function centerBaseSpecCD_() {
  * @param {boolean=} bypassCache force a rebuild (used by the warm trigger)
  */
 function getCenter360RowsCD_(bypassCache) {
-  var ckey = 'ctr360cd_v7'; // v7: added mtbf_hrs/failures columns
+  var ckey = 'ctr360cd_v8'; // v8: zoho_data dedup (see zohoDedupSql_, Queries.js)
   if (bypassCache !== true) {
     var cached = cacheGetLarge(ckey);
     if (cached) return cached;
@@ -541,24 +541,22 @@ function apiGetDashboardCD(options) {
     // payload can exceed withCache's 100KB-per-key limit. cachePutLarge/
     // cacheGetLarge (gzip + chunked, already used for Center-360) replace
     // withCache here — same TTL, no size ceiling.
-    // v8: Support/CS-vs-Service split added 10 new zoho*/sla* Tech/Nontech
-    // spec keys to the payload (see Queries.js).
-    var cacheKey = 'dashcd_v8_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
+    // v9: reverted the v8 Tech/Nontech zoho*/sla* spec split — Support keeps
+    // the combined Zoho dataset again (Service will get its own, separate
+    // data source instead of a Zoho scope).
+    // v10: zoho_data dedup (see zohoDedupSql_, Queries.js).
+    var cacheKey = 'dashcd_v10_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
     }
     // assetHealth is excluded here (2026-07-30): Center 360 now carries
     // mtbf_hrs/failures directly, so nothing consumes this endpoint's
-    // assetHealth anymore. zohoKpis/slaKpis/zohoTrend are excluded here
-    // (Support/CS-vs-Service split): this endpoint reads only the
-    // *Tech/*Nontech siblings now (see Queries.js), so the combined versions
-    // would just be 3 wasted BigQuery queries. reliability/zohoKpis/slaKpis/
-    // zohoTrend are NOT excluded from the SPEC BUILDER itself — Overview's
-    // separate apiGetExecOverviewCD endpoint depends on that same spec
-    // definition; only THIS endpoint's own query list drops them.
+    // assetHealth anymore. reliability is NOT excluded — it stays computed
+    // (Overview's separate apiGetExecOverviewCD endpoint depends on the same
+    // spec definition, and this array is otherwise harmless/unused here).
     var dashSpecs = buildDashboardQuerySpecsCD(hub, filters).filter(function (s) {
-      return ['assetHealth', 'zohoKpis', 'slaKpis', 'zohoTrend'].indexOf(s.key) === -1;
+      return s.key !== 'assetHealth';
     });
     var results = runQueriesParallel(dashSpecs);
     enrichCenterNamesCD_(results.reliability);
@@ -702,7 +700,7 @@ function apiGetMapDataCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    var cacheKey = 'mapcd_v6_' + getCacheEpoch_() + '_' + filterHash_(filters);
+    var cacheKey = 'mapcd_v7_' + getCacheEpoch_() + '_' + filterHash_(filters); // v7: zoho_data dedup
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -831,7 +829,7 @@ function apiGetTopCustomersCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('topcustcd_v6_' + getCacheEpoch_() + '_' + filterHash_(filters),
+    return withCache('topcustcd_v7_' + getCacheEpoch_() + '_' + filterHash_(filters), // v7: zoho_data dedup
       function () { return computeTopCustomersCD_(filters); },
       options.bypassCache === true);
   });
@@ -848,7 +846,7 @@ function apiGetExecOverviewCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('execcd_v6_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
+    return withCache('execcd_v7_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v7: zoho_data dedup
       var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters); });
       var top = computeTopCustomersCD_(filters);
       var want = { kpis: 1, fleetStatus: 1, zohoKpis: 1, zohoTrend: 1, geo: 1, reliability: 1, uptimeFleet: 1, slaKpis: 1 };
@@ -903,7 +901,7 @@ function apiGetCenterDetailCD(options) {
   var centerId = parseInt(options && options.centerId, 10);
   return respond_(function () {
     if (!isFinite(centerId)) throw new Error('centerId is required');
-    return withCache('ctrdetcd_v2_' + centerId, function () {
+    return withCache('ctrdetcd_v3_' + centerId, function () { // v3: zoho_data dedup
       // Reuse the original detail specs (devices/tickets/openTickets are keyed by
       // CenterID, center-table-agnostic); swap only the `info` query.
       var specs = buildCenterDetailSpecs(centerId).map(function (s) {
@@ -951,7 +949,7 @@ function apiSupportSearchCD(options) {
   var idNum = parseInt(options && options.query, 10);
   return respond_(function () {
     if (!isFinite(idNum)) return { kind: null };
-    return withCache('supportsearchcd_v1_' + idNum, function () {
+    return withCache('supportsearchcd_v2_' + idNum, function () { // v2: zoho_data dedup
       var centerHit = runQuery(
         "SELECT CenterID AS center_id FROM " + T('center_details') + " WHERE CenterID = @id LIMIT 1",
         { id: idNum }
@@ -959,7 +957,7 @@ function apiSupportSearchCD(options) {
       if (centerHit && centerHit[0]) return { kind: 'center', centerId: centerHit[0].center_id };
 
       var ticketHit = runQuery(
-        "SELECT CenterID AS center_id FROM " + T('zoho_data') +
+        "SELECT CenterID AS center_id FROM " + zohoDedupSql_() +
         " WHERE ticketNumber = @id AND CenterID IS NOT NULL LIMIT 1",
         { id: idNum }
       );

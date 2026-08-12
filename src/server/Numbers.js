@@ -158,9 +158,9 @@ function jiraDeviceStats_(filters) {
 function apiGetNumbers(options) {
   options = options || {};
   return respond_(function () {
-    return withCache('numbers_v4', function () {
+    return withCache('numbers_v5', function () { // v5: zoho_data dedup
       var CD = T('center_details');
-      var ZOHO = T('zoho_data');
+      var ZOHO = zohoDedupSql_();
       var techBool = techBoolSql_("IFNULL(IssueCategory,'')");
       var F = cdFilter_(); // no baseline filter (removed 2026-07-22) — always '1=1'
 

@@ -149,7 +149,7 @@ function topCustomerTicketStats_(filters) {
   var centerCond = centerFilterSubqueryCond_(filters || {});
   var sql =
     "WITH t AS (SELECT status, " + slaDaysCaseSql_("IFNULL(IssueCategory,'')") + " AS sla_days, " +
-    zohoParsedDates_() + " FROM " + T('zoho_data') + " WHERE HubID IN (" + ids + ")" + centerCond + "), " +
+    zohoParsedDates_() + " FROM " + zohoDedupSql_() + " WHERE HubID IN (" + ids + ")" + centerCond + "), " +
     "s AS (SELECT sla_days, " +
     " (status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL) AS resolved, " +
     " CASE WHEN status = 'Closed' AND created IS NOT NULL AND closed IS NOT NULL " +

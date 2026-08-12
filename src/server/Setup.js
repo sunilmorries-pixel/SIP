@@ -144,9 +144,9 @@ function clearDashboardCache() {
   props.setProperty('CACHE_EPOCH', String(next));
 
   var cache = CacheService.getScriptCache();
-  cache.removeAll(['exec_v4', 'numbers_v4']);
+  cache.removeAll(['exec_v4', 'numbers_v5']);
   // Large (gzip-chunked) caches with NO filter variant: remove #meta + each chunk.
-  ['ctr360cd_v7', 'map_v3', 'assets_v3'].forEach(function (base) {
+  ['ctr360cd_v8', 'map_v3', 'assets_v3'].forEach(function (base) {
     var meta = cache.get(base + '#meta');
     var n = meta ? parseInt(meta, 10) : 40;
     var keys = [base + '#meta'];

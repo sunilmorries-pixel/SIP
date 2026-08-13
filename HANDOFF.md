@@ -1,9 +1,19 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-13 · **Live version:** 5.23 · **Status:** ✅ **Git and production are in
-sync.** Production (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`,
-same URL as always) serves Apps Script **@52 / v5.23**, deployed from git `main` @ **`97ca54d`**
-(pushed to `origin/main`). No new git tag was cut for this deploy.
+**Last updated:** 2026-08-13 · **Live version:** 5.24 · **Status:** ⚠️ **GIT IS AHEAD OF
+PRODUCTION.** Production (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`,
+same URL as always) serves Apps Script **@53 / v5.24** (the PARSE_DATETIME hotfix, below). Git
+`main` is at **`4e560b0`**, pushed to `origin/main`, **ahead of production** — `4e560b0` (Center
+filter / chip relocation / footer version) is committed and pushed but **NOT live**, and
+`e2b9cb6` (Filters drawer applied to Numbers + Raw Data) may also be undeployed: @53's deployment
+description names only the hotfix, and this was not independently confirmed. No git tag was cut
+for v5.21–v5.24.
+
+⚠️ **`CONFIG.APP_VERSION` / `APP_DEPLOYED_AT` must be bumped in the same change as any
+`clasp deploy`.** They drive the footer's "version N on <date>" and nothing derives them
+automatically (Apps Script cannot read its own deployment version at runtime). They currently read
+**53 / Aug 13, 2026, 8:30 PM**, matching what production serves — deploying without bumping them
+makes the footer lie, which is exactly how the previous `v1.0.0` placeholder survived 24 releases.
 
 **Two Claude Code sessions have been working this same directory concurrently** (confirmed by the
 user). Files were repeatedly modified on disk mid-edit, and one session's change was silently
@@ -15,6 +25,65 @@ reverted by the other's save at least once. Consequences to know:
 - **Before editing `src/client/App.html` / `Index.html` / `Styles.html`, re-read the file
   immediately before and after each edit** and grep for your own identifier to confirm the change
   survived. A successful Edit call is not proof the change is still on disk a minute later.
+
+### Undeployed on `main`
+
+> **`4e560b0` — Center filter, Hub/Center id search, floating filter chips, real footer version
+> (this session).** Four user-requested changes:
+> - **Filter chips moved out of the topbar** into their own floating row beneath it. They had been
+>   sharing the topbar's single line with search + Refresh + Filters + theme, so four active
+>   filters wrapped the whole bar taller. Button and count badge stay up top; only the removable
+>   chips moved. Same width/centering formula as `.topbar`/`.page`; the row collapses to nothing
+>   when no filter is active.
+> - **Hub search now matches HubName OR HubID.** The returned/stored value is still the hub NAME,
+>   because that's the dimension `centerAttrCond_`/`centerPassesFilters_` compare — searching by id
+>   is a lookup convenience, NOT a change to what gets filtered.
+> - **New Center filter dimension** (`centers`), server-searched like Hub (~28k centers is far too
+>   many for a static option list), matching name OR CenterID. **It stores the CenterID, not the
+>   name** — center names are not unique in `center_details`, so a name-keyed filter would silently
+>   match unrelated centers. `renderFilterCombo_` therefore now accepts `{value, label}` options as
+>   well as plain strings, and labels are cached in `state.filterLabels` so a selected center still
+>   reads "Demo Center 3 · #10274" after the drawer reopens and in the top chip row, not a bare id.
+>   Threaded through `centerAttrCond_` (CAST CenterID to STRING), `centerPassesFilters_`
+>   (`String()`-compared, so the SQL and JS paths can't disagree — the finding-I4 failure mode),
+>   every endpoint filter object, and `Warm.js`'s default set.
+>   **Known limitation:** the default (focus, <2 chars) list is the first 50 by CenterID — arbitrary
+>   rather than "most relevant", unlike Hub's default which ranks by center count. Ranking centers
+>   would need a device/ticket-count join the lookup deliberately avoids.
+> - **Footer**: "Updated HH:MM:SS" moved out from under the topbar into the footer beside the other
+>   provenance line (it's passive information, not something to act on), and the version string —
+>   a `v1.0.0` placeholder that never moved across 24 releases — now reads "version 53 on
+>   Aug 13, 2026, 8:30 PM" from `CONFIG.APP_VERSION`/`APP_DEPLOYED_AT`. See the ⚠️ in the header.
+> - **Verified** in the local preview: chips below the topbar in both themes; hub search by name
+>   ("mumbai" → 2) and id ("40003" → 1); center search by name ("Center 7") and id ("10274");
+>   selection stores the id while showing the name; 0 console errors; 69/69 unit tests.
+
+> **`e2b9cb6` — Filters drawer applied to Numbers + Raw Data (other session; summarized from its
+> commit message, not independently verified).** Both pages were deliberately filter-exempt by
+> design; per user request they now respect the global filter set like every other page. Numbers
+> narrows Centers/Hubs via the same `centerAttrCond_` + deploymentdate chain, bridges Tickets to
+> `center_details` via `centerFilterSubqueryCond_`, and its cache key is now filter-aware
+> (`numbers_v8`, folding in `getCacheEpoch_` + `filterHash_`). **Note this contradicts older
+> entries below** that describe Numbers/Raw Data as exempt from all filtering — those are now
+> historical.
+
+### v5.24 / @53 (2026-08-13) — HOTFIX: live PARSE_DATETIME type-mismatch crash on every zoho_data query
+
+> **Built and deployed by the OTHER session; summarized from commit `7bcf2a5`, not independently
+> verified.** A production incident: Overview and the Center list — and transitively every
+> zoho_data-touching query (Support KPIs/SLA/charts, Machine Uptime/MTBF, cohort reliability,
+> ticket lists) — were failing live with `No matching signature for function PARSE_DATETIME
+> (STRING, DATETIME)`.
+>
+> **Root cause is worth internalizing, because it invalidates an assumption this whole repo has
+> been verifying against:** `zoho_data.CreatedAt`/`ClosedAt` are **native DATETIME** columns in
+> production (`tricogde-dwh`), not the STRING format every
+> `SAFE.PARSE_DATETIME(CONFIG.ZOHO_DT_FORMAT, …)` call assumed. That assumption only ever held for
+> the **sandbox** (`magnaquest-sand-box`) — genuine physical schema drift between the two projects.
+> Every session's verification, including several documented in this file as "verified against
+> BigQuery", could only reach the sandbox (no `bigquery.jobs.create` on `tricogde-dwh`), so the
+> assumption was never actually tested against what production runs. **Treat "verified on BigQuery"
+> in older entries as "verified on the sandbox" unless it explicitly says otherwise.**
 
 ### v5.23 / @52 (2026-08-13) — exclude unassigned Zoho tickets; Centers "Open ticket centers" KPI; Asset Device Type/Status filters
 

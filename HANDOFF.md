@@ -1,19 +1,20 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-13 · **Live version:** 5.24 · **Status:** ⚠️ **GIT IS AHEAD OF
-PRODUCTION.** Production (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`,
-same URL as always) serves Apps Script **@53 / v5.24** (the PARSE_DATETIME hotfix, below). Git
-`main` is at **`4e560b0`**, pushed to `origin/main`, **ahead of production** — `4e560b0` (Center
-filter / chip relocation / footer version) is committed and pushed but **NOT live**, and
-`e2b9cb6` (Filters drawer applied to Numbers + Raw Data) may also be undeployed: @53's deployment
-description names only the hotfix, and this was not independently confirmed. No git tag was cut
-for v5.21–v5.24.
+**Last updated:** 2026-08-13 · **Live version:** 5.26 · **Status:** ✅ **Git, the Apps Script
+editor, and production are in sync.** Production
+(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always)
+serves Apps Script **@55 / v5.26**, deployed from git `main` @ **`3b35939`**, tagged **`v5.26`**
+(both pushed to `origin/main`). v5.21–v5.25 were deployed **without** tags; only `v5.16`–`v5.18`,
+`v5.20` and `v5.26` are tagged, so tags are not a reliable release index.
 
-⚠️ **`CONFIG.APP_VERSION` / `APP_DEPLOYED_AT` must be bumped in the same change as any
-`clasp deploy`.** They drive the footer's "version N on <date>" and nothing derives them
-automatically (Apps Script cannot read its own deployment version at runtime). They currently read
-**53 / Aug 13, 2026, 8:30 PM**, matching what production serves — deploying without bumping them
-makes the footer lie, which is exactly how the previous `v1.0.0` placeholder survived 24 releases.
+⚠️ **`CONFIG.APP_VERSION` / `APP_DEPLOYED_AT` must be set to the version THIS DEPLOY WILL CREATE
+— i.e. (current live `@N`) + 1 — in the same change as the `clasp deploy`.** Nothing derives them
+(Apps Script cannot read its own deployment version at runtime). **This has already gone wrong
+once:** @54 shipped carrying `'53'`, so production's footer advertised a version one behind what
+it was actually running — caught by pulling the live editor content and reading it, not by
+inspecting commit messages. Setting the field to the *current live* number is always off by one,
+because the commit carrying the bump is itself the next deploy. It now reads **55 / Aug 13, 2026,
+9:20 PM**, matching @55.
 
 **Two Claude Code sessions have been working this same directory concurrently** (confirmed by the
 user). Files were repeatedly modified on disk mid-edit, and one session's change was silently
@@ -26,7 +27,25 @@ reverted by the other's save at least once. Consequences to know:
   immediately before and after each edit** and grep for your own identifier to confirm the change
   survived. A successful Edit call is not proof the change is still on disk a minute later.
 
-### Undeployed on `main`
+### v5.26 / @55 (2026-08-13) — inline footer timestamp, corrected footer version, Customer 360 sort
+
+> **Deployed 2026-08-13** from `3b35939`, tagged `v5.26`. Pre-deploy gate run (`npm run
+> verify-before-deploy`): 69/69 unit tests pass; the reconciliation tier **skipped** as always —
+> no `bigquery.jobs.create` on `tricogde-dwh` from this machine, so nothing in this deploy was
+> checked against production data (see the v5.24 entry for why that gap has already bitten once).
+> - **`1cd4418`** — corrected `CONFIG.APP_VERSION` 53 → 55 and reworded the field's contract; see
+>   the ⚠️ in the header. Production had been advertising "version 53" while running @54.
+> - **`0610d27`** — footer's "Updated HH:MM:SS" now sits inline after "Data refreshes every 5 min ·
+>   read-only service account" rather than stacked beneath it (per user). The status strip's own
+>   pulse-dot serves as the separator. Verified in both themes.
+> - **`3b35939` — other session, summarized from its commit message, NOT independently verified by
+>   this one:** Customer 360 default sort by open tickets (tiebroken on uptime so 0-ticket rows
+>   surface worst-uptime centers first), renamed/added ID columns, and the Customers-by-state chart
+>   switching to city when a single state is filtered. This work was uncommitted in the shared
+>   working tree while the deploy was being prepared — the deploy waited for it to be committed
+>   rather than `git stash`-ing files another session was actively editing.
+
+### Deployed in v5.25 / @54 (recorded here because the deploy predates this write-up)
 
 > **`4e560b0` — Center filter, Hub/Center id search, floating filter chips, real footer version
 > (this session).** Four user-requested changes:

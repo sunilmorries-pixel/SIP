@@ -1,12 +1,100 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-10 · **Version:** 5.18 (floating-page-panel-filter-restructure) ·
-**Status:** LIVE — Apps Script **version 47** deployed to the stable production URL
-(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always),
-tagged `v5.18`. Git (commit `0fac5dd`, tag `v5.18`), the Apps Script editor, and production are
-all in sync. **Deployed 2026-08-10, with the user's explicit "push it to live" go-ahead.**
-(v5.17/@46 — the glassmorphism/sidebar redesign — was deployed immediately before this in the
-same session lineage; see its own entry below.)
+**Last updated:** 2026-08-13 · **Live version:** 5.21 · **Status:** ⚠️ **GIT IS AHEAD OF
+PRODUCTION.** Production (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`,
+same URL as always) serves Apps Script **@50 / v5.21**. Git `main` is at **`d3c429b`**, pushed to
+`origin/main`, **2 commits ahead of what is deployed** — `f8e8b0d` and `d3c429b` (below) are
+committed and pushed but **NOT live**. Deploying them is a deliberate, un-taken step.
+
+**Two Claude Code sessions have been working this same directory concurrently** (confirmed by the
+user). Files were repeatedly modified on disk mid-edit, and one session's change was silently
+reverted by the other's save at least once. Consequences to know:
+- Some releases below were built by the *other* session and are summarized here from their commit
+  messages, **not independently verified** — each entry says which.
+- `v5.19` and `v5.21` were deployed **without git tags**; only `v5.16`, `v5.17`, `v5.18` and
+  `v5.20` are tagged. Don't assume tag coverage is complete.
+- **Before editing `src/client/App.html` / `Index.html` / `Styles.html`, re-read the file
+  immediately before and after each edit** and grep for your own identifier to confirm the change
+  survived. A successful Edit call is not proof the change is still on disk a minute later.
+
+### Undeployed work sitting on `main` (both pushed, neither live)
+
+> **2026-08-13 — `f8e8b0d` · Frontend alignment/spacing pass (this session).** Ran
+> `frontend-design` + the `ui-ux-pro-max` checklists as a QA pass over the existing glassmorphism
+> identity — deliberately NOT a redesign, since v5.17/v5.18 already committed to a visual
+> direction. Every fix below was measured in a real browser, not eyeballed:
+> - **KPI rows had no shared baseline (the main bug).** `.kpi` was a plain block, so each tile's
+>   value sat wherever its label happened to end — and labels wrap to 1 or 2 lines depending on
+>   length. Measured on the wide 6-column Overview strip: `Centers` (1-line label) rendered its
+>   value **20px higher** than every 2-line neighbour. Fixed by making `.kpi` a flex column and
+>   bottom-anchoring the value+sub block via `margin-top:auto`, which holds regardless of wrap.
+>   Re-measured: **0px spread per row at 6, 4 and 3 columns.**
+> - **`horizontalBar` clipped its value labels** — `4,979` rendered as `4,97`. `containLabel`
+>   reserves room for *axis* labels only, not the series labels these bars draw past their own
+>   end, so the longest bar (by definition at the axis max) overflowed. `right: 28 → 44`, matching
+>   `rankBar` which already reserved enough.
+> - **`zohoTrend` clipped its last x-axis label** — `2026-08` rendered as `2026-0`, because
+>   `boundaryGap:false` centres the final label on the chart's right edge.
+> - **`.exec-hero` was a near-empty container** — it holds only the 140px device-age ring since
+>   the narrative band was removed, and full-width that left ~800px of dead space either side. Now
+>   `width: fit-content`.
+>
+> **Known remaining, NOT fixed:** Overview has 7 KPI tiles in a 6-column grid, so `SLA BREACH`
+> sits alone on row 2. Fixing it means dropping/merging/adding a KPI — a product decision, left
+> for the user. Also: mobile was never verified (`resize_window` does not work in this
+> environment), so the 560px/820px breakpoints are untested by this pass.
+
+> **2026-08-13 — `d3c429b` · City + Country global filters, bundled with 2 layout fixes.** Bundled
+> because the two efforts interleave in the same files and `git add` cannot split a file; the user
+> explicitly chose bundling over waiting.
+> - **City + Country filter dimensions — built by the OTHER session, not this one.** Verified
+>   working before committing but **not reviewed line by line.** Threads two new dimensions
+>   through the full filter chain: `centerAttrCond_` (`City` / `Spoke_Country`), the
+>   `centerPassesFilters_` JS predicate, new `cityOptions`/`countryOptions` specs, every `*CD`
+>   endpoint's filter object, and `Warm.js`'s default set (so cache warming still matches a real
+>   first load — the finding-I6 trap). Client gains state fields, sticky option lists, chips,
+>   drawer sections and combos. Runtime check: drawer opens with all 7 sections, both combos
+>   populate, picking a city commits it (badge 1→2, removable `City: Bengaluru` chip), 0 console
+>   errors. **The global filter is now 6 dimensions + date range, not 4** — update any mental model
+>   that still says Segment/Status/State/Hub.
+> - **Card-grid rows packed ragged (this session).** Top Customers' three peer "per customer"
+>   charts were `span-6`, packing 2 + 1 with half a row empty; Asset's five `span-4` cards packed
+>   3 + 2, leaving a third of a row empty. Now `span-4`×3 and a `span-6` pair. All 10 panels pack
+>   to full 12-column rows, verified programmatically.
+> - **Center-uptime KPI sub shortened** (`N% of centers ≥ 99%` → `N% at ≥ 99%`): it wrapped to two
+>   lines at the narrowest tile and broke the row baseline even after the flex fix above.
+>   **Constraint worth keeping: KPI sub copy must fit ONE line at 6-column tile width.**
+
+### Deployed releases not previously written up here
+
+> **v5.21 / @50 (2026-08-12 or later) — dedupe duplicate `zoho_data` rows; add TOM page shell.
+> Built and deployed by the OTHER session; summarized from commit `a694b9d`, not independently
+> verified.** Root-caused a user report of 3 identical ticket rows (#105435) in the center-detail
+> drawer: the Zoho→BigQuery sync writes some tickets more than once (37+ confirmed duplicated in
+> the sandbox), so **every** `COUNT(*)`/row-list query reading `zoho_data` directly was inflated —
+> not just the drawer. Adds `zohoDedupSql_()` (`Queries.js`), a `QUALIFY ROW_NUMBER()` dedup keyed
+> on `ticketNumber` that parses the string `CreatedAt` properly rather than sorting it
+> lexicographically, with a NULL-safe partition fallback. Swapped in at all 18 real `zoho_data`
+> call sites across `Queries.js`/`EditionCD.js`/`Numbers.js`/`TopCustomers.js`. **Raw Data is
+> deliberately left un-deduped** — its documented job is reconciliation against Zoho's true row
+> count, duplicates included. 8 cache keys bumped. Also **reverted the v5.19 Support/CS split**
+> (below) and added a **TOM page shell**. No git tag was cut.
+
+> **v5.20 / @49 (2026-08-12) — Map page Centers KPI undercounted vs every other page.** Tagged
+> `v5.20`, commit `be8b0d1`. `apiGetMapDataCD` drops any center without a geocoded location from
+> `payload.centers` (necessary — `MapView.setData` plots every row unconditionally and can't take
+> a null lat/lng), but `renderMapKpis` summed that same geocoded-only array, so ungeocoded centers
+> were excluded from the **total**, not just from the map. The server already shipped the missing
+> count (`unlocatedCenters`) every load; nothing read it. Fix adds it back into the Centers tile
+> whenever no local narrowing (ticket-bucket legend / search) is active; with narrowing active the
+> KPI still counts only what's plotted, which is correct for "what's shown on this map".
+
+> **v5.19 / @48 — split Support/CS into Support/CS (Non-Tech) + a new Service (Tech) page. Built
+> by the OTHER session, and SUBSEQUENTLY REVERTED in v5.21.** Recorded only so the commit
+> (`91985b4`) isn't mistaken for live behaviour. The Service tab that exists today is an
+> empty-state shell awaiting its own non-Zoho data source. No git tag was cut.
+
+### Earlier releases (git and production were in sync from here down)
 
 > **2026-08-10 — Floating page panel, topbar logo, filter drawer restructure (commit `0fac5dd`,
 > tagged `v5.18`, DEPLOYED as Apps Script version 47).** Per user request, using `ui-ux-pro-max`

@@ -1,23 +1,68 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-13 · **Live version:** 5.21 · **Status:** ⚠️ **GIT IS AHEAD OF
-PRODUCTION.** Production (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`,
-same URL as always) serves Apps Script **@50 / v5.21**. Git `main` is at **`d3c429b`**, pushed to
-`origin/main`, **2 commits ahead of what is deployed** — `f8e8b0d` and `d3c429b` (below) are
-committed and pushed but **NOT live**. Deploying them is a deliberate, un-taken step.
+**Last updated:** 2026-08-13 · **Live version:** 5.23 · **Status:** ✅ **Git and production are in
+sync.** Production (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`,
+same URL as always) serves Apps Script **@52 / v5.23**, deployed from git `main` @ **`97ca54d`**
+(pushed to `origin/main`). No new git tag was cut for this deploy.
 
 **Two Claude Code sessions have been working this same directory concurrently** (confirmed by the
 user). Files were repeatedly modified on disk mid-edit, and one session's change was silently
 reverted by the other's save at least once. Consequences to know:
 - Some releases below were built by the *other* session and are summarized here from their commit
   messages, **not independently verified** — each entry says which.
-- `v5.19` and `v5.21` were deployed **without git tags**; only `v5.16`, `v5.17`, `v5.18` and
-  `v5.20` are tagged. Don't assume tag coverage is complete.
+- `v5.19`, `v5.21`, `v5.22` and `v5.23` were deployed **without git tags**; only `v5.16`, `v5.17`,
+  `v5.18` and `v5.20` are tagged. Don't assume tag coverage is complete.
 - **Before editing `src/client/App.html` / `Index.html` / `Styles.html`, re-read the file
   immediately before and after each edit** and grep for your own identifier to confirm the change
   survived. A successful Edit call is not proof the change is still on disk a minute later.
 
-### Undeployed work sitting on `main` (both pushed, neither live)
+### v5.23 / @52 (2026-08-13) — exclude unassigned Zoho tickets; Centers "Open ticket centers" KPI; Asset Device Type/Status filters
+
+> **Deployed 2026-08-13** — commit `97ca54d`, pushed to `origin/main`, then `clasp push` +
+> `clasp deploy -i AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x -d
+> "v5.23: exclude unassigned Zoho tickets, Centers Open-ticket-centers KPI, Asset Device Type/
+> Status filters"` (this session; user's explicit go-ahead). Cut Apps Script **version 52**.
+> Verified live via `curl -L` on the `/exec` URL → `200`. 69/69 unit tests pass. Three
+> independent changes, bundled into one commit/deploy because they touch overlapping server
+> files (`EditionCD.js`/`Numbers.js`/`Queries.js`/`Setup.js`):
+> - **Unassigned Zoho tickets excluded globally.** `zohoDedupSql_()` (`Queries.js`) now also
+>   drops rows with a blank `assignee` (Zoho agent field), on top of the existing duplicate-row
+>   dedup — applies everywhere Zoho data is read except Raw Data's reconciliation view
+>   (deliberately unchanged, shows the true Zoho export). Ticket universe **84,545 → 80,020**
+>   (74 dupes + 4,061 unassigned removed). 8 cache keys bumped
+>   (`ctr360cd`/`dashcd`/`mapcd`/`topcustcd`/`execcd`/`ctrdetcd`/`supportsearchcd`/`numbers`).
+> - **Centers page "States" KPI tile → "Open ticket centers."** Now counts distinct centers with
+>   ≥1 non-terminal Zoho ticket, via a `CenterID IN (...)` subquery added to the `centerKpis`
+>   spec (`EditionCD.js`). Cross-checked against the sandbox: SQL result and an independent query
+>   both return 463 centers unfiltered / 390 under `Status:Active`.
+> - **Asset page gains two new global filter dimensions**, threaded through `jiraDeviceStats_` so
+>   Overview/Numbers/Asset all respect them, plus the Asset donuts/cohort (computed from the same
+>   filtered asset index):
+>   - **Device Type** (`issuetype_name`) — normal include-filter, defaults to **Connector + ECG
+>     Machine**.
+>   - **Device Status in Jira** (`status_name`) — deliberately an **EXCLUDE**-filter (selected =
+>     hidden, the opposite of every other filter in the drawer — has its own note in the UI),
+>     defaults to **Decommissioned** only. Not modeled as an include-list of the other ~11 real
+>     statuses: that would've meant 11 default chips cluttering the filter bar, and any *future*
+>     new status would silently default to hidden until a hardcoded list was updated.
+>   - Note: "Total devices" was **already** counting all asset types, not just ECG/Connector —
+>     that scope was broadened in a past session (`CONFIG.JIRA_NON_DEVICE_TYPES` exclude-list).
+>     Only the "Connector + ECG" sub-label was stale; the two new filters are what make that
+>     scope genuinely adjustable rather than hardcoded.
+>   - New `deviceTypeOptions`/`deviceStatusOptions` option lists (same pattern as
+>     `cityOptions`/`countryOptions`) feed the two new drawer comboboxes.
+
+### v5.22 / @51 (2026-08-13) — deploys the 2 releases below, both previously pushed but undeployed
+
+> **Deployed 2026-08-13** — `clasp push` then `clasp deploy -i
+> AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x -d "v5.22: City +
+> Country global filters, KPI baseline/chart-label fixes, card-grid rebalance"` at git `main` =
+> `f7630d3` (this session; user's explicit go-ahead, "deploy it to the live url"). Cut Apps Script
+> **version 51**. Verified live via `curl -L` on the `/exec` URL → `200`. Stable deployment ID
+> unchanged, per this project's standing convention. The two releases immediately below
+> (`f8e8b0d`, `d3c429b`) were sitting committed-and-pushed-but-not-live as of the previous entry —
+> **both are now live for the first time**; everything they describe was accurate only for git
+> until this deploy.
 
 > **2026-08-13 — `f8e8b0d` · Frontend alignment/spacing pass (this session).** Ran
 > `frontend-design` + the `ui-ux-pro-max` checklists as a QA pass over the existing glassmorphism

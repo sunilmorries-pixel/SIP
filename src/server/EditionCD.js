@@ -81,7 +81,12 @@ function centerAttrCond_(filters) {
     multiCond_('State', f.states) +
     multiCond_('HubName', f.hubs) +
     multiCond_('City', f.cities) +
-    multiCond_('Spoke_Country', f.countries);
+    multiCond_('Spoke_Country', f.countries) +
+    // Center filters on the ID, not the name: center names are not unique in
+    // center_details, so a name-keyed filter would match unrelated centers.
+    // CAST so the numeric column compares against the string values the client
+    // sends (multiCond_ emits quoted literals).
+    multiCond_('CAST(CenterID AS STRING)', f.centers);
 }
 
 /* ═══════════════ Uptime / MTBF / Health (birth = deploymentdate) ═════════ */
@@ -522,6 +527,11 @@ function centerPassesFilters_(row, filters) {
   if (!inList(f.hubs, row.hub)) return false;
   if (!inList(f.cities, row.city)) return false;
   if (!inList(f.countries, row.country)) return false;
+  // String()-compared: the filter values arrive from the client as strings
+  // while row.center_id is numeric, and the SQL path compares them as strings
+  // too (see centerAttrCond_'s CAST) — both paths must agree or they disagree
+  // on the same filter set (the finding-I4 failure mode).
+  if (!inList(f.centers, String(row.center_id))) return false;
   var d = row.deployment_date ? row.deployment_date.slice(0, 10) : '';
   if (f.dateFrom && (!d || d < f.dateFrom)) return false;
   if (f.dateTo && (!d || d > f.dateTo)) return false;
@@ -569,6 +579,7 @@ function apiGetDashboardCD(options) {
     hubs: (options.filters && options.filters.hubs) || [],
     cities: (options.filters && options.filters.cities) || [],
     countries: (options.filters && options.filters.countries) || [],
+    centers: (options.filters && options.filters.centers) || [],
     deviceTypes: (options.filters && options.filters.deviceTypes) || [],
     deviceStatusExclude: (options.filters && options.filters.deviceStatusExclude) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
@@ -616,13 +627,14 @@ function apiGetDashboardCD(options) {
     results.deviceTypeOptions = distinctValues_(assetIdx, 'type').map(function (v) { return { type: v }; });
     results.deviceStatusOptions = distinctValues_(assetIdx, 'status').map(function (v) { return { status: v }; });
     var hasCenterFilter = filters.segments.length || filters.statuses.length ||
-      filters.states.length || filters.hubs.length || filters.cities.length || filters.countries.length;
+      filters.states.length || filters.hubs.length || filters.cities.length ||
+      filters.countries.length || (filters.centers || []).length;
     if (hasCenterFilter) {
       var cfMap = centerFilterMap_();
       assetIdx = assetIdx.filter(function (a) {
         return a.center_id != null && centerPassesFilters_(cfMap[a.center_id] || {}, {
           segments: filters.segments, statuses: filters.statuses, states: filters.states, hubs: filters.hubs,
-          cities: filters.cities, countries: filters.countries
+          cities: filters.cities, countries: filters.countries, centers: filters.centers || []
         });
       });
     }
@@ -673,6 +685,7 @@ function apiGetCentersCD(options) {
       hubs: ((options.filters && options.filters.hubs) || []).map(segClean_).filter(Boolean),
       cities: ((options.filters && options.filters.cities) || []).map(segClean_).filter(Boolean),
       countries: ((options.filters && options.filters.countries) || []).map(segClean_).filter(Boolean),
+      centers: ((options.filters && options.filters.centers) || []).map(segClean_).filter(Boolean),
       dateFrom: String((options.filters && options.filters.dateFrom) || ''),
       dateTo: String((options.filters && options.filters.dateTo) || '')
     },
@@ -756,6 +769,51 @@ function apiSearchHubsCD(options) {
   });
 }
 
+/**
+ * Server-side Center search for the Center filter dimension — same design as
+ * apiSearchHubsCD and for the same reason: center_details holds ~28k distinct
+ * centers, far too many to ship as a static option list.
+ *
+ * Returns {value, label} pairs rather than bare strings: the filter keys on
+ * CenterID (unique) while the drawer shows "Name · #id", because center names
+ * are NOT unique and a name-keyed filter would quietly match the wrong rows.
+ * A query matches EITHER the name or the id (per user) — operators refer to
+ * centers both ways. An empty/1-char query returns the first 50 by CenterID,
+ * which is what the combobox shows on focus. That ordering is arbitrary rather
+ * than "most relevant" — unlike apiSearchHubsCD's default, which ranks by
+ * center count. Worth revisiting if the default list proves unhelpful; ranking
+ * centers would need a device/ticket count join this lookup deliberately avoids.
+ */
+function apiSearchCentersCD(options) {
+  options = options || {};
+  var q = segClean_(String(options.query || '')).toLowerCase();
+  return respond_(function () {
+    return withCache('ctrsrch_v1_' + getCacheEpoch_() + '_' + shortHash(q), function () {
+      var CD = T('center_details');
+      var base = " WHERE " + cdFilter_() + " AND CenterID IS NOT NULL";
+      var sql, params = null;
+      if (q.length < 2) {
+        sql = "SELECT CAST(CenterID AS STRING) AS value, " +
+          " CONCAT(IFNULL(NULLIF(TRIM(Centername), ''), 'Center'), ' · #', CAST(CenterID AS STRING)) AS label " +
+          "FROM " + CD + base + " GROUP BY CenterID, Centername ORDER BY CenterID LIMIT 50";
+      } else {
+        sql = "SELECT CAST(CenterID AS STRING) AS value, " +
+          " CONCAT(IFNULL(NULLIF(TRIM(Centername), ''), 'Center'), ' · #', CAST(CenterID AS STRING)) AS label " +
+          "FROM " + CD + base +
+          " AND (LOWER(TRIM(Centername)) LIKE @like OR CAST(CenterID AS STRING) LIKE @like)" +
+          " GROUP BY CenterID, Centername ORDER BY CenterID LIMIT 50";
+        params = { like: '%' + likeEscape_(q) + '%' };
+      }
+      var rows = runQuery(sql, params, { maxRows: 50 }) || [];
+      return {
+        centers: rows.map(function (r) { return { value: String(r.value), label: String(r.label) }; }),
+        query: q, mode: q.length < 2 ? 'top' : 'search',
+        edition: 'center_details'
+      };
+    }, options.bypassCache === true);
+  });
+}
+
 function apiGetMapDataCD(options) {
   options = options || {};
   var filters = {
@@ -765,6 +823,7 @@ function apiGetMapDataCD(options) {
     hubs: (options.filters && options.filters.hubs) || [],
     cities: (options.filters && options.filters.cities) || [],
     countries: (options.filters && options.filters.countries) || [],
+    centers: (options.filters && options.filters.centers) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
@@ -896,6 +955,7 @@ function apiGetTopCustomersCD(options) {
     hubs: (options.filters && options.filters.hubs) || [],
     cities: (options.filters && options.filters.cities) || [],
     countries: (options.filters && options.filters.countries) || [],
+    centers: (options.filters && options.filters.centers) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
@@ -915,6 +975,7 @@ function apiGetExecOverviewCD(options) {
     hubs: (options.filters && options.filters.hubs) || [],
     cities: (options.filters && options.filters.cities) || [],
     countries: (options.filters && options.filters.countries) || [],
+    centers: (options.filters && options.filters.centers) || [],
     deviceTypes: (options.filters && options.filters.deviceTypes) || [],
     deviceStatusExclude: (options.filters && options.filters.deviceStatusExclude) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),

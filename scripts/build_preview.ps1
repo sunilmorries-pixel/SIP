@@ -22,7 +22,8 @@ $html = $index.
   Replace("<?!= include('MapView') ?>", $mapv).
   Replace("<?!= include('App') ?>", $app).
   Replace('<?= appName ?>', 'SIP Insights').
-  Replace('<?= appVersion ?>', 'preview')
+  Replace('<?= appVersion ?>', 'preview').
+  Replace('<?= appDeployedAt ?>', 'local build')
 
 $html = '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
         '<meta name="viewport" content="width=device-width, initial-scale=1">' +

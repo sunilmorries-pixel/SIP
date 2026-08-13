@@ -358,24 +358,27 @@
     </div>
   </section>
 
-  <!-- ══════════════ VIEW 2 · CENTERS / CUSTOMERS ══════════════ -->
+  <!-- ══════════════ VIEW 2 · CUSTOMERS ══════════════
+       A center IS a customer (an independent one); hubs are the parent in the
+       hub-and-spoke model. Labels on this page therefore read "Customer(s)" —
+       element ids, data keys and endpoints deliberately stay center*. -->
   <section id="panel-centers" class="panel" role="tabpanel" aria-labelledby="tab-centers" hidden>
     <div id="centersKpiGrid" class="kpi-grid kpi-grid-4"></div>
 
     <div class="card-grid">
       <article class="card span-4">
         <header class="card-head">
-          <h2 class="card-title">Centers by state</h2>
-          <p class="card-sub">Distinct active centers per state</p>
+          <h2 class="card-title">Customers by state</h2>
+          <p class="card-sub">Distinct active customers per state</p>
         </header>
         <div id="chartGeo" class="chart chart-tall" role="img"
-             aria-label="Bar chart of centers per state"></div>
+             aria-label="Bar chart of customers per state"></div>
       </article>
 
       <article class="card span-4">
         <header class="card-head">
           <h2 class="card-title">Deployment age</h2>
-          <p class="card-sub">Centers by time since first deployment</p>
+          <p class="card-sub">Customers by time since first deployment</p>
         </header>
         <div id="chartDeploymentAge" class="chart chart-tall" role="img"
              aria-label="Bar chart of active deployments by age band"></div>
@@ -383,8 +386,8 @@
 
       <article class="card span-4">
         <header class="card-head">
-          <h2 class="card-title">Centers by segment</h2>
-          <p class="card-sub">Distinct centers grouped by hub master segment</p>
+          <h2 class="card-title">Customers by segment</h2>
+          <p class="card-sub">Distinct customers grouped by hub master segment</p>
         </header>
         <div id="chartActiveEnded" class="chart chart-tall" role="img"
              aria-label="Donut chart of active versus ended deployments"></div>
@@ -392,12 +395,12 @@
 
       <article class="card span-12">
         <header class="card-head">
-          <h2 class="card-title">Center 360</h2>
-          <p class="card-sub">One row per center — devices, lifecycle, downtime, uptime, tickets · click a row for details</p>
+          <h2 class="card-title">Customer 360</h2>
+          <p class="card-sub">One row per customer — devices, lifecycle, downtime, uptime, tickets · click a row for details</p>
         </header>
         <div class="table-scroll">
           <table class="data-table" id="centerTable" aria-describedby="centerTableInfo">
-            <caption class="sr-only">Center explorer — devices, online count and open tickets per center</caption>
+            <caption class="sr-only">Customer explorer — devices, online count and open tickets per customer</caption>
             <thead><tr id="centerTableHead"></tr></thead>
             <tbody></tbody>
           </table>
@@ -865,6 +868,10 @@
       <div id="filterHub" class="filter-combo" data-dim="hubs"></div>
     </section>
     <section class="filter-section">
+      <h3 class="filter-section-title">Center</h3>
+      <div id="filterCenter" class="filter-combo" data-dim="centers"></div>
+    </section>
+    <section class="filter-section">
       <h3 class="filter-section-title">City</h3>
       <div id="filterCity" class="filter-combo" data-dim="cities"></div>
     </section>
@@ -887,7 +894,7 @@
         <label>From <input id="filterDateFrom" class="input" type="date"></label>
         <label>To <input id="filterDateTo" class="input" type="date"></label>
       </div>
-      <p class="filter-note">Centers/Map/Numbers: deployment date · Support: ticket created date · Asset: Jira created date · Top Customers/Overview: Segment/Status/State/Hub only, no date · Raw Data: date range applies to Zoho Tickets (created) and Jira Devices (created) only, per-source (see the Raw Data page for details).</p>
+      <p class="filter-note">Customers/Map/Numbers: deployment date · Support: ticket created date · Asset: Jira created date · Top Customers/Overview: Segment/Status/State/Hub only, no date · Raw Data: date range applies to Zoho Tickets (created) and Jira Devices (created) only, per-source (see the Raw Data page for details).</p>
     </section>
   </div>
   <footer class="center-panel-head" style="border-top:1px solid var(--border);border-bottom:none;">

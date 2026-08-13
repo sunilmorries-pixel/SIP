@@ -21,6 +21,7 @@ function doGet(e) {
   var template = htmlTemplate_('Index');
   template.appName = CONFIG.APP_NAME;
   template.appVersion = CONFIG.APP_VERSION;
+  template.appDeployedAt = CONFIG.APP_DEPLOYED_AT;
   return template.evaluate()
     .setTitle(CONFIG.APP_NAME + ' — Device Fleet Intelligence')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')

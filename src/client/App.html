@@ -148,10 +148,29 @@
         'Bhubaneswar Hub', 'Coimbatore Hub', 'Vijayawada Hub', 'Surat Hub', 'Ludhiana Hub',
         'Guwahati Hub', 'Ranchi Hub', 'Raipur Hub', 'Dehradun Hub', 'Mysuru Hub'];
       var hq = String((args && args.query) || '').trim().toLowerCase();
+      // Each mock hub gets a stable pseudo-HubID so searching by id is
+      // exercisable in preview, mirroring the server's name-OR-id match.
+      function mockHubId(name) { return 40000 + (MOCK_HUBS.indexOf(name) + 1); }
       var hubHits = hq.length < 2
         ? MOCK_HUBS.slice(0, 12)                     // "top 50 by center count" stand-in
-        : MOCK_HUBS.filter(function (h) { return h.toLowerCase().indexOf(hq) !== -1; }).slice(0, 50);
+        : MOCK_HUBS.filter(function (h) {
+            return h.toLowerCase().indexOf(hq) !== -1 || String(mockHubId(h)).indexOf(hq) !== -1;
+          }).slice(0, 50);
       return Promise.resolve({ hubs: hubHits, query: hq, mode: hq.length < 2 ? 'top' : 'search' });
+    }
+    if (fn === 'apiSearchCenters') {
+      // Mirrors apiSearchCentersCD: {value: CenterID, label: "Name · #id"},
+      // matching either the name or the id.
+      var cq = String((args && args.query) || '').trim().toLowerCase();
+      var MOCK_CENTERS = [];
+      for (var mc = 0; mc < 40; mc++) {
+        var cid = 10000 + mc * 137;
+        MOCK_CENTERS.push({ value: String(cid), label: 'Demo Center ' + (mc + 1) + ' · #' + cid });
+      }
+      var centerHits = cq.length < 2
+        ? MOCK_CENTERS.slice(0, 12)
+        : MOCK_CENTERS.filter(function (c) { return c.label.toLowerCase().indexOf(cq) !== -1; }).slice(0, 50);
+      return Promise.resolve({ centers: centerHits, query: cq, mode: cq.length < 2 ? 'top' : 'search' });
     }
     if (fn === 'apiSupportSearch') {
       // Deterministic-but-varied so all 3 outcomes are reachable while testing
@@ -252,7 +271,7 @@
         centers: pts, assets: asset, assetTypes: types, assetCats: cats,
         unlocatedCenters: 2412, matchedAssets: 1430,
         geo: { located: 5210, failed: 64, pending: 2790, total: 8064 },
-        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' }
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' }
       });
     }
     if (fn === 'apiGetExecOverview') {
@@ -277,7 +296,7 @@
           age_bands: [{ k: '<1y', n: 3566 }, { k: '1-2y', n: 3343 }, { k: '2-3y', n: 7072 }, { k: '3-5y', n: 6358 }, { k: '5y+', n: 8105 }],
           by_status: [{ k: 'Deployed', n: 5210 }, { k: 'Store', n: 1180 }, { k: 'Hardware', n: 640 },
             { k: 'Decommissioned', n: 410 }, { k: 'Field', n: 260 }, { k: 'Exported', n: 90 }] },
-        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' }
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' }
       });
     }
     if (fn === 'apiGetTopCustomers') {
@@ -301,7 +320,7 @@
         }
       });
       return Promise.resolve({ customers: custs, mapCenters: mapc, totals: totals,
-        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' } });
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' } });
     }
     if (fn === 'apiGetCenterDetail') {
       return Promise.resolve({
@@ -377,7 +396,7 @@
       // tricogde-dwh). devices/cities/active_deployments dropped: dead since
       // the Centers KPI rebuild removed their tiles, nothing reads them.
       centerKpis: [{ centers: 28482, centers_with_open_tickets: 187 }],
-      filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' },
+      filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' },
       geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
       deploymentAge: ['<1y', '1-2y', '2-3y', '3-5y', '5y+'].map(function (b) { return { band: b, devices: rnd(400, 3200) }; }),
       activeVsEnded: [{ status: 'SME', devices: 14316 }, { status: 'Government', devices: 4754 }, { status: 'LE', devices: 5107 }, { status: 'ECHO', devices: 788 }, { status: 'Project', devices: 65 }],
@@ -508,9 +527,9 @@
       kpiTile('kpiSignal', 'signal', 'var(--info)', 'Poor signal', 'CSQ < 10') +
       kpiTile('kpiUnsynced', 'sync', 'var(--violet)', 'Unsynced ECGs', 'waiting to upload');
     $('centersKpiGrid').innerHTML =
-      kpiTile('kpiCenters', 'building', 'var(--secondary)', 'Centers', 'all centers') +
-      kpiTile('kpiUptime', 'online', 'var(--ok)', 'Center uptime', 'avg per-center uptime') +
-      kpiTile('kpiStates', 'inbox', 'var(--accent)', 'Open ticket centers', 'at least 1 open ticket') +
+      kpiTile('kpiCenters', 'building', 'var(--secondary)', 'Customers', 'all customers') +
+      kpiTile('kpiUptime', 'online', 'var(--ok)', 'Customer uptime', 'avg per-customer uptime') +
+      kpiTile('kpiStates', 'inbox', 'var(--accent)', 'Open ticket customers', 'at least 1 open ticket') +
       kpiTile('kpiMtbf', 'clock', 'var(--violet)', 'MTBF', 'avg days between failures');
     $('supportKpiGrid').innerHTML =
       kpiTile('kpiZOpen', 'inbox', 'var(--accent)', 'Open tickets', 'active backlog') +
@@ -646,10 +665,10 @@
     setKpi('kpiSignal', kpi.poor_signal, 'avg CSQ ' + (kpi.avg_csq == null ? '—' : kpi.avg_csq));
     setKpi('kpiUnsynced', kpi.unsynced_total, 'records waiting to upload');
 
-    /* Centers KPIs (center grain) */
+    /* Customers KPIs (center grain — a center IS an independent customer) */
     var up = (data.uptimeFleet && data.uptimeFleet[0]) || null;
     var ck = (data.centerKpis && data.centerKpis[0]) || {};
-    setKpi('kpiCenters', ck.centers, 'all centers');
+    setKpi('kpiCenters', ck.centers, 'all customers');
     uptimeKpi('kpiUptime', up);
     setKpi('kpiStates', ck.centers_with_open_tickets, 'at least 1 open ticket');
     setKpi('kpiMtbf', up && up.avg_mtbf_days != null ? up.avg_mtbf_days : null, 'avg days between failures');
@@ -964,9 +983,11 @@
     renderPager(state.deviceTotal, state.devices, 'deviceTableInfo', 'pageIndicator', 'prevPageBtn', 'nextPageBtn', 'devices');
   }
 
-  /* ── Center-360 explorer (Centers view) ──────────────────────── */
+  /* ── Customer-360 explorer (Customers view) ───────────────────
+     Labels say "Customer" (a center IS an independent customer; the hub is its
+     parent in the hub-and-spoke model) — sort keys stay the server's center*. */
   var CENTER_COLUMNS = [
-    { key: 'center', label: 'Center', sortable: true },
+    { key: 'center', label: 'Customer', sortable: true },
     { key: 'center_id', label: 'ID', sortable: false, num: true },
     { key: 'hub', label: 'Hub', sortable: false },
     { key: 'city', label: 'City', sortable: false },
@@ -1018,8 +1039,8 @@
       })
       .catch(function (err) {
         if (requestId !== centersRequestId) return;
-        $('centerTableInfo').textContent = 'Failed to load centers';
-        toast('Center list failed: ' + err.message, 'error');
+        $('centerTableInfo').textContent = 'Failed to load customers';
+        toast('Customer list failed: ' + err.message, 'error');
       });
   }
 
@@ -1028,13 +1049,13 @@
     if (!state.centerRows.length) {
       body.innerHTML = '<tr><td colspan="' + CENTER_COLUMNS.length + '">' +
         '<div class="chart-empty" style="padding:32px 0">' +
-        '<strong>No centers match</strong><span>Try clearing the search</span>' +
+        '<strong>No customers match</strong><span>Try clearing the search</span>' +
         '</div></td></tr>';
     } else {
       body.innerHTML = state.centerRows.map(function (r, i) {
         var ticketBadge = r.open_tickets > 3 ? 'danger' : (r.open_tickets > 0 ? 'warn' : 'ok');
         var upBadge = r.uptime_pct == null ? 'muted' : (r.uptime_pct >= 99 ? 'ok' : (r.uptime_pct >= 95 ? 'warn' : 'danger'));
-        return '<tr class="is-clickable" data-row="' + i + '" tabindex="0" role="button" aria-label="Open details for ' + escapeHtml(r.center || ('center ' + r.center_id)) + '">' +
+        return '<tr class="is-clickable" data-row="' + i + '" tabindex="0" role="button" aria-label="Open details for ' + escapeHtml(r.center || ('customer ' + r.center_id)) + '">' +
           '<td><strong>' + escapeHtml(r.center || '—') + '</strong></td>' +
           '<td class="num">' + escapeHtml(r.center_id) + '</td>' +
           '<td>' + escapeHtml(r.hub || '—') + '</td>' +
@@ -1057,7 +1078,7 @@
         tr.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
       });
     }
-    renderPager(state.centerTotal, state.centers, 'centerTableInfo', 'ctrPageIndicator', 'ctrPrevBtn', 'ctrNextBtn', 'centers');
+    renderPager(state.centerTotal, state.centers, 'centerTableInfo', 'ctrPageIndicator', 'ctrPrevBtn', 'ctrNextBtn', 'customers');
   }
 
   function renderPager(total, pageState, infoId, indicatorId, prevId, nextId, noun) {
@@ -2426,7 +2447,7 @@
       formula: 'The production-year cohort with the worst first-time-failure rate (minimum 30 devices), flagging a likely batch defect; the top failure category is its signature.',
       source: 'Same cohort table as M-A3 (zoho_data failures by birth year).' },
     deployAge: { code: 'M-A4≈', name: 'Deployment / lifecycle age',
-      formula: 'today − deploymentdate, per center. Shown in months, or years (1 dp) once ≥ 12 months.',
+      formula: 'today − deploymentdate, per customer (center). Shown in months, or years (1 dp) once ≥ 12 months.',
       source: 'center_details.deploymentdate. True TRD dwell needs the Jira changelog — not yet in the sandbox.' },
     assetLifecycle: { name: 'Asset lifecycle / types',
       formula: 'Distinct Jira assets grouped by lifecycle status or hardware type — COUNT(DISTINCT issue_key).',
@@ -2483,9 +2504,16 @@
       source: 'center_details (sole center source).' },
     hubs: { name: 'Hubs', formula: 'COUNT(DISTINCT HubID) from center_details.', source: 'center_details.' },
     geo: { name: 'Geographic spread', formula: 'Centers / devices grouped by state (or city).', source: 'center_details.state / city.' },
-    openTicketCenters: { name: 'Open ticket centers', formula: 'Distinct centers with at least one non-terminal Zoho ticket (status NOT IN Closed/Duplicate/Junk).', source: 'center_details ⋈ zoho_data (deduped).' },
     deployStatus: { name: 'Deployment / lifecycle status', formula: 'Centers (or assets) grouped by status — active vs ended / lifecycle stage.', source: 'center_details.Status / jira_data.status_name.' },
-    center360: { name: 'Center 360', formula: 'One row per center: devices (cloud_devices + jira_data), lifecycle (today − deploymentdate), downtime (merged technical-ticket hours), uptime %, MTBF (uptime hours ÷ failures, days), failure count, tickets (total + open) — joined in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data ⋈ jira_data asset index (hash-joined).' },
+    center360: { name: 'Customer 360', formula: 'One row per customer (center): devices (cloud_devices + jira_data), lifecycle (today − deploymentdate), downtime (merged technical-ticket hours), uptime %, MTBF (uptime hours ÷ failures, days), failure count, tickets (total + open) — joined in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data ⋈ jira_data asset index (hash-joined).' },
+    // Customers-page wordings. customersCount sits ALONGSIDE centersCount (not a
+    // rename) so the Overview / Map / Top-Customers tiles that still say
+    // "Centers" keep their own text; openTicketCustomers replaced the old
+    // openTicketCenters outright — the Customers KPI was its only consumer.
+    customersCount: { name: 'Customers',
+      formula: 'COUNT(DISTINCT CenterID) — every customer, any status (no baseline filter). A center IS an independent customer; hubs group them under the hub-and-spoke model.',
+      source: 'center_details (sole customer source).' },
+    openTicketCustomers: { name: 'Open ticket customers', formula: 'Distinct customers with at least one non-terminal Zoho ticket (status NOT IN Closed/Duplicate/Junk).', source: 'center_details ⋈ zoho_data (deduped).' },
     centersRaw: { name: 'center_details · raw data', formula: 'Raw center_details rows (no baseline filter), paginated, with a per-center device count and mapped flag.', source: 'center_details + LEFT JOIN cloud_devices.' },
 
     // ── Customers ──
@@ -2502,14 +2530,14 @@
   var KPI_METRIC = {
     exUptime: 'uptime', kpiUptime: 'uptime',
     exActive: 'devicesCount', kpiTotal: 'devicesCount', mapDevices: 'devicesCount', tcDevices: 'devicesCount',
-    exCenters: 'centersCount', kpiCenters: 'centersCount', mapCenters: 'centersCount', tcCenters: 'centersCount',
+    exCenters: 'centersCount', kpiCenters: 'customersCount', mapCenters: 'centersCount', tcCenters: 'centersCount',
     exTickets: 'openTickets', kpiZOpen: 'openTickets', mapTickets: 'openTickets', kpiSvcOpen: 'openTickets',
     exTopLe: 'topLeDevices', tcCustomers: 'topLe',
     exTicketCount: 'ticketsCount', tcTicketCount: 'ticketsCount',
     exSlaBreach: 'slaBreach', tcSlaBreach: 'slaBreach',
     kpiSignal: 'poorSignal', kpiUnsynced: 'unsynced',
     kpiAvgAge: 'assetAge', kpiPastLife: 'assetAge',
-    kpiStates: 'openTicketCenters', kpiMtbf: 'mtbf',
+    kpiStates: 'openTicketCustomers', kpiMtbf: 'mtbf',
     kpiZIn: 'created7d', kpiZOut: 'closed7d', kpiZAge: 'openAge',
     kpiSvcIn: 'created7d', kpiSvcOut: 'closed7d', kpiSvcAge: 'openAge',
     mapAssets: 'assetLifecycle', tcAssets: 'assetLifecycle'
@@ -2525,12 +2553,15 @@
     'first-time-failure by production batch': 'ftf',
     'batch signal': 'batch', 'batch cohort detail': 'ftf',
     'devices by state': 'geo', 'deployment age': 'deployAge', 'deployment status': 'deployStatus',
-    'center 360': 'center360',
+    // Customers page titles now read "Customer(s)…"; the "centers…" keys stay
+    // for the Map/Numbers cards that still use the center wording.
+    'customer 360': 'center360', 'center 360': 'center360',
     'sla compliance': 'sla', 'sla breach by issue type': 'slaType',
     'priority mix': 'priority', 'active backlog': 'backlog', 'top issue categories': 'categories',
     'intake channels': 'channels', 'tickets by customer segment': 'segment',
     'assets by machine type': 'assetLifecycle', 'asset lifecycle age': 'assetAge',
     'assets by category': 'assetLifecycle', 'centers by state': 'geo',
+    'customers by state': 'geo',
     'devices per customer': 'topLeDevices', 'centers per customer': 'centersPerCust',
     'open tickets per customer': 'openTickets', 'customer leaderboard': 'leaderboard',
     'centers': 'centersCount', 'hubs': 'hubs', 'devices': 'devicesCount', 'tickets': 'ticketsCount',
@@ -2670,6 +2701,7 @@
     });
     $('filterClearBtn').addEventListener('click', function () {
       state.globalFiltersPending = { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], cities: [], countries: [],
+        centers: [],
         deviceTypes: JIRA_DEVICE_TYPE_DEFAULT.slice(), deviceStatusExclude: JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT.slice(),
         dateFrom: '', dateTo: '' };
       openFilterDrawer_(true); // re-render the toggle/combos to reflect the cleared state (don't re-snapshot over it)

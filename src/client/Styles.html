@@ -339,10 +339,11 @@ body.sidebar-collapsed .sidebar-collapse-btn span { display: none; }
 .countdown { font-family: var(--font-head); font-size: 12px; color: var(--text-3); }
 
 /* ── status strip + error banner ────────────────────────────────── */
+/* Sits inside .page-footer now (was a full-width band under the topbar), so it
+   inherits the footer's own type size and needs no page gutter of its own. */
 .status-strip {
   display: flex; align-items: center; gap: 8px;
-  padding: 8px clamp(16px, 4vw, 32px);
-  font-size: 13px; color: var(--text-3);
+  font-size: 12.5px; color: var(--text-3);
 }
 .pulse-dot {
   width: 8px; height: 8px; border-radius: 50%;
@@ -681,13 +682,30 @@ body.sidebar-collapsed .tab .nav-label { display: none; }
   border-radius: 999px; font-size: 11px; font-weight: 700;
   background: var(--primary); color: #fff;
 }
-.filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Own floating row beneath the topbar (moved out of it — the chips had to
+   share the topbar's single line with search + Refresh + Filters + theme, so
+   more than two active filters wrapped the whole bar taller). Same
+   width/centering formula as .topbar and .page so all three line up. Collapses
+   to nothing when there are no chips, so it costs no vertical space then. */
+.filter-chips {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  width: min(100% - clamp(32px, 6vw, 56px), 1440px);
+  margin: 10px auto 0;
+}
+.filter-chips:empty { display: none; }
+/* Floating pills: each chip carries its own elevation rather than relying on a
+   parent card, since there's no longer a container behind them. */
 .filter-chip-item {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11.5px; color: var(--text-2);
-  background: var(--surface-2); border: 1px solid var(--border-strong);
-  padding: 3px 6px 3px 10px; border-radius: 999px;
+  font-size: 12px; color: var(--text-2);
+  background: var(--surface); border: 1px solid var(--border-strong);
+  padding: 5px 7px 5px 12px; border-radius: 999px;
+  box-shadow: var(--shadow-card), inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: blur(var(--blur-glass)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(160%);
+  transition: border-color var(--dur-fast), transform var(--dur-fast);
 }
+.filter-chip-item:hover { border-color: var(--primary); transform: translateY(-1px); }
 .filter-chip-item button {
   display: inline-flex; align-items: center; justify-content: center;
   width: 16px; height: 16px; border: none; border-radius: 50%;
@@ -730,7 +748,9 @@ body.sidebar-collapsed .tab .nav-label { display: none; }
 
 @media (max-width: 820px) {
   .filter-control { width: 100%; }
-  .filter-chips { width: 100%; }
+  /* .filter-chips is no longer inside .topbar-controls, so it needs the page
+     gutter here rather than the old width:100% that assumed a topbar parent. */
+  .filter-chips { width: calc(100% - 32px); }
 }
 
 /* Metric code chip (e.g. M-A1) — reusable next to card titles */
@@ -1055,6 +1075,9 @@ a.ticket-row:hover .ticket-ext { color: var(--primary); }
   border-top: 1px solid var(--border);
   font-size: 12.5px; color: var(--text-3);
 }
+/* Stacks the provenance line and the "Updated HH:MM:SS" strip, right-aligned
+   so both read as one block against the app/version line on the left. */
+.page-footer-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 
 /* ── batch signal (cohort failure callout) ──────────────────────── */
 .batch-signal { display: flex; flex-direction: column; gap: 14px; padding: 4px 2px; }

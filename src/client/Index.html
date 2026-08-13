@@ -612,14 +612,96 @@
     </div>
   </section>
 
-  <!-- ══════════════ VIEW 5 · TOM ══════════════ -->
+  <!-- ══════════════ VIEW 5 · TOM ══════════════
+       CS-owned issue tracker over tom_tickets. Only the Centre filter and the
+       date range apply here — this table has no state/city/segment/hub columns
+       (see TomTickets.js tomFilterCond_). -->
   <section id="panel-tom" class="panel" role="tabpanel" aria-labelledby="tab-tom" hidden>
-    <p class="page-lead">TOM — this page is awaiting its data source.</p>
+    <div id="tomKpiGrid" class="kpi-grid kpi-grid-4"></div>
+
     <div class="card-grid">
-      <article class="card span-12 empty-state-card">
-        <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 3h6v3H9zM8 10h8M8 14h8M8 18h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <h2 class="card-title">Data source not yet connected</h2>
-        <p class="card-sub">TOM will show its own charts and metrics once that source is wired up.</p>
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Issues per month</h2>
+          <p class="card-sub">Raised per month · TOM tracker</p>
+        </header>
+        <div id="chartTomVolume" class="chart chart-tall" role="img"
+             aria-label="Bar chart of TOM issues raised per month"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Issue types</h2>
+          <p class="card-sub">What is being reported</p>
+        </header>
+        <div id="chartTomIssueTypes" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of issues by type"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Devices involved</h2>
+          <p class="card-sub">Machine type on the issue</p>
+        </header>
+        <div id="chartTomDevices" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of issues by device type"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Outcomes</h2>
+          <p class="card-sub">How issues were closed out</p>
+        </header>
+        <div id="chartTomOutcomes" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of issue outcomes"></div>
+      </article>
+
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">CS workload</h2>
+          <p class="card-sub">Issues per team member</p>
+        </header>
+        <div id="chartTomOwners" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of issues per CS team member"></div>
+      </article>
+
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">Top reasons</h2>
+          <p class="card-sub">Recorded cause of the issue</p>
+        </header>
+        <div id="chartTomReasons" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of issues by recorded reason"></div>
+      </article>
+
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">TOM issues</h2>
+          <p class="card-sub">One row per tracked issue · newest first</p>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table" id="tomTable" aria-describedby="tomTableInfo">
+            <caption class="sr-only">TOM issue explorer</caption>
+            <thead><tr id="tomTableHead"></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span id="tomTableInfo" class="table-info" aria-live="polite">Loading…</span>
+          <div class="pager">
+            <button id="tomPrevBtn" class="btn btn-ghost btn-icon" type="button" aria-label="Previous page" disabled>
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <span id="tomPageIndicator" class="page-indicator">–</span>
+            <button id="tomNextBtn" class="btn btn-ghost btn-icon" type="button" aria-label="Next page" disabled>
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
       </article>
     </div>
   </section>

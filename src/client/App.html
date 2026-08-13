@@ -55,6 +55,10 @@
     serviceLoaded: false, serviceFilters: null,
     service: { sortBy: 'created_on', sortDir: 'desc', page: 0, pageSize: 15 },
     serviceRows: [], serviceTotal: 0,
+    // TOM page (tom_tickets) — same self-contained pattern as Service.
+    tomLoaded: false, tomFilters: null,
+    tom: { sortBy: 'received_date', sortDir: 'desc', page: 0, pageSize: 15 },
+    tomRows: [], tomTotal: 0,
     // The filter set each paginated table's CURRENT rows were fetched with —
     // the same guard state.dashFilters gives the shared dashboard payload, for
     // the two tables that fetch their own data (review finding I2). Siblings of
@@ -125,6 +129,57 @@
     }
     // NB: mockCall strips a trailing "CD" above, so these match the BASE names
     // — matching 'apiGetServiceCD' here silently never fires.
+    if (fn === 'apiGetTom') {
+      // Figures mirror the profiled table (1,325 rows; Issue Resolved 256 +
+      // Auto Resolved 86 = 342 closed out; Not resolved 27 + No response 41).
+      return Promise.resolve({
+        kpis: { issues: 1325, resolved: 342, unresolved: 68, resolved_pct: 25.8, avg_tat_days: 1.6 },
+        volume: [['2026-01', 141], ['2026-02', 142], ['2026-03', 112], ['2026-04', 161],
+          ['2026-05', 191], ['2026-06', 249], ['2026-07', 203], ['2026-08', 124]]
+          .map(function (p) { return { ym: p[0], cnt: p[1] }; }),
+        issueTypes: [{ label: 'Machine', cnt: 420 }, { label: 'lead cable', cnt: 363 },
+          { label: 'Communicator', cnt: 252 }, { label: 'OTG', cnt: 128 },
+          { label: 'Thermal Printer', cnt: 81 }, { label: 'Power adapter', cnt: 53 },
+          { label: 'Mobile', cnt: 13 }, { label: 'UPS', cnt: 6 }],
+        deviceTypes: [{ label: 'Vcardia', cnt: 651 }, { label: 'MAC600', cnt: 342 },
+          { label: 'TR-100', cnt: 121 }, { label: 'TR-110', cnt: 87 },
+          { label: 'Thermal Printer', cnt: 65 }, { label: 'TR-200', cnt: 37 },
+          { label: 'TR-400', cnt: 10 }],
+        outcomes: [{ label: 'Issue identified+Service Visit', cnt: 811 },
+          { label: 'Issue Resolved', cnt: 256 }, { label: 'Auto Resolved', cnt: 86 },
+          { label: 'Service visit request for Identification', cnt: 68 },
+          { label: 'No response', cnt: 41 },
+          { label: 'Direct service Request by customer', cnt: 31 },
+          { label: 'Not resolved', cnt: 27 }],
+        owners: [{ label: 'Swetha P', cnt: 230 }, { label: 'Suchitra', cnt: 195 },
+          { label: 'Inayath', cnt: 188 }, { label: 'Prashanth.v', cnt: 175 },
+          { label: 'Mohammad Ashu', cnt: 172 }, { label: 'Shashi KM', cnt: 165 },
+          { label: 'Bharath', cnt: 140 }, { label: 'Harshavardhan', cnt: 40 }],
+        reasons: ['Hardware failure', 'Cable damage', 'Network drop', 'Battery drain',
+          'Config error', 'Physical damage', 'Power issue', 'User handling']
+          .map(function (s) { return { label: s, cnt: rnd(20, 220) }; })
+          .sort(function (a, b) { return b.cnt - a.cnt; })
+      });
+    }
+    if (fn === 'apiGetTomTickets') {
+      var tomRows = [];
+      for (var ti = 0; ti < 15; ti++) {
+        tomRows.push({
+          received: '2026-08-' + ('0' + (1 + (ti % 12))).slice(-2),
+          closed: '2026-08-' + ('0' + (2 + (ti % 12))).slice(-2),
+          zoho_id: '#' + (127560 + ti), center_id: String(10000 + ti * 137),
+          center_name: ['Apollo Bhubaneswar', 'SCB Cuttack', 'Vijaya Diagnostics'][ti % 3],
+          location: ['Odisha', 'Karnataka', 'Telangana'][ti % 3],
+          device_type: ['Vcardia', 'MAC600', 'TR-100'][ti % 3],
+          issue_type: ['Machine', 'lead cable', 'Communicator'][ti % 3],
+          reason: ['Hardware failure', 'Cable damage', 'Network drop'][ti % 3],
+          owner: ['Swetha P', 'Suchitra', 'Inayath'][ti % 3],
+          tat_days_: ti % 10,
+          outcome: ['Issue identified+Service Visit', 'Issue Resolved', 'Not resolved'][ti % 3]
+        });
+      }
+      return Promise.resolve({ rows: tomRows, totalRows: 1325, page: 0, pageSize: 15 });
+    }
     if (fn === 'apiGetService') {
       // Figures mirror the profiled table (36,403 rows: 205 open / 36,198
       // closed, CENTER_VISIT 30,822 / OVERCALL_RESOLUTION 5,259) so the preview
@@ -604,6 +659,11 @@
       kpiTile('kpiSvcTat', 'clock', 'var(--info)', 'Median TAT', 'days to close') +
       kpiTile('kpiSvcRemote', 'online', 'var(--ok)', 'Remote resolution', 'closed without a visit') +
       kpiTile('kpiSvcVisits', 'fleet', 'var(--violet)', 'Field visits · 30d', 'site visits raised');
+    $('tomKpiGrid').innerHTML =
+      kpiTile('kpiTomIssues', 'ticket', 'var(--accent)', 'Issues logged', 'in the TOM tracker') +
+      kpiTile('kpiTomResolved', 'online', 'var(--ok)', 'Closed out', 'resolved without a visit') +
+      kpiTile('kpiTomTat', 'clock', 'var(--info)', 'Avg TAT', 'days to close') +
+      kpiTile('kpiTomOpen', 'inbox', 'var(--danger)', 'Unresolved', 'not resolved or no response');
     $('mapKpiGrid').innerHTML =
       kpiTile('mapCenters', 'building', 'var(--secondary)', 'Centers', 'matching filters') +
       kpiTile('mapDevices', 'fleet', 'var(--info)', 'Devices', 'at shown centers') +
@@ -1059,6 +1119,133 @@
       }).join('');
     }
     renderPager(state.deviceTotal, state.devices, 'deviceTableInfo', 'pageIndicator', 'prevPageBtn', 'nextPageBtn', 'devices');
+  }
+
+  /* ── TOM page (tom_tickets) ────────────────────────────────────
+     Sort keys are the underlying column names, matching TOM_SORT_KEYS in
+     TomTickets.js — not the aliased output names the rows carry. */
+  var TOM_COLUMNS = [
+    { key: 'received_date', label: 'Received', sortable: true },
+    { key: 'closed_date', label: 'Closed', sortable: true },
+    { key: 'zoho_id', label: 'Zoho', sortable: false },
+    { key: 'center_name', label: 'Customer', sortable: true },
+    { key: 'location', label: 'Location', sortable: true },
+    { key: 'machine_devicetype', label: 'Device', sortable: true },
+    { key: 'issue_type', label: 'Issue', sortable: true },
+    { key: 'reason', label: 'Reason', sortable: false },
+    { key: 'cs_team_name_service_team', label: 'Owner', sortable: true },
+    { key: 'tat_days_', label: 'TAT (days)', sortable: true, num: true },
+    { key: 'remarks', label: 'Outcome', sortable: true }
+  ];
+
+  // Outcomes that mean the issue is still open — mirrors tomUnresolvedCond_
+  // server-side. Both must agree or the KPI and the row badges disagree.
+  var TOM_UNRESOLVED = ['Not resolved', 'No response'];
+  var TOM_RESOLVED = ['Issue Resolved', 'Auto Resolved'];
+
+  var tomRequestId = 0;
+  function loadTom() {
+    var requestId = ++tomRequestId;
+    var sentFilters = JSON.parse(JSON.stringify(state.globalFilters)); // see loadDevices
+    gsCall(ep('apiGetTom'), { filters: state.globalFilters })
+      .then(function (payload) {
+        if (requestId !== tomRequestId) return;
+        state.tomLoaded = true;
+        state.tomFilters = sentFilters;
+        renderTom(payload);
+      })
+      .catch(function (err) {
+        if (requestId !== tomRequestId) return;
+        toast('TOM page failed: ' + err.message, 'error');
+      });
+    loadTomTickets();
+  }
+
+  function renderTom(d) {
+    var k = d.kpis || {};
+    setKpi('kpiTomIssues', k.issues, 'in the TOM tracker');
+    setKpiText('kpiTomResolved', k.resolved == null ? '—' : FMT.format(k.resolved),
+      k.resolved_pct == null ? 'resolved without a visit' : k.resolved_pct + '% of all issues');
+    setKpiText('kpiTomTat', k.avg_tat_days == null ? '—' : k.avg_tat_days + 'd', 'days to close');
+    setKpi('kpiTomOpen', k.unresolved, 'not resolved or no response');
+
+    Charts.verticalBar('chartTomVolume', d.volume || [], 'ym', 'cnt', '#2E9BD6', 'No issues in range');
+    Charts.rankBar('chartTomIssueTypes', d.issueTypes || [], { color: '#E5344F', empty: 'No issue data' });
+    Charts.rankBar('chartTomDevices', d.deviceTypes || [], { color: '#7C5CFF', empty: 'No device data' });
+    Charts.rankBar('chartTomOutcomes', d.outcomes || [], { color: '#2FD39B', empty: 'No outcome data' });
+    Charts.rankBar('chartTomOwners', d.owners || [], { color: '#38BDF8', empty: 'No owner data' });
+    Charts.rankBar('chartTomReasons', d.reasons || [], { color: '#F5B301', empty: 'No reason data' });
+  }
+
+  var tomTicketsRequestId = 0;
+  function loadTomTickets() {
+    var requestId = ++tomTicketsRequestId;
+    $('tomTableInfo').textContent = 'Loading…';
+    var query = Object.assign({}, state.tom,
+      { search: state.search, filters: state.globalFilters });
+    gsCall(ep('apiGetTomTickets'), query)
+      .then(function (result) {
+        if (requestId !== tomTicketsRequestId) return;
+        state.tomRows = result.rows;
+        state.tomTotal = result.totalRows;
+        renderTomTable();
+      })
+      .catch(function (err) {
+        if (requestId !== tomTicketsRequestId) return;
+        $('tomTableInfo').textContent = 'Failed to load TOM issues';
+        toast('TOM issues failed: ' + err.message, 'error');
+      });
+  }
+
+  function buildTomHeader() {
+    $('tomTableHead').innerHTML = TOM_COLUMNS.map(function (col) {
+      return sortableHeader(col, state.tom);
+    }).join('');
+    Array.prototype.forEach.call($('tomTableHead').querySelectorAll('.th-sort'), function (btn) {
+      btn.addEventListener('click', function () {
+        var key = btn.getAttribute('data-sort');
+        if (state.tom.sortBy === key) {
+          state.tom.sortDir = state.tom.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.tom.sortBy = key;
+          state.tom.sortDir = 'desc';
+        }
+        state.tom.page = 0;
+        buildTomHeader();
+        loadTomTickets();
+      });
+    });
+  }
+
+  function renderTomTable() {
+    var body = $('tomTable').querySelector('tbody');
+    if (!state.tomRows.length) {
+      body.innerHTML = '<tr><td colspan="' + TOM_COLUMNS.length + '">' +
+        '<div class="chart-empty" style="padding:32px 0">' +
+        '<strong>No TOM issues match</strong><span>Try clearing the search</span>' +
+        '</div></td></tr>';
+    } else {
+      body.innerHTML = state.tomRows.map(function (r) {
+        var outcome = r.outcome || '';
+        var badge = TOM_UNRESOLVED.indexOf(outcome) !== -1 ? 'danger'
+          : (TOM_RESOLVED.indexOf(outcome) !== -1 ? 'ok' : 'warn');
+        return '<tr>' +
+          '<td>' + escapeHtml(r.received || '—') + '</td>' +
+          '<td>' + escapeHtml(r.closed || '—') + '</td>' +
+          '<td>' + escapeHtml(r.zoho_id || '—') + '</td>' +
+          '<td><strong>' + escapeHtml(r.center_name || '—') + '</strong></td>' +
+          '<td>' + escapeHtml(r.location || '—') + '</td>' +
+          '<td>' + escapeHtml(r.device_type || '—') + '</td>' +
+          '<td>' + escapeHtml(r.issue_type || '—') + '</td>' +
+          '<td>' + escapeHtml(r.reason || '—') + '</td>' +
+          '<td>' + escapeHtml(r.owner || '—') + '</td>' +
+          '<td class="num">' + (r.tat_days_ == null ? '—' : escapeHtml(r.tat_days_)) + '</td>' +
+          '<td><span class="badge badge-' + badge + '">' + escapeHtml(outcome || '—') + '</span></td>' +
+          '</tr>';
+      }).join('');
+    }
+    renderPager(state.tomTotal, state.tom, 'tomTableInfo',
+      'tomPageIndicator', 'tomPrevBtn', 'tomNextBtn', 'issues');
   }
 
   /* ── Service page (ServiceWRK) ─────────────────────────────────
@@ -2365,6 +2552,11 @@
       if (!state.topLoaded) loadTopCustomers();
     }
     var serviceStale = state.serviceFilters && !filtersEqual_(state.serviceFilters, state.globalFilters);
+    var tomStale = state.tomFilters && !filtersEqual_(state.tomFilters, state.globalFilters);
+    if (tabId === 'tab-tom' && (!state.tomLoaded || tomStale)) {
+      state.tom.page = 0;
+      loadTom();
+    }
     if (tabId === 'tab-service' && (!state.serviceLoaded || serviceStale)) {
       state.service.page = 0;
       loadService();
@@ -2605,6 +2797,7 @@
     loadDevices();
     loadCenters();
     if (state.serviceLoaded) loadService();
+    if (state.tomLoaded) loadTom();
     if (state.mapLoaded) loadMapData();
     if (state.topLoaded) loadTopCustomers();
     // Numbers page (incl. the Google-Sheet devices count) — only when it's in play.
@@ -2726,6 +2919,23 @@
     openTicketCustomers: { name: 'Open ticket customers', formula: 'Distinct customers with at least one non-terminal Zoho ticket (status NOT IN Closed/Duplicate/Junk).', source: 'center_details ⋈ zoho_data (deduped).' },
     centersRaw: { name: 'center_details · raw data', formula: 'Raw center_details rows (no baseline filter), paginated, with a per-center device count and mapped flag.', source: 'center_details + LEFT JOIN cloud_devices.' },
 
+    // ── TOM (tom_tickets) ──
+    tomIssues: { name: 'Issues logged',
+      formula: 'Rows in the TOM tracker matching the current Centre and date filters. One row per tracked issue.',
+      source: 'tom_tickets (monthly CS spreadsheet tabs).' },
+    tomResolved: { name: 'Closed out',
+      formula: 'Issues whose outcome is “Issue Resolved” or “Auto Resolved” — closed without needing a site visit. The percentage is of all issues in range.',
+      source: 'tom_tickets.remarks, which records the outcome despite its name.' },
+    tomTat: { name: 'Avg TAT (TOM)',
+      formula: 'Mean tat_days_ across tracked issues. Whole days only — the source records 0–9.',
+      source: 'tom_tickets.tat_days_.' },
+    tomOpen: { name: 'Unresolved issues',
+      formula: 'Issues whose outcome is “Not resolved” or “No response”. Everything else either resolved or went to a service visit.',
+      source: 'tom_tickets.remarks.' },
+    tomVolume: { name: 'Issues per month',
+      formula: 'Issues grouped by the month they were received. Derived from received_date rather than the source’s month column, which holds bare names (“Jan”, “Jun”) that sort alphabetically.',
+      source: 'tom_tickets.received_date.' },
+
     // ── Service (ServiceWRK) ──
     svcOpen: { name: 'Open service tickets',
       formula: 'ServiceWRK tickets with status = Open.',
@@ -2763,6 +2973,8 @@
     // openTickets entry, or the popover would cite the wrong table.
     kpiSvcOpen: 'svcOpen', kpiSvcTat: 'svcTat',
     kpiSvcRemote: 'svcRemote', kpiSvcVisits: 'svcVisits',
+    kpiTomIssues: 'tomIssues', kpiTomResolved: 'tomResolved',
+    kpiTomTat: 'tomTat', kpiTomOpen: 'tomOpen',
     exTopLe: 'topLeDevices', tcCustomers: 'topLe',
     exTicketCount: 'ticketsCount', tcTicketCount: 'ticketsCount',
     exSlaBreach: 'slaBreach', tcSlaBreach: 'slaBreach',
@@ -2795,6 +3007,7 @@
     'customers by state': 'geo',
     'service ticket flow': 'svcFlow', 'turnaround time': 'svcTat',
     'resolution mix': 'svcRemote',
+    'issues per month': 'tomVolume', 'outcomes': 'tomResolved',
     'devices per customer': 'topLeDevices', 'centers per customer': 'centersPerCust',
     'open tickets per customer': 'openTickets', 'customer leaderboard': 'leaderboard',
     'centers': 'centersCount', 'hubs': 'hubs', 'devices': 'devicesCount', 'tickets': 'ticketsCount',
@@ -2880,6 +3093,7 @@
     buildStatusChips();
     buildCenterHeader();
     buildServiceHeader();
+    buildTomHeader();
     setupMetricInfo();
     wireTabs();
 
@@ -2951,6 +3165,14 @@
     $('nextPageBtn').addEventListener('click', function () {
       state.devices.page += 1;
       loadDevices();
+    });
+    $('tomPrevBtn').addEventListener('click', function () {
+      state.tom.page = Math.max(0, state.tom.page - 1);
+      loadTomTickets();
+    });
+    $('tomNextBtn').addEventListener('click', function () {
+      state.tom.page += 1;
+      loadTomTickets();
     });
     $('svcPrevBtn').addEventListener('click', function () {
       state.service.page = Math.max(0, state.service.page - 1);
@@ -3043,6 +3265,7 @@
     if (state.activeTab === 'tab-asset') { state.devices.page = 0; loadDevices(); }
     else if (state.activeTab === 'tab-centers') { state.centers.page = 0; loadCenters(); }
     else if (state.activeTab === 'tab-service') { state.service.page = 0; loadServiceTickets(); }
+    else if (state.activeTab === 'tab-tom') { state.tom.page = 0; loadTomTickets(); }
     else if (state.activeTab === 'tab-map') applyMapFilters();
     else if (state.activeTab === 'tab-topcust') renderTcTable(topCustFilteredRows());
   }
@@ -3060,7 +3283,7 @@
     'tab-centers': { placeholder: 'Search customers by name, ID, hub or state…' },
     'tab-support': { placeholder: 'Search by center ID or ticket number…' },
     'tab-service': { placeholder: 'Search service tickets by id, contact or engineer…' },
-    'tab-tom': { disabled: true, placeholder: "Search isn't available on this page" },
+    'tab-tom': { placeholder: 'Search TOM issues by customer, Zoho id or issue…' },
     'tab-map': { placeholder: 'Search the map: center, hub, device or serial…' },
     'tab-topcust': { placeholder: 'Search customers by name or hub ID…' },
     'tab-numbers': { disabled: true, placeholder: "Search isn't available on this page" },

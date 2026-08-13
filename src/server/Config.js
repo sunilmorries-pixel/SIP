@@ -108,11 +108,15 @@ var CONFIG = {
    * previous value sat at a placeholder '1.0.0' across all 21 releases
    * because nothing tied it to the release step; the footer was simply wrong.
    *
-   * APP_VERSION      = the Apps Script deployment version `clasp deploy`
-   *                    reports (the @N in `clasp deployments`).
-   * APP_DEPLOYED_AT  = when that version was pointed at the production URL.
+   * APP_VERSION      = the version THIS DEPLOY WILL CREATE, i.e. (current live
+   *                    @N in `clasp deployments`) + 1 — NOT the version that is
+   *                    live while you're editing. Setting it to the current live
+   *                    number is the mistake that already happened once: @54
+   *                    shipped carrying '53', so production's footer claimed a
+   *                    version one behind what it was actually running.
+   * APP_DEPLOYED_AT  = when that version is pointed at the production URL.
    */
   APP_NAME: 'SIP Insights',
-  APP_VERSION: '53',
-  APP_DEPLOYED_AT: 'Aug 13, 2026, 8:30 PM'
+  APP_VERSION: '55',
+  APP_DEPLOYED_AT: 'Aug 13, 2026, 9:20 PM'
 };

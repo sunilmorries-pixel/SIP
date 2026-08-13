@@ -123,7 +123,9 @@
       }
       return Promise.resolve({ rows: rows, totalRows: 11331, page: (args && args.page) || 0, pageSize: 15 });
     }
-    if (fn === 'apiGetServiceCD') {
+    // NB: mockCall strips a trailing "CD" above, so these match the BASE names
+    // — matching 'apiGetServiceCD' here silently never fires.
+    if (fn === 'apiGetService') {
       // Figures mirror the profiled table (36,403 rows: 205 open / 36,198
       // closed, CENTER_VISIT 30,822 / OVERCALL_RESOLUTION 5,259) so the preview
       // reads like production rather than like noise.
@@ -136,20 +138,23 @@
           { band: '3-7d', cnt: 6410 }, { band: '8-30d', cnt: 4120 }, { band: '30d+', cnt: 1468 }],
         resolution: [{ label: 'CENTER_VISIT', cnt: 30822 },
           { label: 'OVERCALL_RESOLUTION', cnt: 5259 }, { label: 'Unknown', cnt: 322 }],
+        // Sorted descending like the real ORDER BY cnt DESC, so the preview
+        // actually exercises rankBar's largest-at-top reversal.
         serviceTypes: ['Breakdown call', 'Preventive maintenance', 'Installation',
           'Document collection', 'Training', 'Lead cable replacement', 'Battery swap',
-          'Printer service'].map(function (s) { return { label: s, cnt: rnd(400, 6000) }; }),
+          'Printer service'].map(function (s) { return { label: s, cnt: rnd(400, 6000) }; })
+          .sort(function (a, b) { return b.cnt - a.cnt; }),
         models: [{ label: 'MAC 600', cnt: 17109 }, { label: 'VCARDIA', cnt: 16994 },
           { label: 'TR 100', cnt: 1312 }, { label: 'TR 200', cnt: 344 },
           { label: 'TR 110', cnt: 182 }, { label: 'ECHO', cnt: 131 }],
         reps: ['Abhisekh Mohapatra', 'Dadapeer Z', 'Saidha Rao', 'Mustaq Ahmed', 'Ravi Kumar',
           'Anil Sharma', 'Prakash N', 'Vinod S'].map(function (s) {
           return { label: s, cnt: rnd(200, 900) };
-        }),
+        }).sort(function (a, b) { return b.cnt - a.cnt; }),
         invalidTat: 12
       });
     }
-    if (fn === 'apiGetServiceTicketsCD') {
+    if (fn === 'apiGetServiceTickets') {
       var svcRows = [];
       for (var si = 0; si < 15; si++) {
         svcRows.push({
@@ -2721,6 +2726,23 @@
     openTicketCustomers: { name: 'Open ticket customers', formula: 'Distinct customers with at least one non-terminal Zoho ticket (status NOT IN Closed/Duplicate/Junk).', source: 'center_details ⋈ zoho_data (deduped).' },
     centersRaw: { name: 'center_details · raw data', formula: 'Raw center_details rows (no baseline filter), paginated, with a per-center device count and mapped flag.', source: 'center_details + LEFT JOIN cloud_devices.' },
 
+    // ── Service (ServiceWRK) ──
+    svcOpen: { name: 'Open service tickets',
+      formula: 'ServiceWRK tickets with status = Open.',
+      source: 'servicewrk_Tickets.status.' },
+    svcTat: { name: 'Median turnaround',
+      formula: 'Median tat_days_ over closed tickets. Rows with negative TAT (a closed_date earlier than created_on) are excluded and counted separately — the sub-line reports how many. Median, not mean: the raw range runs −1.5 to 249.85 days.',
+      source: 'servicewrk_Tickets.tat_days_.' },
+    svcRemote: { name: 'Remote resolution %',
+      formula: 'OVERCALL_RESOLUTION ÷ tickets carrying any closure type. Every remote fix is an avoided site visit.',
+      source: 'servicewrk_Tickets.closure_type.' },
+    svcVisits: { name: 'Field visits · 30d',
+      formula: 'CENTER_VISIT tickets raised in the 30 days before the NEWEST ticket in the table — anchored to the data rather than to today, because the feed is a daily file drop that can lag.',
+      source: 'servicewrk_Tickets.closure_type + created_on.' },
+    svcFlow: { name: 'Service ticket flow',
+      formula: 'Tickets raised vs closed per month. Counted in two separate passes and outer-joined, so a month with closures but no new tickets still appears.',
+      source: 'servicewrk_Tickets.created_on / closed_date.' },
+
     // ── Customers ──
     topLe: { name: 'Top LE customers', formula: 'The curated 27 large-enterprise accounts, ranked by devices.', source: 'TopCustomers.js hub list.' },
     topLeDevices: { name: 'Top LE devices', formula: 'Devices run by the 27 curated “Top LE” hub accounts.', source: 'TopCustomers hub list ⋈ device mapping.' },
@@ -2736,7 +2758,11 @@
     exUptime: 'uptime', kpiUptime: 'uptime',
     exActive: 'devicesCount', kpiTotal: 'devicesCount', mapDevices: 'devicesCount', tcDevices: 'devicesCount',
     exCenters: 'centersCount', kpiCenters: 'customersCount', mapCenters: 'centersCount', tcCenters: 'centersCount',
-    exTickets: 'openTickets', kpiZOpen: 'openTickets', mapTickets: 'openTickets', kpiSvcOpen: 'openTickets',
+    exTickets: 'openTickets', kpiZOpen: 'openTickets', mapTickets: 'openTickets',
+    // kpiSvcOpen counts ServiceWRK tickets, not Zoho — it must NOT share the
+    // openTickets entry, or the popover would cite the wrong table.
+    kpiSvcOpen: 'svcOpen', kpiSvcTat: 'svcTat',
+    kpiSvcRemote: 'svcRemote', kpiSvcVisits: 'svcVisits',
     exTopLe: 'topLeDevices', tcCustomers: 'topLe',
     exTicketCount: 'ticketsCount', tcTicketCount: 'ticketsCount',
     exSlaBreach: 'slaBreach', tcSlaBreach: 'slaBreach',
@@ -2767,6 +2793,8 @@
     'assets by machine type': 'assetLifecycle', 'asset lifecycle age': 'assetAge',
     'assets by category': 'assetLifecycle', 'centers by state': 'geo',
     'customers by state': 'geo',
+    'service ticket flow': 'svcFlow', 'turnaround time': 'svcTat',
+    'resolution mix': 'svcRemote',
     'devices per customer': 'topLeDevices', 'centers per customer': 'centersPerCust',
     'open tickets per customer': 'openTickets', 'customer leaderboard': 'leaderboard',
     'centers': 'centersCount', 'hubs': 'hubs', 'devices': 'devicesCount', 'tickets': 'ticketsCount',
@@ -2851,6 +2879,7 @@
     buildDeviceHeader();
     buildStatusChips();
     buildCenterHeader();
+    buildServiceHeader();
     setupMetricInfo();
     wireTabs();
 
@@ -3013,6 +3042,7 @@
   function reloadActiveList() {
     if (state.activeTab === 'tab-asset') { state.devices.page = 0; loadDevices(); }
     else if (state.activeTab === 'tab-centers') { state.centers.page = 0; loadCenters(); }
+    else if (state.activeTab === 'tab-service') { state.service.page = 0; loadServiceTickets(); }
     else if (state.activeTab === 'tab-map') applyMapFilters();
     else if (state.activeTab === 'tab-topcust') renderTcTable(topCustFilteredRows());
   }
@@ -3029,7 +3059,7 @@
     'tab-asset': { placeholder: 'Search devices by ID, center or hub…' },
     'tab-centers': { placeholder: 'Search customers by name, ID, hub or state…' },
     'tab-support': { placeholder: 'Search by center ID or ticket number…' },
-    'tab-service': { disabled: true, placeholder: "Search isn't available on this page" },
+    'tab-service': { placeholder: 'Search service tickets by id, contact or engineer…' },
     'tab-tom': { disabled: true, placeholder: "Search isn't available on this page" },
     'tab-map': { placeholder: 'Search the map: center, hub, device or serial…' },
     'tab-topcust': { placeholder: 'Search customers by name or hub ID…' },

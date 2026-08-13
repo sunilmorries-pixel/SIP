@@ -608,6 +608,10 @@ var Charts = (function () {
 
   function svcResolution(rows) {
     if (!rows || !rows.length) return showEmpty('chartSvcResolution');
+    // Explicit colors for the two real outcomes, grey for everything else.
+    // NOT STATUS_PALETTE as a fallback: its index 2 IS C.warn, so an "Unknown"
+    // slice landed on exactly the same amber as CENTER_VISIT and the two were
+    // indistinguishable in the legend.
     var COLORS = { CENTER_VISIT: C.warn, OVERCALL_RESOLUTION: C.ok };
     render('chartSvcResolution', base({
       legend: { bottom: 0, icon: 'circle', textStyle: { color: C.text, fontSize: 12 },
@@ -616,10 +620,10 @@ var Charts = (function () {
         type: 'pie', radius: ['55%', '78%'], center: ['50%', '44%'],
         itemStyle: { borderColor: C.sliceBorder, borderWidth: 2 },
         label: { show: false },
-        data: rows.map(function (r, i) {
+        data: rows.map(function (r) {
           return {
             name: r.label, value: r.cnt,
-            itemStyle: { color: COLORS[r.label] || STATUS_PALETTE[i % STATUS_PALETTE.length] }
+            itemStyle: { color: COLORS[r.label] || C.muted }
           };
         })
       }]

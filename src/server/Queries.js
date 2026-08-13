@@ -164,6 +164,22 @@ function multiCond_(column, values) {
 }
 
 /**
+ * column NOT IN ('v1','v2',...) for a sanitized, non-empty array; '' otherwise.
+ * The exclude-style counterpart to multiCond_ — only Device Status in Jira
+ * uses this (see CONFIG.JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT for why it's
+ * exclude- rather than include-based).
+ * @param {string} column
+ * @param {Array<string>=} values
+ * @return {string}
+ */
+function multiCondNot_(column, values) {
+  var clean = (values || []).map(segClean_).filter(Boolean);
+  if (!clean.length) return '';
+  return " AND TRIM(IFNULL(" + column + ",'')) NOT IN (" +
+    clean.map(function (v) { return "'" + v + "'"; }).join(',') + ')';
+}
+
+/**
  * Escapes a value for use INSIDE a BigQuery LIKE pattern. '%' and '_' are
  * wildcards there, so a user typing "50%" or "a_b" would otherwise match far
  * more than they asked for. BigQuery's LIKE escape character is backslash and

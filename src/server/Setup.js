@@ -144,7 +144,11 @@ function clearDashboardCache() {
   props.setProperty('CACHE_EPOCH', String(next));
 
   var cache = CacheService.getScriptCache();
-  cache.removeAll(['exec_v4', 'numbers_v7']);
+  // numbers_v8 (Numbers.js) now folds getCacheEpoch_() into its own key (it
+  // gained real filter dimensions, 2026-08-13), so it no longer needs listing
+  // here — the epoch bump above already invalidates it like every other
+  // filter-aware cache.
+  cache.removeAll(['exec_v4']);
   // Large (gzip-chunked) caches with NO filter variant: remove #meta + each chunk.
   ['ctr360cd_v9', 'map_v3', 'assets_v3'].forEach(function (base) {
     var meta = cache.get(base + '#meta');

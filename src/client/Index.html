@@ -97,7 +97,6 @@
         <span>Filters</span>
         <span id="filterBadge" class="filter-badge">1</span>
       </button>
-      <div id="filterChips" class="filter-chips" role="group" aria-label="Active filters"></div>
     </div>
 
     <div class="theme-toggle" role="group" aria-label="Colour theme">
@@ -119,10 +118,10 @@
   </div>
 </header>
 
-<div id="statusStrip" class="status-strip" role="status" aria-live="polite">
-  <span class="pulse-dot" aria-hidden="true"></span>
-  <span id="lastUpdated">Connecting to BigQuery…</span>
-</div>
+<!-- Active-filter bubbles: their own floating row under the topbar, not crammed
+     into it. The Filters button + count badge stay in the topbar; only the
+     removable chips live here, where they have room to wrap. -->
+<div id="filterChips" class="filter-chips" role="group" aria-label="Active filters"></div>
 
 <div id="errorBanner" class="error-banner" role="alert" hidden>
   <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -746,8 +745,10 @@
 
   <!-- ══════════════ VIEW 9 · RAW DATA (source export/reconciliation) ══════════════ -->
   <section id="panel-rawdata" class="panel" role="tabpanel" aria-labelledby="tab-rawdata" hidden>
-    <p class="num-lead">Every column, straight from the source — <strong>no site filters apply on this page</strong>
-      (no F2P exclusion, no Active-centers baseline, no segment/search).</p>
+    <p class="num-lead">Every column, straight from the source — <strong>respects the global Filters
+      drawer</strong>, applied per-source where the schema supports it (Center Details: every
+      dimension; Cloud Devices/Zoho Tickets: via center; Jira Devices: Device Type/Status/date only).
+      Zoho Tickets still shows every raw row (duplicates + unassigned included) for reconciliation.</p>
 
     <div class="raw-pills" id="rawSourcePills" role="tablist" aria-label="Raw data source">
       <button class="raw-pill is-active" type="button" data-source="center_details">Center Details</button>
@@ -797,8 +798,17 @@
   </section>
 
   <footer class="page-footer">
-    <span><?= appName ?> v<?= appVersion ?> · a Tricog Service Insights Platform · BigQuery · Apps Script</span>
-    <span>Data refreshes every 5 min · read-only service account</span>
+    <span><?= appName ?> · version <?= appVersion ?> on <?= appDeployedAt ?> · a Tricog Service Insights Platform · BigQuery · Apps Script</span>
+    <div class="page-footer-right">
+      <span>Data refreshes every 5 min · read-only service account</span>
+      <!-- "Updated HH:MM:SS" lives here rather than under the topbar: it's
+           passive provenance, not something to act on, so it belongs with the
+           other provenance line instead of occupying prime space up top. -->
+      <div id="statusStrip" class="status-strip" role="status" aria-live="polite">
+        <span class="pulse-dot" aria-hidden="true"></span>
+        <span id="lastUpdated">Connecting to BigQuery…</span>
+      </div>
+    </div>
   </footer>
 </main>
 </div><!-- /.app-main -->
@@ -829,7 +839,7 @@
   <header class="center-panel-head">
     <div>
       <h2 class="card-title">Filters</h2>
-      <p class="card-sub">Applies across every page except Numbers and Raw Data</p>
+      <p class="card-sub">Applies across every page</p>
     </div>
     <button id="filterDrawerClose" class="btn btn-ghost btn-icon" type="button" aria-label="Close filters">
       <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -877,7 +887,7 @@
         <label>From <input id="filterDateFrom" class="input" type="date"></label>
         <label>To <input id="filterDateTo" class="input" type="date"></label>
       </div>
-      <p class="filter-note">Centers/Map: deployment date · Support: ticket created date · Asset: Jira created date · Top Customers/Overview: Segment/Status/State/Hub only, no date · Numbers/Raw Data: exempt from all filters.</p>
+      <p class="filter-note">Centers/Map/Numbers: deployment date · Support: ticket created date · Asset: Jira created date · Top Customers/Overview: Segment/Status/State/Hub only, no date · Raw Data: date range applies to Zoho Tickets (created) and Jira Devices (created) only, per-source (see the Raw Data page for details).</p>
     </section>
   </div>
   <footer class="center-panel-head" style="border-top:1px solid var(--border);border-bottom:none;">

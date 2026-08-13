@@ -736,8 +736,14 @@ function apiSearchHubsCD(options) {
         sql = "SELECT TRIM(HubName) AS hub, COUNT(DISTINCT CenterID) AS centers FROM " + CD +
           base + " GROUP BY hub ORDER BY centers DESC, hub LIMIT 50";
       } else {
+        // Matches HubName OR HubID (per user): operators know hubs by id as
+        // often as by name. The RETURNED value is still the hub NAME, because
+        // that's the dimension centerAttrCond_/centerPassesFilters_ compare
+        // against — searching by id is a lookup convenience, not a change to
+        // what gets filtered. CAST so a numeric HubID is matchable as text.
         sql = "SELECT DISTINCT TRIM(HubName) AS hub FROM " + CD + base +
-          " AND LOWER(TRIM(HubName)) LIKE @like ORDER BY hub LIMIT 50";
+          " AND (LOWER(TRIM(HubName)) LIKE @like OR CAST(HubID AS STRING) LIKE @like)" +
+          " ORDER BY hub LIMIT 50";
         params = { like: '%' + likeEscape_(q) + '%' };
       }
       var rows = runQuery(sql, params, { maxRows: 50 }) || [];

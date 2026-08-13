@@ -4,10 +4,13 @@
  * totals broken down by status / type.
  *
  * device_center_mapping has been removed as a data source, so this page now
- * reports center_details only. No baseline filter applies (removed 2026-07-22 —
- * see cdFilter_ in EditionCD.js): every number is the full distinct-center
- * universe. Status/segment come from center_details; Devices (Jira) and
- * Tickets (Zoho) are source-independent.
+ * reports center_details only. No hardcoded BASELINE filter applies (removed
+ * 2026-07-22 — see cdFilter_ in EditionCD.js). The page DOES respect the
+ * global Filters drawer (per user, 2026-08-13 — previously exempt by design):
+ * centers/hubs narrow via centerAttrCond_ + deploymentdate, tickets bridge to
+ * center_details via CenterID + CreatedAt, devices via jiraDeviceStats_'s own
+ * filters support. Status/segment come from center_details; Devices (Jira)
+ * and Tickets (Zoho) are source-independent (different BigQuery tables).
  */
 /**
  * Device serial → CenterID map, used to map a Jira device (by its Summary
@@ -166,44 +169,66 @@ function jiraDeviceStats_(filters) {
 
 function apiGetNumbers(options) {
   options = options || {};
+  var filters = {
+    segments: (options.filters && options.filters.segments) || [],
+    statuses: (options.filters && options.filters.statuses) || [],
+    states: (options.filters && options.filters.states) || [],
+    hubs: (options.filters && options.filters.hubs) || [],
+    cities: (options.filters && options.filters.cities) || [],
+    countries: (options.filters && options.filters.countries) || [],
+    deviceTypes: (options.filters && options.filters.deviceTypes) || [],
+    deviceStatusExclude: (options.filters && options.filters.deviceStatusExclude) || [],
+    dateFrom: String((options.filters && options.filters.dateFrom) || ''),
+    dateTo: String((options.filters && options.filters.dateTo) || '')
+  };
   return respond_(function () {
-    return withCache('numbers_v7', function () { // v7: Device Type/Status default applied to devices stat
+    // Numbers now respects the global filter set like every other page (per
+    // user, 2026-08-13 — this page was previously exempt by design). Centers/
+    // Hubs use the center-attribute chain + deploymentdate (matches Centers/
+    // Map); Tickets bridge to center_details via CenterID + CreatedAt (matches
+    // Support); Devices already accepted the full filters object.
+    return withCache('numbers_v8_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
       var CD = T('center_details');
       var ZOHO = zohoDedupSql_();
       var techBool = techBoolSql_("IFNULL(IssueCategory,'')");
       var F = cdFilter_(); // no baseline filter (removed 2026-07-22) — always '1=1'
+      var centerCond = centerAttrCond_(filters);
+      var centerDateCond = dateRangeCond_('deploymentdate', filters.dateFrom, filters.dateTo);
+      var ticketCond = centerFilterSubqueryCond_(filters);
+      var ticketDateCond = dateRangeCond_('CreatedAt', filters.dateFrom, filters.dateTo);
 
       var specs = [
         { key: 'centersTot', sql:
-          "SELECT COUNT(DISTINCT CenterID) AS total FROM " + CD + " WHERE " + F },
+          "SELECT COUNT(DISTINCT CenterID) AS total FROM " + CD + " WHERE " + F + centerCond + centerDateCond },
         { key: 'centersStatus', maxRows: 50, sql:
           "SELECT IFNULL(NULLIF(TRIM(Status), ''), '(blank)') AS k, COUNT(DISTINCT CenterID) AS n " +
-          "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC" },
+          "FROM " + CD + " WHERE " + F + centerCond + centerDateCond + " GROUP BY k ORDER BY n DESC" },
         { key: 'centersSegment', maxRows: 50, sql:
           "SELECT " + segmentGroupSql_('hub_master_segment') + " AS k, COUNT(DISTINCT CenterID) AS n " +
-          "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC LIMIT 15" },
+          "FROM " + CD + " WHERE " + F + centerCond + centerDateCond + " GROUP BY k ORDER BY n DESC LIMIT 15" },
 
         { key: 'hubsTot', sql:
-          "SELECT COUNT(DISTINCT HubID) AS total FROM " + CD + " WHERE " + F },
+          "SELECT COUNT(DISTINCT HubID) AS total FROM " + CD + " WHERE " + F + centerCond + centerDateCond },
         // 2026-07-07 reload removed HubStatus/HubSegment. Nearest equivalents:
         // hubs by the Status of their centers (a hub can appear under several
         // statuses) and by hub_master_segment.
         { key: 'hubsStatus', maxRows: 50, sql:
           "SELECT IFNULL(NULLIF(TRIM(Status), ''), '(blank)') AS k, COUNT(DISTINCT HubID) AS n " +
-          "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC" },
+          "FROM " + CD + " WHERE " + F + centerCond + centerDateCond + " GROUP BY k ORDER BY n DESC" },
         { key: 'hubsSegment', maxRows: 50, sql:
           "SELECT " + segmentGroupSql_('hub_master_segment') + " AS k, COUNT(DISTINCT HubID) AS n " +
-          "FROM " + CD + " WHERE " + F + " GROUP BY k ORDER BY n DESC LIMIT 15" },
+          "FROM " + CD + " WHERE " + F + centerCond + centerDateCond + " GROUP BY k ORDER BY n DESC LIMIT 15" },
 
         // Devices come from jira_data (readJiraData_), aggregated separately below.
 
         // Tickets = Zoho, total + by status + by Tech/Non-Tech (SLA catalog).
         { key: 'ticketsTot', sql:
           "SELECT COUNT(*) AS total, COUNTIF(is_tech) AS tech, COUNTIF(NOT is_tech) AS nontech " +
-          "FROM (SELECT " + techBool + " AS is_tech FROM " + ZOHO + ")" },
+          "FROM (SELECT " + techBool + " AS is_tech FROM " + ZOHO +
+          " WHERE TRUE" + ticketCond + ticketDateCond + ")" },
         { key: 'ticketsStatus', maxRows: 50, sql:
           "SELECT IFNULL(NULLIF(TRIM(status), ''), '(blank)') AS k, COUNT(*) AS n " +
-          "FROM " + ZOHO + " GROUP BY k ORDER BY n DESC LIMIT 15" }
+          "FROM " + ZOHO + " WHERE TRUE" + ticketCond + ticketDateCond + " GROUP BY k ORDER BY n DESC LIMIT 15" }
       ];
 
       var r = runQueriesParallel(specs);
@@ -211,15 +236,7 @@ function apiGetNumbers(options) {
       var hubsTot = (r.hubsTot && r.hubsTot[0]) || {};
       var ticketsTot = (r.ticketsTot && r.ticketsTot[0]) || {};
 
-      // Numbers is exempt from the 6 center-attribute filter dimensions (see
-      // the Filters-drawer note), but the Device Type/Status default still
-      // applies here (per user, "everywhere") — there's no live Numbers-page
-      // control for it, so it always uses the same default the Asset page
-      // starts with.
-      var devices = jiraDeviceStats_({
-        deviceTypes: CONFIG.JIRA_DEVICE_TYPE_DEFAULT,
-        deviceStatusExclude: CONFIG.JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT
-      });
+      var devices = jiraDeviceStats_(filters);
 
       return {
         centers: {
@@ -241,14 +258,27 @@ function apiGetNumbers(options) {
 }
 
 /**
- * Paginated RAW center_details rows for the Numbers page table (no baseline filter).
- * @param {{page:number, pageSize:number}=} options
+ * Paginated RAW center_details rows for the Numbers page table (no hardcoded
+ * baseline filter — but DOES respect the global Filters drawer, 2026-08-13).
+ * @param {{page:number, pageSize:number, filters:Object=}=} options
  */
 function apiGetCenterDetailsRaw(options) {
   options = options || {};
   var page = Math.max(0, parseInt(options.page, 10) || 0);
   var pageSize = Math.min(100, Math.max(5, parseInt(options.pageSize, 10) || 25));
+  var filters = {
+    segments: (options.filters && options.filters.segments) || [],
+    statuses: (options.filters && options.filters.statuses) || [],
+    states: (options.filters && options.filters.states) || [],
+    hubs: (options.filters && options.filters.hubs) || [],
+    cities: (options.filters && options.filters.cities) || [],
+    countries: (options.filters && options.filters.countries) || [],
+    dateFrom: String((options.filters && options.filters.dateFrom) || ''),
+    dateTo: String((options.filters && options.filters.dateTo) || '')
+  };
   return respond_(function () {
+    var centerCond = centerAttrCond_(filters);
+    var centerDateCond = dateRangeCond_('deploymentdate', filters.dateFrom, filters.dateTo);
     var sql =
       "WITH dev AS (SELECT CenterID, COUNT(*) AS devices FROM " + T('cloud_devices') +
       " WHERE CenterID IS NOT NULL GROUP BY CenterID), " +
@@ -256,7 +286,7 @@ function apiGetCenterDetailsRaw(options) {
       // dedupe BEFORE the COUNT(*) OVER() so the pager total is centers, not rows.
       "c AS (SELECT DISTINCT CenterID, Centername, Status, Type, Spoke_Center_Segment, " +
       " HubID, HubName, City, State, PinCode, deploymentdate, deactivationdate " +
-      " FROM " + T('center_details') + " WHERE " + cdFilter_() + ") " +
+      " FROM " + T('center_details') + " WHERE " + cdFilter_() + centerCond + centerDateCond + ") " +
       "SELECT c.CenterID AS center_id, c.Centername AS center, c.Status AS status, c.Type AS type, " +
       " c.Spoke_Center_Segment AS segment, c.HubID AS hub_id, c.HubName AS hub, c.City AS city, " +
       " c.State AS state, c.PinCode AS pin, CAST(c.deploymentdate AS STRING) AS deployed, " +

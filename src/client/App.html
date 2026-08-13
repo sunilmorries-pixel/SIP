@@ -26,9 +26,13 @@
     // (review finding I6). Change one, change the other: server .js and client
     // .html are separate execution contexts and can't share a constant.
     globalFilters: { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], cities: [], countries: [],
+      centers: [],
       deviceTypes: JIRA_DEVICE_TYPE_DEFAULT.slice(), deviceStatusExclude: JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT.slice(),
       dateFrom: '', dateTo: '' },
     globalFiltersPending: null, // staged edits inside the open drawer; null when drawer is closed
+    // dim -> { storedValue: displayLabel }, for dimensions that filter on an id
+    // but must display a name (Center). See filterLabelFor_.
+    filterLabels: {},
     dashFilters: null,          // the filter set the CURRENT dashboard payload was fetched with
     // STICKY filter-drawer option lists, stashed by renderDashboard from the
     // first payload that carries them and NEVER cleared afterwards (review
@@ -49,7 +53,7 @@
     // the two tables that fetch their own data (review finding I2). Siblings of
     // state.centers/state.devices rather than fields ON them, because those two
     // objects are spread straight into the server query object.
-    centerFilters: null, deviceFilters: null,
+    centerFilters: null, deviceFilters: null, numbersFilters: null, rawDataFilters: null,
     autoRefresh: true,
     countdown: REFRESH_SECONDS,
     loading: false,
@@ -1152,13 +1156,15 @@
     return arrEq(a.segments, b.segments) && arrEq(a.statuses, b.statuses) &&
       arrEq(a.states, b.states) && arrEq(a.hubs, b.hubs) &&
       arrEq(a.cities, b.cities) && arrEq(a.countries, b.countries) &&
+      arrEq(a.centers || [], b.centers || []) &&
       arrEq(a.deviceTypes, b.deviceTypes) && arrEq(a.deviceStatusExclude, b.deviceStatusExclude) &&
       a.dateFrom === b.dateFrom && a.dateTo === b.dateTo;
   }
 
   function filterActiveCount_(f) {
     return f.segments.length + f.statuses.length + f.states.length + f.hubs.length +
-      f.cities.length + f.countries.length + f.deviceTypes.length + f.deviceStatusExclude.length +
+      f.cities.length + f.countries.length + (f.centers || []).length +
+      f.deviceTypes.length + f.deviceStatusExclude.length +
       (f.dateFrom ? 1 : 0) + (f.dateTo ? 1 : 0);
   }
 
@@ -1179,6 +1185,8 @@
     f.hubs.forEach(function (v) { chips.push({ dim: 'hubs', label: 'Hub: ' + v, value: v }); });
     f.cities.forEach(function (v) { chips.push({ dim: 'cities', label: 'City: ' + v, value: v }); });
     f.countries.forEach(function (v) { chips.push({ dim: 'countries', label: 'Country: ' + v, value: v }); });
+    // Center stores a CenterID but shows its name — see filterLabelFor_.
+    (f.centers || []).forEach(function (v) { chips.push({ dim: 'centers', label: 'Center: ' + filterLabelFor_('centers', v), value: v }); });
     f.deviceTypes.forEach(function (v) { chips.push({ dim: 'deviceTypes', label: 'Device type: ' + v, value: v }); });
     f.deviceStatusExclude.forEach(function (v) { chips.push({ dim: 'deviceStatusExclude', label: 'Hides: ' + v, value: v }); });
     if (f.dateFrom || f.dateTo) chips.push({ dim: 'date', label: 'Date: ' + (f.dateFrom || '…') + '–' + (f.dateTo || '…'), value: null });
@@ -1198,13 +1206,23 @@
     });
   }
 
+  /** Display label for a stored filter VALUE. Only dimensions whose stored
+   *  value differs from what the user should read have entries — Center filters
+   *  on the unique CenterID but must display the center's name. Everything else
+   *  falls back to the value itself. Populated by renderFilterCombo_ and kept
+   *  in state so labels survive the drawer closing and reopening. */
+  function filterLabelFor_(dim, value) {
+    var byDim = state.filterLabels && state.filterLabels[dim];
+    return (byDim && byDim[value]) || value;
+  }
+
   var FILTER_DIM_LABELS = { segments: 'segment', statuses: 'status', states: 'state', hubs: 'hub', cities: 'city', countries: 'country',
-    deviceTypes: 'device type', deviceStatusExclude: 'device status' };
+    centers: 'center', deviceTypes: 'device type', deviceStatusExclude: 'device status' };
   // Plain "+ 's'" mispluralizes status -> statuss and city -> citys; the only
   // two dimensions that need their own irregular plural (the others already
   // end cleanly in a consonant).
   var FILTER_DIM_PLURAL = { segments: 'segments', statuses: 'statuses', states: 'states', hubs: 'hubs', cities: 'cities', countries: 'countries',
-    deviceTypes: 'device types', deviceStatusExclude: 'device statuses' };
+    centers: 'centers', deviceTypes: 'device types', deviceStatusExclude: 'device statuses' };
 
   function openFilterDrawer_(preserveStaged) {
     // preserveStaged: true when the caller (Clear all) already staged the
@@ -1225,6 +1243,10 @@
     // Hub has no option list to read — 13,721 distinct values, searched
     // server-side per keystroke instead (review finding C1).
     renderFilterCombo_('filterHub', 'hubs', [], searchHubs_);
+    // Center is server-searched for the same reason as Hub — ~28k centers is
+    // far too many to ship as a static list. Options are {value: CenterID,
+    // label: "Name · #id"} so the filter keys on the unique id.
+    renderFilterCombo_('filterCenter', 'centers', [], searchCenters_);
     renderFilterCombo_('filterCity', 'cities', (state.cityOptions || []).map(function (s) { return s.city; }));
     renderFilterCombo_('filterCountry', 'countries', (state.countryOptions || []).map(function (s) { return s.country; }));
     renderFilterCombo_('filterDeviceType', 'deviceTypes', (state.deviceTypeOptions || []).map(function (s) { return s.type; }));
@@ -1270,6 +1292,26 @@
       .catch(function (err) { done([], err); });
   }
 
+  /**
+   * Debounced server-side Center search, same shape as searchHubs_ but returns
+   * {value, label} pairs: it filters on the unique CenterID while showing
+   * "Name · #id", because center names are NOT unique (several "Demo Center"
+   * rows exist) and a name-keyed filter would silently match the wrong ones.
+   * Matches either the name or the id — operators quote both (per user).
+   */
+  var centerSearchCache = {};
+  function searchCenters_(query, done) {
+    var key = 'q:' + String(query || '').trim().toLowerCase();
+    if (centerSearchCache[key]) { done(centerSearchCache[key]); return; }
+    gsCall(ep('apiSearchCenters'), { query: String(query || '').trim() })
+      .then(function (data) {
+        var centers = (data && data.centers) || [];
+        centerSearchCache[key] = centers;
+        done(centers);
+      })
+      .catch(function (err) { done([], err); });
+  }
+
   var FILTER_COMBO_DEBOUNCE_MS = 275;
 
   /**
@@ -1295,11 +1337,32 @@
     var debounceTimer = null;
     var searchSeq = 0;
 
+    /* An option is either a plain string (value === label, how
+       Segment/Status/State/Hub have always worked) or a {value, label} pair,
+       which Center needs: it must FILTER on the unique CenterID but DISPLAY the
+       human name, since center names are not unique. */
+    function normOpt(o) {
+      return (o && typeof o === 'object')
+        ? { value: String(o.value), label: String(o.label) }
+        : { value: String(o), label: String(o) };
+    }
+    /* Labels are remembered in state (not a local closure) so a selected value
+       still shows its name after the drawer is closed and reopened, and so the
+       top-level chip row can render "Center: Demo Center 345 · #8552" rather
+       than a bare id. */
+    function rememberLabel(opt) {
+      var n = normOpt(opt);
+      if (n.value === n.label) return;
+      state.filterLabels[dim] = state.filterLabels[dim] || {};
+      state.filterLabels[dim][n.value] = n.label;
+    }
+
     function renderSelected() {
       var arr = state.globalFiltersPending[dim];
-      selectedEl.innerHTML = arr.map(function (v, i) {
-        return '<span class="filter-chip-item" data-v="' + escapeHtml(v) + '">' + escapeHtml(v) +
-          '<button type="button" aria-label="Remove ' + escapeHtml(v) + '">×</button></span>';
+      selectedEl.innerHTML = arr.map(function (v) {
+        var label = filterLabelFor_(dim, v);
+        return '<span class="filter-chip-item" data-v="' + escapeHtml(v) + '">' + escapeHtml(label) +
+          '<button type="button" aria-label="Remove ' + escapeHtml(label) + '">×</button></span>';
       }).join('');
       Array.prototype.forEach.call(selectedEl.querySelectorAll('button'), function (btn) {
         btn.addEventListener('click', function () {
@@ -1314,9 +1377,12 @@
     function paintList(values) {
       // No staged state = the drawer closed under us (see renderList's note).
       if (!state.globalFiltersPending) return;
-      list.innerHTML = values.map(function (v) {
-        var checked = state.globalFiltersPending[dim].indexOf(v) !== -1 ? ' checked' : '';
-        return '<label><input type="checkbox" value="' + escapeHtml(v) + '"' + checked + '> ' + escapeHtml(v) + '</label>';
+      var opts = values.map(normOpt);
+      opts.forEach(rememberLabel);
+      list.innerHTML = opts.map(function (o) {
+        var checked = state.globalFiltersPending[dim].indexOf(o.value) !== -1 ? ' checked' : '';
+        return '<label><input type="checkbox" value="' + escapeHtml(o.value) + '"' + checked + '> ' +
+          escapeHtml(o.label) + '</label>';
       }).join('');
       Array.prototype.forEach.call(list.querySelectorAll('input'), function (cb) {
         cb.addEventListener('change', function () {
@@ -1336,7 +1402,10 @@
     function renderList(query) {
       if (!remoteSearch) {
         var q = query.toLowerCase();
-        paintList(allOptions.filter(function (v) { return v.toLowerCase().indexOf(q) !== -1; }).slice(0, 50));
+        // Matches against the LABEL, which for string options is the value too.
+        paintList(allOptions.filter(function (v) {
+          return normOpt(v).label.toLowerCase().indexOf(q) !== -1;
+        }).slice(0, 50));
         return;
       }
       // Latest-wins: an older in-flight lookup must never overwrite the list a
@@ -1379,8 +1448,10 @@
     renderFilterBadge_();
     renderFilterChips_();
     // Reset every lazy-load flag so every page refetches fresh under the new
-    // filter set — mirrors the old v5.7/5.8 Active-only toggle's invalidation
-    // (Numbers is intentionally excluded — exempt from all filtering).
+    // filter set — mirrors the old v5.7/5.8 Active-only toggle's invalidation.
+    // Numbers/Raw Data now respect the global filter too (per user,
+    // 2026-08-13); they refetch below when active, and via activateTab's
+    // numbersFilters/rawDataFilters staleness check otherwise.
     state.execLoaded = false; state.mapLoaded = false; state.topLoaded = false;
     // Invalidate the dashboard payload by marking WHICH filters it belongs to as
     // unknown — NOT by nulling the payload itself. activateTab's refetch guard
@@ -1393,7 +1464,7 @@
     // Side effect, deliberate: keeping lastDashboard truthy means loadDashboard
     // no longer blanks the charts on a filter change, it swaps them on arrival —
     // the same "silent refresh" the auto-refresh path already uses.
-    state.dashFilters = null; state.cdRaw.total = 0;
+    state.dashFilters = null; state.cdRaw.total = 0; state.cdRaw.page = 0;
     if (state.activeTab === 'tab-centers') { state.centers.page = 0; loadCenters(); }
     if (state.activeTab === 'tab-asset') { state.devices.page = 0; loadDevices(); }
     var sharesPayload = ['tab-asset', 'tab-centers', 'tab-support', 'tab-service', 'tab-overview'].indexOf(state.activeTab) !== -1;
@@ -1401,6 +1472,8 @@
     if (state.activeTab === 'tab-map') { state.mapLoaded = false; loadMapData(); }
     if (state.activeTab === 'tab-topcust') { state.topLoaded = false; loadTopCustomers(); }
     if (state.activeTab === 'tab-overview') { state.execLoaded = false; loadExec(); }
+    if (state.activeTab === 'tab-numbers') { loadNumbers(); loadCdRaw(); }
+    if (state.activeTab === 'tab-rawdata') { state.rawData.page = 0; loadRawTable(); }
   }
 
   /** Applies the global filters to the map centers + assets, then redraws. */
@@ -2066,11 +2139,15 @@
       tcMap.ensureMap();
       if (!state.topLoaded) loadTopCustomers();
     }
+    var numbersStale = state.numbersFilters && !filtersEqual_(state.numbersFilters, state.globalFilters);
     if (tabId === 'tab-numbers') {
-      if (!state.numbersLoaded) loadNumbers();
-      if (!state.cdRaw.total) loadCdRaw();
+      if (!state.numbersLoaded || numbersStale) loadNumbers();
+      if (!state.cdRaw.total || numbersStale) loadCdRaw();
     }
-    if (tabId === 'tab-rawdata' && !state.rawData.total) loadRawTable();
+    if (tabId === 'tab-rawdata' &&
+        (!state.rawData.total || (state.rawDataFilters && !filtersEqual_(state.rawDataFilters, state.globalFilters)))) {
+      loadRawTable();
+    }
 
     // Shared-payload rule: the dashboard payload is fetched once under the
     // current global filters and shared by Asset/Centers/Support/Overview;
@@ -2099,8 +2176,8 @@
 
   /* ── Numbers page (center_details counts + raw data) ───────────── */
   function loadNumbers(bypass) {
-    gsCall('apiGetNumbers', { bypassCache: !!bypass })
-      .then(function (d) { state.numbersLoaded = true; renderNumbers(d); })
+    gsCall('apiGetNumbers', { bypassCache: !!bypass, filters: state.globalFilters })
+      .then(function (d) { state.numbersLoaded = true; state.numbersFilters = state.globalFilters; renderNumbers(d); })
       .catch(function (err) {
         $('numCentersKpi').innerHTML = '<div class="num-empty">Failed: ' + escapeHtml(err.message) + '</div>';
       });
@@ -2108,7 +2185,7 @@
 
   function loadCdRaw() {
     $('cdRawInfo').textContent = 'Loading…';
-    gsCall('apiGetCenterDetailsRaw', { page: state.cdRaw.page, pageSize: state.cdRaw.pageSize })
+    gsCall('apiGetCenterDetailsRaw', { page: state.cdRaw.page, pageSize: state.cdRaw.pageSize, filters: state.globalFilters })
       .then(renderCdRaw)
       .catch(function (err) {
         $('cdRawInfo').textContent = 'Failed: ' + err.message;
@@ -2152,11 +2229,13 @@
     $('cdRawNext').disabled = state.cdRaw.page >= maxPage;
   }
 
-  /* ── Raw Data page (all 8 sources, no site filters) ────────────── */
+  /* ── Raw Data page (4 sources) ──────────────────────────────────
+     Each source applies whatever filter dimensions its own schema supports
+     — see RawData.js's file header for exactly which per source. */
   function loadRawTable() {
     $('rawTableInfo').textContent = 'Loading\u2026';
-    gsCall('apiGetRawPage', { source: state.rawData.source, page: state.rawData.page, pageSize: state.rawData.pageSize })
-      .then(renderRawTable)
+    gsCall('apiGetRawPage', { source: state.rawData.source, page: state.rawData.page, pageSize: state.rawData.pageSize, filters: state.globalFilters })
+      .then(function (payload) { state.rawDataFilters = state.globalFilters; renderRawTable(payload); })
       .catch(function (err) {
         $('rawTableInfo').textContent = 'Failed: ' + err.message;
       });
@@ -2204,7 +2283,7 @@
     var originalText = btn.textContent;
     btn.disabled = true;
     btn.textContent = 'Exporting\u2026';
-    gsCall('apiGetRawExport', { source: state.rawData.source })
+    gsCall('apiGetRawExport', { source: state.rawData.source, filters: state.globalFilters })
       .then(function (payload) {
         var columns = payload.columns || [];
         var rows = payload.rows || [];

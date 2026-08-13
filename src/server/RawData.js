@@ -1,8 +1,24 @@
 /**
- * RawData.js — raw, unfiltered per-source tables for the "Raw Data" page.
- * By design, NO site filters apply here (no F2P exclusion, no Active-centers
- * toggle, no hub/segment/search) — this page exists purely for source
- * reconciliation and full-table export, straight from each source.
+ * RawData.js — raw per-source tables for the "Raw Data" page.
+ *
+ * Now respects the global Filters drawer (per user, 2026-08-13 — previously
+ * exempt by design). Each source applies whichever dimensions it can support
+ * from its own schema:
+ *   - center_details: every center-attribute dimension (Segment/Status/State/
+ *     Hub/City/Country) directly, plus deploymentdate for the date range.
+ *   - cloud_devices / zoho_data: no center-attribute columns of their own, so
+ *     they bridge via centerFilterSubqueryCond_ (CenterID IN center_details
+ *     WHERE ...). zoho_data additionally gets CreatedAt for the date range.
+ *     zoho_data deliberately still reads the RAW table, not zohoDedupSql_() —
+ *     this page's job is reconciliation against Zoho itself, so it must keep
+ *     showing the true row count (duplicates + unassigned tickets included)
+ *     even though it's now filterable by center attributes.
+ *   - jira_data: Device Type (issuetype_name) / Device Status in Jira
+ *     (status_name, exclude) / date (ticket_created) directly — its own
+ *     columns. Center-attribute filters do NOT apply here: mapping a Jira row
+ *     to a center requires the serial-parsing bridge in deviceCenterMap_
+ *     (Numbers.js), which is JS-side over the whole table and not practical
+ *     to fold into this page's simple per-source SQL WHERE.
  */
 
 var RAW_EXPORT_MAX_ROWS = 100000;
@@ -34,8 +50,52 @@ function rawSources_() {
 }
 
 /**
- * One page of raw rows for a single source, no filters applied.
- * @param {{source:string, page:number, pageSize:number}} options
+ * Whitelist-rebuilds the global filters object from a client `options.filters`
+ * payload — same pattern as every other endpoint (EditionCD.js).
+ * @param {Object} options
+ * @return {Object}
+ */
+function rawFiltersFromOptions_(options) {
+  var f = options.filters || {};
+  return {
+    segments: f.segments || [], statuses: f.statuses || [], states: f.states || [],
+    hubs: f.hubs || [], cities: f.cities || [], countries: f.countries || [],
+    deviceTypes: f.deviceTypes || [], deviceStatusExclude: f.deviceStatusExclude || [],
+    dateFrom: String(f.dateFrom || ''), dateTo: String(f.dateTo || '')
+  };
+}
+
+/**
+ * Full WHERE clause (including the "WHERE" keyword) for one raw source, given
+ * the current global filters. See the file-header note for which dimensions
+ * each source actually supports.
+ * @param {string} key
+ * @param {Object} filters
+ * @return {string}
+ */
+function rawSourceWhere_(key, filters) {
+  if (key === 'center_details') {
+    return 'WHERE ' + cdFilter_() + centerAttrCond_(filters) +
+      dateRangeCond_('deploymentdate', filters.dateFrom, filters.dateTo);
+  }
+  if (key === 'cloud_devices') {
+    return 'WHERE TRUE' + centerFilterSubqueryCond_(filters);
+  }
+  if (key === 'zoho_data') {
+    return 'WHERE TRUE' + centerFilterSubqueryCond_(filters) +
+      dateRangeCond_('CreatedAt', filters.dateFrom, filters.dateTo);
+  }
+  if (key === 'jira_data') {
+    return 'WHERE TRUE' + multiCond_('issuetype_name', filters.deviceTypes) +
+      multiCondNot_('status_name', filters.deviceStatusExclude) +
+      dateRangeCond_('ticket_created', filters.dateFrom, filters.dateTo);
+  }
+  return 'WHERE TRUE';
+}
+
+/**
+ * One page of raw rows for a single source.
+ * @param {{source:string, page:number, pageSize:number, filters:Object=}} options
  * @return {{ok:boolean, data?:Object, error?:Object}}
  */
 function apiGetRawPage(options) {
@@ -43,11 +103,13 @@ function apiGetRawPage(options) {
   var key = String(options.source || '');
   var page = Math.max(0, parseInt(options.page, 10) || 0);
   var pageSize = Math.min(500, Math.max(5, parseInt(options.pageSize, 10) || 25));
+  var filters = rawFiltersFromOptions_(options);
   return respond_(function () {
     var def = rawSources_()[key];
     if (!def) throw new Error('Unknown raw source: ' + key);
 
-    var sql = 'SELECT *, COUNT(*) OVER() AS total_rows FROM ' + T(def.table) +
+    var sql = 'SELECT *, COUNT(*) OVER() AS total_rows FROM ' + T(def.table) + ' ' +
+      rawSourceWhere_(key, filters) +
       ' ORDER BY ' + def.orderBy + ' LIMIT ' + pageSize + ' OFFSET ' + (page * pageSize);
     var rows = runQuery(sql);
     var total = rows.length ? rows[0].total_rows : 0;
@@ -59,18 +121,20 @@ function apiGetRawPage(options) {
 
 /**
  * Every row for a single source (up to RAW_EXPORT_MAX_ROWS), for CSV export.
- * @param {{source:string}} options
+ * @param {{source:string, filters:Object=}} options
  * @return {{ok:boolean, data?:Object, error?:Object}}
  */
 function apiGetRawExport(options) {
   options = options || {};
   var key = String(options.source || '');
+  var filters = rawFiltersFromOptions_(options);
   return respond_(function () {
     var def = rawSources_()[key];
     if (!def) throw new Error('Unknown raw source: ' + key);
 
-    var totalRows = (runQuery('SELECT COUNT(*) AS n FROM ' + T(def.table))[0] || {}).n || 0;
-    var sql = 'SELECT * FROM ' + T(def.table) + ' ORDER BY ' + def.orderBy +
+    var where = rawSourceWhere_(key, filters);
+    var totalRows = (runQuery('SELECT COUNT(*) AS n FROM ' + T(def.table) + ' ' + where)[0] || {}).n || 0;
+    var sql = 'SELECT * FROM ' + T(def.table) + ' ' + where + ' ORDER BY ' + def.orderBy +
       ' LIMIT ' + RAW_EXPORT_MAX_ROWS;
     var rows = runQuery(sql, null, { maxRows: RAW_EXPORT_MAX_ROWS });
     var columns = rows.length ? Object.keys(rows[0]) : [];

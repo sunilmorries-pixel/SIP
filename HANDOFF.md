@@ -1,20 +1,24 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-13 · **Live version:** 5.26 · **Status:** ✅ **Git, the Apps Script
+**Last updated:** 2026-08-13 · **Live version:** 5.27 · **Status:** ✅ **Git, the Apps Script
 editor, and production are in sync.** Production
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always)
-serves Apps Script **@55 / v5.26**, deployed from git `main` @ **`3b35939`**, tagged **`v5.26`**
-(both pushed to `origin/main`). v5.21–v5.25 were deployed **without** tags; only `v5.16`–`v5.18`,
-`v5.20` and `v5.26` are tagged, so tags are not a reliable release index.
+serves Apps Script **@56 / v5.27**, still built from git `main` @ **`3b35939`** (no new commit —
+@56 is a redeploy of the identical editor content @55 already had; see its own entry below for
+why). `3b35939` is tagged **`v5.26`** (pushed to `origin/main`); v5.27 itself has no separate tag.
+v5.21–v5.25 were deployed **without** tags; only `v5.16`–`v5.18`, `v5.20` and `v5.26` are tagged,
+so tags are not a reliable release index.
 
 ⚠️ **`CONFIG.APP_VERSION` / `APP_DEPLOYED_AT` must be set to the version THIS DEPLOY WILL CREATE
 — i.e. (current live `@N`) + 1 — in the same change as the `clasp deploy`.** Nothing derives them
-(Apps Script cannot read its own deployment version at runtime). **This has already gone wrong
-once:** @54 shipped carrying `'53'`, so production's footer advertised a version one behind what
-it was actually running — caught by pulling the live editor content and reading it, not by
-inspecting commit messages. Setting the field to the *current live* number is always off by one,
-because the commit carrying the bump is itself the next deploy. It now reads **55 / Aug 13, 2026,
-9:20 PM**, matching @55.
+(Apps Script cannot read its own deployment version at runtime). **This has now gone wrong TWICE:**
+@54 shipped carrying `'53'` (caught and fixed in v5.26); then **@56/v5.27 repeated the exact same
+mistake** — that deploy went out via `clasp push` + `clasp deploy` with no Config.js change at all
+(nothing to push, so nothing to bump), so the footer read `55` while production actually ran `@56`.
+Don't copy the "just deploy, nothing changed" reasoning that caused this — the rule applies even
+when a deploy is a content-identical redeploy. **Fix in progress this session**: `APP_VERSION`
+bumped to `'57'` / `APP_DEPLOYED_AT` to `'Aug 14, 2026, 12:23 AM'`, to be deployed as the very next
+`clasp deploy` (which will create @57, matching) — see the v5.28 entry once that lands.
 
 **Two Claude Code sessions have been working this same directory concurrently** (confirmed by the
 user). Files were repeatedly modified on disk mid-edit, and one session's change was silently
@@ -27,6 +31,25 @@ reverted by the other's save at least once. Consequences to know:
   immediately before and after each edit** and grep for your own identifier to confirm the change
   survived. A successful Edit call is not proof the change is still on disk a minute later.
 
+### v5.27 / @56 (2026-08-13) — redeploy, no code change (this session)
+
+> **Deployed 2026-08-13** by this session, per user request ("deploy it live"). `clasp push` found
+> the Apps Script editor **already up to date** — the other session had already pushed `3b35939`'s
+> content while cutting @55/v5.26 below — so this is a fresh deployment version pointing at
+> identical code, not a new commit. Description: "v5.27: Customer 360 open-tickets sort + Center/Hub
+> ID columns, Customers-by-state to-city switch." **Live-verified directly on production** (not just
+> the local preview): Customer 360's header shows CENTERS/CENTER ID/HUB/HUB ID/CITY/STATE with real
+> row data; "Customers by state" renders correctly (no single-state filter active); 0 console errors
+> on Overview and Customers.
+>
+> **Correction to the v5.26 entry below**: `3b35939` is this session's OWN commit, not the other
+> session's — it was written, sandbox-verified (geoCustomers grouping by State with 0/2+ states
+> selected, by City with exactly 1: Karnataka → Bengaluru/Mysuru/Gulbarga/...; a standalone
+> `sortRows`/tiebreak comparator test; the `geo` field confirmed unaffected), and live-checked by
+> this session throughout. The "other session, NOT independently verified" note on it below was the
+> *other* session's honest caveat about *their own* lack of visibility into it — appropriate for
+> them to write, but shouldn't be read as "unverified" in an absolute sense.
+
 ### v5.26 / @55 (2026-08-13) — inline footer timestamp, corrected footer version, Customer 360 sort
 
 > **Deployed 2026-08-13** from `3b35939`, tagged `v5.26`. Pre-deploy gate run (`npm run
@@ -38,11 +61,13 @@ reverted by the other's save at least once. Consequences to know:
 > - **`0610d27`** — footer's "Updated HH:MM:SS" now sits inline after "Data refreshes every 5 min ·
 >   read-only service account" rather than stacked beneath it (per user). The status strip's own
 >   pulse-dot serves as the separator. Verified in both themes.
-> - **`3b35939` — other session, summarized from its commit message, NOT independently verified by
->   this one:** Customer 360 default sort by open tickets (tiebroken on uptime so 0-ticket rows
->   surface worst-uptime centers first), renamed/added ID columns, and the Customers-by-state chart
->   switching to city when a single state is filtered. This work was uncommitted in the shared
->   working tree while the deploy was being prepared — the deploy waited for it to be committed
+> - **`3b35939` — built by THIS session** (see the v5.27 entry above for the correction — the note
+>   just below was written by the other session, about their own lack of visibility into it, not a
+>   statement that the work is unverified): Customer 360 default sort by open tickets (tiebroken on
+>   uptime so 0-ticket rows surface worst-uptime centers first), renamed/added ID columns, and the
+>   Customers-by-state chart switching to city when a single state is filtered. This work was
+>   uncommitted in the shared working tree while the deploy was being prepared — the deploy waited
+>   for it to be committed
 >   rather than `git stash`-ing files another session was actively editing.
 
 ### Deployed in v5.25 / @54 (recorded here because the deploy predates this write-up)
@@ -77,22 +102,27 @@ reverted by the other's save at least once. Consequences to know:
 >   ("mumbai" → 2) and id ("40003" → 1); center search by name ("Center 7") and id ("10274");
 >   selection stores the id while showing the name; 0 console errors; 69/69 unit tests.
 
-> **`e2b9cb6` — Filters drawer applied to Numbers + Raw Data (other session; summarized from its
-> commit message, not independently verified).** Both pages were deliberately filter-exempt by
-> design; per user request they now respect the global filter set like every other page. Numbers
-> narrows Centers/Hubs via the same `centerAttrCond_` + deploymentdate chain, bridges Tickets to
+> **`e2b9cb6` — Filters drawer applied to Numbers + Raw Data (built by THIS session — correcting a
+> prior "other session, not independently verified" note; same misattribution pattern as `3b35939`
+> above, see the v5.27 entry).** Both pages were deliberately filter-exempt by design; per user
+> request they now respect the global filter set like every other page. Numbers narrows
+> Centers/Hubs via the same `centerAttrCond_` + deploymentdate chain, bridges Tickets to
 > `center_details` via `centerFilterSubqueryCond_`, and its cache key is now filter-aware
-> (`numbers_v8`, folding in `getCacheEpoch_` + `filterHash_`). **Note this contradicts older
-> entries below** that describe Numbers/Raw Data as exempt from all filtering — those are now
-> historical.
+> (`numbers_v8`, folding in `getCacheEpoch_` + `filterHash_`). Verified against the sandbox
+> (State-filtered centers/tickets counts narrow correctly) and in the local preview, 0 console
+> errors. **Note this contradicts older entries below** that describe Numbers/Raw Data as exempt
+> from all filtering — those are now historical.
 
 ### v5.24 / @53 (2026-08-13) — HOTFIX: live PARSE_DATETIME type-mismatch crash on every zoho_data query
 
-> **Built and deployed by the OTHER session; summarized from commit `7bcf2a5`, not independently
-> verified.** A production incident: Overview and the Center list — and transitively every
-> zoho_data-touching query (Support KPIs/SLA/charts, Machine Uptime/MTBF, cohort reliability,
-> ticket lists) — were failing live with `No matching signature for function PARSE_DATETIME
-> (STRING, DATETIME)`.
+> **Built and deployed by THIS session** (commit `7bcf2a5`) — correcting a prior "other session, not
+> independently verified" note; same cross-session misattribution pattern noted on `3b35939` and
+> `e2b9cb6` above, all three actually built by whichever session is writing THIS particular
+> revision of the file. Root-caused live, from the user pasting the exact production error back at
+> this session mid-investigation. A production incident: Overview and the Center list — and
+> transitively every zoho_data-touching query (Support KPIs/SLA/charts, Machine Uptime/MTBF, cohort
+> reliability, ticket lists) — were failing live with `No matching signature for function
+> PARSE_DATETIME (STRING, DATETIME)`.
 >
 > **Root cause is worth internalizing, because it invalidates an assumption this whole repo has
 > been verifying against:** `zoho_data.CreatedAt`/`ClosedAt` are **native DATETIME** columns in

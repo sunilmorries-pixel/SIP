@@ -68,7 +68,7 @@ var FLAGS_CD = [
  * The DATE range is deliberately NOT part of this helper: its column differs
  * per call site (center_details.deploymentdate vs the SAFE.PARSE_DATETIME of
  * zoho_data.CreatedAt), so callers add their own dateRangeCond_.
- * @param {{segments:Array,statuses:Array,states:Array,hubs:Array}=} filters
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array}=} filters
  * @return {string} '' when no center-attribute dimension is active
  */
 function centerAttrCond_(filters) {
@@ -79,7 +79,9 @@ function centerAttrCond_(filters) {
   return multiCond_(segmentGroupSql_('hub_master_segment'), f.segments) +
     multiCond_('Status', f.statuses) +
     multiCond_('State', f.states) +
-    multiCond_('HubName', f.hubs);
+    multiCond_('HubName', f.hubs) +
+    multiCond_('City', f.cities) +
+    multiCond_('Spoke_Country', f.countries);
 }
 
 /* ═══════════════ Uptime / MTBF / Health (birth = deploymentdate) ═════════ */
@@ -241,6 +243,22 @@ function buildDashboardQuerySpecsCD(hub, filters) {
     sql: "SELECT DISTINCT TRIM(State) AS state FROM " + CD +
       " WHERE " + F + " AND NULLIF(TRIM(State), '') IS NOT NULL ORDER BY state"
   });
+  specs.push({
+    // 5000: ~3,078 distinct real City values on the sandbox — far more than
+    // State but nowhere near Hub's 13,721 (which is why Hub gets a remote
+    // search instead), so a generous static list is still cheap and complete.
+    key: 'cityOptions', maxRows: 5000,
+    sql: "SELECT DISTINCT TRIM(City) AS city FROM " + CD +
+      " WHERE " + F + " AND NULLIF(TRIM(City), '') IS NOT NULL ORDER BY city"
+  });
+  specs.push({
+    // Small (~15-20 distinct real Spoke_Country values on the sandbox, plus a
+    // handful of data-entry variants like "Inida"/"Phillipines") — shipped raw,
+    // same as Segment/State: the app doesn't merge Country variants.
+    key: 'countryOptions', maxRows: 200,
+    sql: "SELECT DISTINCT TRIM(Spoke_Country) AS country FROM " + CD +
+      " WHERE " + F + " AND NULLIF(TRIM(Spoke_Country), '') IS NOT NULL ORDER BY country"
+  });
   // Per-center Zoho failure aggregate (Zoho only — no jira) feeding the JS cohort.
   var P = "SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', ";
   specs.push({
@@ -355,14 +373,16 @@ function centerBaseSpecCD_() {
       // reload dropped latitude/longitude entirely → NULL here, coordinates
       // come from the pin-geocode store fallback (coordsForCD_).
       //
-      // state/hub are TRIM'd for the same reason segment/status already were:
-      // centerPassesFilters_ compares these fields against the filter values
-      // with ===, while multiCond_ compares TRIM(IFNULL(col,'')) in SQL. Both
-      // sides must normalize identically or the two paths disagree on the 2,806
-      // sandbox rows with a padded HubName (review finding I4, 2026-07-29).
+      // state/hub/city/country are TRIM'd for the same reason segment/status
+      // already were: centerPassesFilters_ compares these fields against the
+      // filter values with ===, while multiCond_ compares TRIM(IFNULL(col,''))
+      // in SQL. Both sides must normalize identically or the two paths
+      // disagree on the 2,806 sandbox rows with a padded HubName (review
+      // finding I4, 2026-07-29).
       "SELECT DISTINCT CenterID AS center_id, Centername AS center, HubID AS hub_id, " +
       " IFNULL(TRIM(HubName), '') AS hub, " +
-      " City AS city, IFNULL(TRIM(State), '') AS state, PinCode AS pin, Spoke_Country AS country, " +
+      " IFNULL(TRIM(City), '') AS city, IFNULL(TRIM(State), '') AS state, PinCode AS pin, " +
+      " IFNULL(TRIM(Spoke_Country), '') AS country, " +
       " " + segmentGroupSql_('hub_master_segment') + " AS segment, " +   // segment = hub_master_segment, SME/LE variants merged (per user)
       " IFNULL(TRIM(Status), '') AS status, " +                // NEW: needed for the global Status filter
       " CAST(NULL AS FLOAT64) AS lat, CAST(NULL AS FLOAT64) AS lng, " +
@@ -462,21 +482,22 @@ function enrichCenterNamesCD_(rows) {
   return rows;
 }
 
-/** center_id → {segment, status, state, hub} from the cached Center-360 rows. */
+/** center_id → {segment, status, state, hub, city, country} from the cached Center-360 rows. */
 function centerFilterMap_() {
   var m = {};
   getCenter360RowsCD_().forEach(function (r) {
-    m[r.center_id] = { segment: r.segment || '', status: r.status || '', state: r.state || '', hub: r.hub || '' };
+    m[r.center_id] = { segment: r.segment || '', status: r.status || '', state: r.state || '', hub: r.hub || '',
+      city: r.city || '', country: r.country || '' };
   });
   return m;
 }
 
 /**
- * Does this Center-360 row (or anything carrying the same 4 fields + a
+ * Does this Center-360 row (or anything carrying the same 6 fields + a
  * deployment_date) pass the current global filter set? Empty array on any
  * dimension = no restriction on that dimension (existing convention).
- * @param {{segment:string,status:string,state:string,hub:string,deployment_date:string}} row
- * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,dateFrom:string,dateTo:string}} filters
+ * @param {{segment:string,status:string,state:string,hub:string,city:string,country:string,deployment_date:string}} row
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array,dateFrom:string,dateTo:string}} filters
  * @return {boolean}
  */
 function centerPassesFilters_(row, filters) {
@@ -486,6 +507,8 @@ function centerPassesFilters_(row, filters) {
   if (!inList(f.statuses, row.status)) return false;
   if (!inList(f.states, row.state)) return false;
   if (!inList(f.hubs, row.hub)) return false;
+  if (!inList(f.cities, row.city)) return false;
+  if (!inList(f.countries, row.country)) return false;
   var d = row.deployment_date ? row.deployment_date.slice(0, 10) : '';
   if (f.dateFrom && (!d || d < f.dateFrom)) return false;
   if (f.dateTo && (!d || d > f.dateTo)) return false;
@@ -495,10 +518,10 @@ function centerPassesFilters_(row, filters) {
 /**
  * Narrows an outer table (zoho_data, cloud_devices) to rows whose CenterID
  * passes the center_details filter set. Generalizes the old single-segment,
- * device-only CenterID-subquery bridge (retired by Task 7) to all 4
+ * device-only CenterID-subquery bridge (retired by Task 7) to all
  * center-attribute dimensions uniformly — one code path instead of mixing
  * native-column and subquery access per dimension.
- * @param {{segments:Array,statuses:Array,states:Array,hubs:Array}} filters
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array}} filters
  * @return {string}
  */
 function centerFilterSubqueryCond_(filters) {
@@ -531,6 +554,8 @@ function apiGetDashboardCD(options) {
     statuses: (options.filters && options.filters.statuses) || [],
     states: (options.filters && options.filters.states) || [],
     hubs: (options.filters && options.filters.hubs) || [],
+    cities: (options.filters && options.filters.cities) || [],
+    countries: (options.filters && options.filters.countries) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
@@ -545,7 +570,8 @@ function apiGetDashboardCD(options) {
     // the combined Zoho dataset again (Service will get its own, separate
     // data source instead of a Zoho scope).
     // v10: zoho_data dedup (see zohoDedupSql_, Queries.js).
-    var cacheKey = 'dashcd_v10_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
+    // v11: City/Country filter dimensions added.
+    var cacheKey = 'dashcd_v11_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -562,17 +588,18 @@ function apiGetDashboardCD(options) {
     enrichCenterNamesCD_(results.reliability);
     // Jira metrics from the Sheet index; keep only assets whose center passes
     // the global filter (unmapped devices drop out whenever ANY of
-    // Segment/Status/State/Hub is active — matching the existing v5.8
-    // behavior for Segment alone). Date range checks the asset's OWN Jira
+    // Segment/Status/State/Hub/City/Country is active — matching the existing
+    // v5.8 behavior for Segment alone). Date range checks the asset's OWN Jira
     // Created date directly, not the center's deployment date.
     var assetIdx = getAssetIndex_();
     var hasCenterFilter = filters.segments.length || filters.statuses.length ||
-      filters.states.length || filters.hubs.length;
+      filters.states.length || filters.hubs.length || filters.cities.length || filters.countries.length;
     if (hasCenterFilter) {
       var cfMap = centerFilterMap_();
       assetIdx = assetIdx.filter(function (a) {
         return a.center_id != null && centerPassesFilters_(cfMap[a.center_id] || {}, {
-          segments: filters.segments, statuses: filters.statuses, states: filters.states, hubs: filters.hubs
+          segments: filters.segments, statuses: filters.statuses, states: filters.states, hubs: filters.hubs,
+          cities: filters.cities, countries: filters.countries
         });
       });
     }
@@ -612,6 +639,8 @@ function apiGetCentersCD(options) {
       statuses: ((options.filters && options.filters.statuses) || []).map(segClean_).filter(Boolean),
       states: ((options.filters && options.filters.states) || []).map(segClean_).filter(Boolean),
       hubs: ((options.filters && options.filters.hubs) || []).map(segClean_).filter(Boolean),
+      cities: ((options.filters && options.filters.cities) || []).map(segClean_).filter(Boolean),
+      countries: ((options.filters && options.filters.countries) || []).map(segClean_).filter(Boolean),
       dateFrom: String((options.filters && options.filters.dateFrom) || ''),
       dateTo: String((options.filters && options.filters.dateTo) || '')
     },
@@ -696,11 +725,13 @@ function apiGetMapDataCD(options) {
     statuses: (options.filters && options.filters.statuses) || [],
     states: (options.filters && options.filters.states) || [],
     hubs: (options.filters && options.filters.hubs) || [],
+    cities: (options.filters && options.filters.cities) || [],
+    countries: (options.filters && options.filters.countries) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    var cacheKey = 'mapcd_v7_' + getCacheEpoch_() + '_' + filterHash_(filters); // v7: zoho_data dedup
+    var cacheKey = 'mapcd_v8_' + getCacheEpoch_() + '_' + filterHash_(filters); // v8: City/Country filter dimensions
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -825,11 +856,13 @@ function apiGetTopCustomersCD(options) {
     statuses: (options.filters && options.filters.statuses) || [],
     states: (options.filters && options.filters.states) || [],
     hubs: (options.filters && options.filters.hubs) || [],
+    cities: (options.filters && options.filters.cities) || [],
+    countries: (options.filters && options.filters.countries) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('topcustcd_v7_' + getCacheEpoch_() + '_' + filterHash_(filters), // v7: zoho_data dedup
+    return withCache('topcustcd_v8_' + getCacheEpoch_() + '_' + filterHash_(filters), // v8: City/Country filter dimensions
       function () { return computeTopCustomersCD_(filters); },
       options.bypassCache === true);
   });
@@ -842,11 +875,13 @@ function apiGetExecOverviewCD(options) {
     statuses: (options.filters && options.filters.statuses) || [],
     states: (options.filters && options.filters.states) || [],
     hubs: (options.filters && options.filters.hubs) || [],
+    cities: (options.filters && options.filters.cities) || [],
+    countries: (options.filters && options.filters.countries) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('execcd_v7_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v7: zoho_data dedup
+    return withCache('execcd_v8_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v8: City/Country filter dimensions
       var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters); });
       var top = computeTopCustomersCD_(filters);
       var want = { kpis: 1, fleetStatus: 1, zohoKpis: 1, zohoTrend: 1, geo: 1, reliability: 1, uptimeFleet: 1, slaKpis: 1 };

@@ -89,12 +89,12 @@ function readJiraData_() {
  * serial resolves to a center via deviceCenterMap_ for global-filter matching
  * only (see below) — device→center coverage itself is not surfaced as a stat.
  * Cached.
- * @param {{segments:Array,statuses:Array,states:Array,hubs:Array}=} filters
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array}=} filters
  * @return {{total,by_status,source,center_source}}
  */
 function jiraDeviceStats_(filters) {
   filters = filters || {};
-  return withCache('jiradev_v6_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
+  return withCache('jiradev_v7_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v7: City/Country filter dimensions
     var jiraRows = readJiraData_().filter(function (row) { return isTrackedJiraDeviceType_(row.issuetype_name); });
     // The Jira "Customer ID" column is IGNORED — a device's center comes from
     // its serial (parsed from Summary) via deviceCenterMap_.
@@ -115,10 +115,11 @@ function jiraDeviceStats_(filters) {
     });
     // Global filter: keep only devices mapped to a center passing the
     // filter set (center lookup via the cached Center-360 rows). Unmapped
-    // devices drop out whenever ANY of Segment/Status/State/Hub is active —
-    // by design, matching the existing v5.8 segment-only behavior.
+    // devices drop out whenever ANY of Segment/Status/State/Hub/City/Country
+    // is active — by design, matching the existing v5.8 segment-only behavior.
     var hasCenterFilter = (filters.segments || []).length || (filters.statuses || []).length ||
-      (filters.states || []).length || (filters.hubs || []).length;
+      (filters.states || []).length || (filters.hubs || []).length ||
+      (filters.cities || []).length || (filters.countries || []).length;
     if (hasCenterFilter) {
       var cfMap = centerFilterMap_();
       Object.keys(byIssue).forEach(function (ik) {

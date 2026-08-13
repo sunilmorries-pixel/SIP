@@ -20,7 +20,7 @@
     // filterHash_ as a real first load or it warms cache keys nobody requests
     // (review finding I6). Change one, change the other: server .js and client
     // .html are separate execution contexts and can't share a constant.
-    globalFilters: { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], dateFrom: '', dateTo: '' },
+    globalFilters: { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], cities: [], countries: [], dateFrom: '', dateTo: '' },
     globalFiltersPending: null, // staged edits inside the open drawer; null when drawer is closed
     dashFilters: null,          // the filter set the CURRENT dashboard payload was fetched with
     // STICKY filter-drawer option lists, stashed by renderDashboard from the
@@ -29,7 +29,7 @@
     // state.lastDashboard (Map/Top Customers/Numbers/Raw Data) and mid-refetch,
     // where reading the options off the payload showed empty lists. (Hub is not
     // here — it's searched server-side, see searchHubs_.)
-    segmentOptions: [], stateOptions: [],
+    segmentOptions: [], stateOptions: [], cityOptions: [], countryOptions: [],
     ticketBucket: '', // '' | none | low | high — clickable map legend
     activeTab: 'tab-overview',
     devices: { status: '', sortBy: 'last_seen', sortDir: 'desc', page: 0, pageSize: 15 },
@@ -240,7 +240,7 @@
         centers: pts, assets: asset, assetTypes: types, assetCats: cats,
         unlocatedCenters: 2412, matchedAssets: 1430,
         geo: { located: 5210, failed: 64, pending: 2790, total: 8064 },
-        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], dateFrom: '', dateTo: '' }
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], dateFrom: '', dateTo: '' }
       });
     }
     if (fn === 'apiGetExecOverview') {
@@ -265,7 +265,7 @@
           age_bands: [{ k: '<1y', n: 3566 }, { k: '1-2y', n: 3343 }, { k: '2-3y', n: 7072 }, { k: '3-5y', n: 6358 }, { k: '5y+', n: 8105 }],
           by_status: [{ k: 'Deployed', n: 5210 }, { k: 'Store', n: 1180 }, { k: 'Hardware', n: 640 },
             { k: 'Decommissioned', n: 410 }, { k: 'Field', n: 260 }, { k: 'Exported', n: 90 }] },
-        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], dateFrom: '', dateTo: '' }
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], dateFrom: '', dateTo: '' }
       });
     }
     if (fn === 'apiGetTopCustomers') {
@@ -289,7 +289,7 @@
         }
       });
       return Promise.resolve({ customers: custs, mapCenters: mapc, totals: totals,
-        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], dateFrom: '', dateTo: '' } });
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], dateFrom: '', dateTo: '' } });
     }
     if (fn === 'apiGetCenterDetail') {
       return Promise.resolve({
@@ -365,7 +365,7 @@
       // tricogde-dwh). devices/cities/active_deployments dropped: dead since
       // the Centers KPI rebuild removed their tiles, nothing reads them.
       centerKpis: [{ centers: 28482, states: 357 }],
-      filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], dateFrom: '', dateTo: '' },
+      filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], dateFrom: '', dateTo: '' },
       geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
       deploymentAge: ['<1y', '1-2y', '2-3y', '3-5y', '5y+'].map(function (b) { return { band: b, devices: rnd(400, 3200) }; }),
       activeVsEnded: [{ status: 'SME', devices: 14316 }, { status: 'Government', devices: 4754 }, { status: 'LE', devices: 5107 }, { status: 'ECHO', devices: 788 }, { status: 'Project', devices: 65 }],
@@ -390,7 +390,9 @@
       // No hubOptions: Hub is served by the apiSearchHubs mock branch above, the
       // same as the real payload no longer carrying a hub list (finding C1).
       segmentOptions: ['SME', 'Government', 'LE', 'ECHO', 'Project'].map(function (sg) { return { segment: sg }; }),
-      stateOptions: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Delhi', 'Gujarat', 'Uttar Pradesh', 'West Bengal'].map(function (s) { return { state: s }; })
+      stateOptions: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Delhi', 'Gujarat', 'Uttar Pradesh', 'West Bengal'].map(function (s) { return { state: s }; }),
+      cityOptions: ['Bengaluru', 'Mumbai', 'Chennai', 'Delhi', 'Hyderabad', 'Pune', 'Kolkata', 'Ahmedabad'].map(function (c) { return { city: c }; }),
+      countryOptions: ['India', 'Philippines', 'Kenya', 'Malaysia', 'Nigeria'].map(function (c) { return { country: c }; })
     });
   }
 
@@ -553,7 +555,10 @@
   function uptimeKpi(id, up) {
     setKpiText(id,
       up && up.avg_uptime != null ? up.avg_uptime.toFixed(1) + '%' : '—',
-      up && up.pct99 != null ? up.pct99 + '% of centers ≥ 99%' : 'ticket-based proxy');
+      // Kept short deliberately: KPI subs must fit ONE line at the narrowest
+      // (6-column) tile width, or the tile's value breaks the row's shared
+      // baseline. "N% of centers ≥ 99%" wrapped to two lines and did exactly that.
+      up && up.pct99 != null ? up.pct99 + '% at ≥ 99%' : 'ticket-based proxy');
   }
 
   /* ── dashboard load ──────────────────────────────────────────── */
@@ -608,6 +613,8 @@
     // list that already loaded.
     state.segmentOptions = data.segmentOptions || state.segmentOptions || [];
     state.stateOptions = data.stateOptions || state.stateOptions || [];
+    state.cityOptions = data.cityOptions || state.cityOptions || [];
+    state.countryOptions = data.countryOptions || state.countryOptions || [];
     /* Asset KPIs (device grain) */
     var kpi = (data.kpis && data.kpis[0]) || {};
     var fleet = data.fleet || {};
@@ -1129,11 +1136,13 @@
     }
     return arrEq(a.segments, b.segments) && arrEq(a.statuses, b.statuses) &&
       arrEq(a.states, b.states) && arrEq(a.hubs, b.hubs) &&
+      arrEq(a.cities, b.cities) && arrEq(a.countries, b.countries) &&
       a.dateFrom === b.dateFrom && a.dateTo === b.dateTo;
   }
 
   function filterActiveCount_(f) {
     return f.segments.length + f.statuses.length + f.states.length + f.hubs.length +
+      f.cities.length + f.countries.length +
       (f.dateFrom ? 1 : 0) + (f.dateTo ? 1 : 0);
   }
 
@@ -1152,6 +1161,8 @@
     f.statuses.forEach(function (v) { chips.push({ dim: 'statuses', label: 'Status: ' + (v === 'ACTIVE' ? 'Active' : v), value: v }); });
     f.states.forEach(function (v) { chips.push({ dim: 'states', label: 'State: ' + v, value: v }); });
     f.hubs.forEach(function (v) { chips.push({ dim: 'hubs', label: 'Hub: ' + v, value: v }); });
+    f.cities.forEach(function (v) { chips.push({ dim: 'cities', label: 'City: ' + v, value: v }); });
+    f.countries.forEach(function (v) { chips.push({ dim: 'countries', label: 'Country: ' + v, value: v }); });
     if (f.dateFrom || f.dateTo) chips.push({ dim: 'date', label: 'Date: ' + (f.dateFrom || '…') + '–' + (f.dateTo || '…'), value: null });
 
     $('filterChips').innerHTML = chips.map(function (c, i) {
@@ -1169,10 +1180,11 @@
     });
   }
 
-  var FILTER_DIM_LABELS = { segments: 'segment', statuses: 'status', states: 'state', hubs: 'hub' };
-  // Plain "+ 's'" mispluralizes status -> statuss; only dimension that needs
-  // its own irregular plural (the others already end cleanly in a consonant).
-  var FILTER_DIM_PLURAL = { segments: 'segments', statuses: 'statuses', states: 'states', hubs: 'hubs' };
+  var FILTER_DIM_LABELS = { segments: 'segment', statuses: 'status', states: 'state', hubs: 'hub', cities: 'city', countries: 'country' };
+  // Plain "+ 's'" mispluralizes status -> statuss and city -> citys; the only
+  // two dimensions that need their own irregular plural (the others already
+  // end cleanly in a consonant).
+  var FILTER_DIM_PLURAL = { segments: 'segments', statuses: 'statuses', states: 'states', hubs: 'hubs', cities: 'cities', countries: 'countries' };
 
   function openFilterDrawer_(preserveStaged) {
     // preserveStaged: true when the caller (Clear all) already staged the
@@ -1193,6 +1205,8 @@
     // Hub has no option list to read — 13,721 distinct values, searched
     // server-side per keystroke instead (review finding C1).
     renderFilterCombo_('filterHub', 'hubs', [], searchHubs_);
+    renderFilterCombo_('filterCity', 'cities', (state.cityOptions || []).map(function (s) { return s.city; }));
+    renderFilterCombo_('filterCountry', 'countries', (state.countryOptions || []).map(function (s) { return s.country; }));
     $('filterDateFrom').value = state.globalFiltersPending.dateFrom;
     $('filterDateTo').value = state.globalFiltersPending.dateTo;
     $('filterScrim').hidden = false;
@@ -2554,7 +2568,7 @@
       if (changed) commitGlobalFilters_();
     });
     $('filterClearBtn').addEventListener('click', function () {
-      state.globalFiltersPending = { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], dateFrom: '', dateTo: '' };
+      state.globalFiltersPending = { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], cities: [], countries: [], dateFrom: '', dateTo: '' };
       openFilterDrawer_(true); // re-render the toggle/combos to reflect the cleared state (don't re-snapshot over it)
     });
     document.addEventListener('keydown', function (event) {

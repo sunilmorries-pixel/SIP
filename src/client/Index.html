@@ -253,7 +253,10 @@
              aria-label="Horizontal bar chart of devices per firmware version"></div>
       </article>
 
-      <article class="card span-4">
+      <!-- span-6 pair, not span-4: five span-4 cards packed 3 + 2, leaving a
+           third of the second row empty. 3 device cards above, these 2 asset
+           cards filling their own row, splits on the real semantic boundary. -->
+      <article class="card span-6">
         <header class="card-head">
           <h2 class="card-title">Asset lifecycle</h2>
           <p class="card-sub">jira_data-tracked Connector + ECG devices by status</p>
@@ -262,7 +265,7 @@
              aria-label="Bar chart of assets by lifecycle status"></div>
       </article>
 
-      <article class="card span-4">
+      <article class="card span-6">
         <header class="card-head">
           <h2 class="card-title">Asset types</h2>
           <p class="card-sub">Hardware categories under management</p>
@@ -613,7 +616,10 @@
     </div>
 
     <div class="card-grid" style="margin-top:var(--gap)">
-      <article class="card span-6">
+      <!-- Three peer "per customer" charts: span-4 each so all three share one
+           row. At span-6 they packed 2 + 1, leaving the third orphaned beside
+           half a row of empty grid. -->
+      <article class="card span-4">
         <header class="card-head">
           <h2 class="card-title">Devices per customer</h2>
           <p class="card-sub">Live devices across each Top LE hub</p>
@@ -622,7 +628,7 @@
              aria-label="Horizontal bar chart of devices per top customer"></div>
       </article>
 
-      <article class="card span-6">
+      <article class="card span-4">
         <header class="card-head">
           <h2 class="card-title">Centers per customer</h2>
           <p class="card-sub">Deployment footprint by hub</p>
@@ -631,7 +637,7 @@
              aria-label="Horizontal bar chart of centers per top customer"></div>
       </article>
 
-      <article class="card span-6">
+      <article class="card span-4">
         <header class="card-head">
           <h2 class="card-title">Open tickets per customer</h2>
           <p class="card-sub">Active support load by hub</p>
@@ -817,7 +823,7 @@
   </div>
 </aside>
 
-<!-- Global filter drawer: Segment/Status/State/Hub/Date range, applies everywhere -->
+<!-- Global filter drawer: Segment/Status/State/Hub/City/Country/Date range, applies everywhere -->
 <div id="filterScrim" class="drawer-scrim" hidden></div>
 <aside id="filterDrawer" class="center-drawer" hidden aria-label="Filters" role="dialog" aria-modal="true">
   <header class="center-panel-head">
@@ -847,6 +853,14 @@
     <section class="filter-section">
       <h3 class="filter-section-title">Hub</h3>
       <div id="filterHub" class="filter-combo" data-dim="hubs"></div>
+    </section>
+    <section class="filter-section">
+      <h3 class="filter-section-title">City</h3>
+      <div id="filterCity" class="filter-combo" data-dim="cities"></div>
+    </section>
+    <section class="filter-section">
+      <h3 class="filter-section-title">Country</h3>
+      <div id="filterCountry" class="filter-combo" data-dim="countries"></div>
     </section>
     <section class="filter-section">
       <h3 class="filter-section-title">Date range</h3>

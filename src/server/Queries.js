@@ -188,7 +188,7 @@ function dateRangeCond_(column, from, to) {
  * ['A','B'] and ['B','A'] hash identically, and fixes key order so the
  * shape of `filters` (Task 3) never produces two different hashes for the
  * same logical filter set.
- * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,dateFrom:string,dateTo:string}} filters
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array,dateFrom:string,dateTo:string}} filters
  * @return {string}
  */
 function filterHash_(filters) {
@@ -197,6 +197,7 @@ function filterHash_(filters) {
   var canonical = JSON.stringify({
     segments: sorted(f.segments), statuses: sorted(f.statuses),
     states: sorted(f.states), hubs: sorted(f.hubs),
+    cities: sorted(f.cities), countries: sorted(f.countries),
     dateFrom: String(f.dateFrom || ''), dateTo: String(f.dateTo || '')
   });
   return shortHash(canonical);

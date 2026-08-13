@@ -483,8 +483,17 @@ var Charts = (function () {
     var sorted = rows.slice().reverse(); // largest at top
     render(id, base({
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      grid: { left: 8, right: 44, top: 12, bottom: 8, containLabel: true },
-      xAxis: valAxis(opts.max ? { max: opts.max } : {}),
+      // bottom:0 — nothing is drawn down there any more, so the axis gutter
+      // would just be dead space the bars could be using.
+      grid: { left: 8, right: 44, top: 12, bottom: 0, containLabel: true },
+      // No value axis drawn. Every bar already carries its own value at the
+      // right-hand end, so the ticks were duplicating it — and in a span-4
+      // card (Top service types, the three Top Customers charts, five of the
+      // TOM charts) they overlapped into an unreadable smear like
+      // "1,0002,0003,000". opts.max still fixes the SCALE; it just isn't drawn.
+      xAxis: valAxis(Object.assign({
+        axisLabel: { show: false }, splitLine: { show: false }, axisLine: { show: false }
+      }, opts.max ? { max: opts.max } : {})),
       yAxis: catAxis({ data: sorted.map(function (r) { return r.label; }),
         axisLabel: { color: C.text, fontSize: 11, width: 170, overflow: 'truncate' } }),
       series: [{

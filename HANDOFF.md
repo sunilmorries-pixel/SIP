@@ -1,11 +1,14 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-14 · **Live version:** 5.28 · **Status:** ✅ **Git, the Apps Script
+**Last updated:** 2026-08-14 · **Live version:** 5.30 · **Status:** ✅ **Git, the Apps Script
 editor, and production are in sync.** Production
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always)
-serves Apps Script **@57 / v5.28**, built from git `main` @ **`6288f65`** (pushed to
-`origin/main`). No tag cut for v5.27/v5.28. v5.21–v5.25, v5.27 and v5.28 were deployed **without**
-tags; only `v5.16`–`v5.18`, `v5.20` and `v5.26` are tagged, so tags are not a reliable release index.
+serves Apps Script **@59 / v5.30**, built from git `main` @ **`4630b67`**. No tag cut for
+v5.27–v5.30. v5.21–v5.25 and v5.27–v5.30 were deployed **without** tags; only `v5.16`–`v5.18`,
+`v5.20` and `v5.26` are tagged, so tags are not a reliable release index.
+
+**The Service and TOM pages are no longer placeholders** (v5.29, v5.30). Every page in the nav now
+has a real data source; there are no "Data source not yet connected" cards left in `Index.html`.
 
 ⚠️ **`CONFIG.APP_VERSION` / `APP_DEPLOYED_AT` must be set to the version THIS DEPLOY WILL CREATE
 — i.e. (current live `@N`) + 1 — in the same change as the `clasp deploy`.** Nothing derives them
@@ -28,6 +31,90 @@ reverted by the other's save at least once. Consequences to know:
   immediately before and after each edit** and grep for your own identifier to confirm the change
   survived. A successful Edit call is not proof the change is still on disk a minute later.
 
+### v5.30 / @59 (2026-08-14) — TOM page on `tom_tickets`
+
+> Built and deployed this session. `src/server/TomTickets.js` (new) + `test/unit/tom-helpers.test.js`
+> (25 tests). Endpoints `apiGetTomCD` (4 KPIs + 6 charts, one cached batch) and
+> `apiGetTomTicketsCD` (paginated issue explorer). Commit `4630b67`.
+>
+> **What the table is:** a CS-owned issue tracker, 1,325 rows, 2025-12-30 → 2026-08-12, loaded from
+> monthly spreadsheet tabs (`source_tab` = "2026 | June 2026"). `remarks` is the OUTCOME column
+> despite its name — Issue Resolved / Auto Resolved / Not resolved / No response / Issue
+> identified+Service Visit. **This framing is an inference, not confirmed by the CS team** — the
+> user was asked twice and did not answer. `comments` hints at machine transfers (swapping, "Sent
+> from HQ") but is 98.3% empty, so it can't carry the page. If TOM turns out to mean machine
+> movement, the labels change; the queries mostly stand.
+>
+> **Unusable columns, deliberately not surfaced:** `t_o_m` holds a single value ("Saidha") across
+> all 1,325 rows; `comments` is 98.3% null.
+>
+> **Filter coverage:** Centre (`center_id`, 99.7% populated) + date range ONLY. This table has no
+> state/city/segment/hub columns and bridging needs the still-unverified centre join, so those
+> dimensions are ignored rather than half-applied.
+>
+> **Bug caught by a unit test before it reached BigQuery:** the monthly-volume spec first aliased
+> its derived month as `month`, which collides with this table's REAL `month` column — one holding
+> bare names ("Jan", "Jun") that sort alphabetically. Aliased `ym` instead so GROUP BY/ORDER BY
+> can't resolve to the wrong one. Also exported `Charts.verticalBar`, which existed but was only
+> used internally by `assetByType`.
+>
+> **Verified against live BigQuery on the @HEAD test deployment before deploying** — 1,325 issues /
+> 342 closed out (25.8%) / 68 unresolved, all matching the profiled table exactly (256+86=342,
+> 27+41=68). Live avg TAT 0.7d.
+>
+> **Deploy hiccup worth knowing:** `clasp deploy` hit `ECONNRESET` *after* creating version 59 but
+> *before* repointing the deployment, which still read @58. Recovered with
+> `clasp deploy -i <id> -V 59` (deploy an EXISTING version) — re-running plain `clasp deploy` would
+> have created a duplicate version 60. Also note `clasp deployments` served a stale @58 for several
+> seconds after a successful deploy; re-query before concluding a deploy failed.
+
+### v5.29 / @58 (2026-08-14) — Service page on `servicewrk_Tickets`
+
+> Built and deployed this session. `src/server/ServiceWrk.js` (new) +
+> `test/unit/servicewrk-helpers.test.js` (28 tests). Endpoints `apiGetServiceCD` and
+> `apiGetServiceTicketsCD`. Commits `78f32b5`, `4728ff0`, `463f7ca`. Design spec at
+> `docs/superpowers/specs/2026-08-13-service-tom-pages-design.md`, plan at
+> `docs/superpowers/plans/2026-08-13-service-page.md`.
+>
+> **THE UPTIME ENGINE WAS DELIBERATELY NOT REPOINTED AT SERVICEWRK.** `Config.js:83` and
+> `docs/SOURCES.md:81/93` both anticipate this swap ("when ServiceWRK lands, swap the `tix` CTE
+> source"). **Do not do it** — the profiled data cannot support it, and this was decided with the
+> user after seeing the numbers:
+> 1. `created_on`/`closed_date` are DATE-ONLY (886 distinct values across ~947 days, all at
+>    00:00:00). M-A1 merges downtime at HOUR grain, so same-day open+close = zero downtime.
+> 2. Only **870 of 36,403** rows are `ticket_type = 'BREAKDOWN'`; the rest is core service work,
+>    scheduled service, installs, even document collection. Downtime would collapse and uptime
+>    would rise toward 100% — a nicer number that is less true.
+> 3. Coverage starts 2024-01-08 while `life = today − deploymentdate` reaches years further back,
+>    so all pre-2024 downtime would silently vanish.
+> 4. The `customer_id` → CenterID join is unverified (7.9% null, ~7,923 distinct vs ~27,410
+>    centres).
+> Rationale is duplicated in a header comment in `ServiceWrk.js` so nobody "fixes" it later.
+>
+> **Filter coverage:** ServiceWRK's OWN `state`/`city`/`customer_category` (the last routed through
+> `segmentGroupSql_`, per the standing segment-merge rule). Hub/Centre/Status/DeviceType are
+> ignored — no counterpart columns.
+>
+> **Data guards, from profiling the live table:** `tat_days_` runs to −1.5 and `tat_min_` to −2158
+> (rows closed before they were created) — every TAT statistic excludes them and the KPI sub-line
+> reports the count rather than hiding it. **No dedupe CTE**: `ticket_id` is unique (36,583
+> approx-distinct vs 36,403 rows), unlike `zoho_data`. Timestamps formatted in SQL, never in JS
+> (`collectRows_` returns epoch strings like `"1.7712E9"` — the bug class fixed in `7bcf2a5`).
+>
+> **Three bugs found by driving the preview in a browser that the unit tests could not catch:**
+> 1. `mockCall()` strips a trailing `"CD"` from `fn` BEFORE matching, so preview branches keyed on
+>    `'apiGetServiceCD'` never fire. **Mock branches must match the BASE name.** Every KPI read 0
+>    and the table said "Failed to load" until this was found.
+> 2. The resolution donut's fallback `STATUS_PALETTE[i]` — index 2 IS `C.warn` — rendered an
+>    "Unknown" slice in exactly the same amber as `CENTER_VISIT`. Unmapped slices now use `C.muted`.
+>    Same defect class as the earlier `ok`/`teal` collision.
+> 3. Four wiring edits were lost to the other session's `git stash push -u` (see v5.28 below) and a
+>    partial state got committed before it was noticed.
+>
+> **Verified against live BigQuery on @HEAD before deploying** — 205 open tickets (profile:
+> `Closed=36198, Open=205`) and 14.6% remote resolution (5,259 ÷ 36,081 = 14.57%), both matching
+> independently-known ground truth.
+
 ### v5.28 / @57 (2026-08-14) — fix footer version drift (this session)
 
 > **Deployed 2026-08-14** from commit `6288f65`, per user request ("next" → confirmed fixing +
@@ -42,10 +129,13 @@ reverted by the other's save at least once. Consequences to know:
 > conflict**: the bulk of the Service-page work (first stash, 8 files) restored cleanly, but a
 > small second stash — 30 lines of further `App.html` edits made by the other session while the
 > first stash was already isolating the file — conflicts with it and is still sitting in the stash
-> list (`git stash list` → one entry, "more concurrent Service-page edits to App.html"). **Left
-> unresolved deliberately**: this is the other session's own in-progress edit to a file it's
-> actively building; reconciling it requires knowing what those 30 lines were meant to do, which
-> only that session (or the user) can judge safely. Verified live: `curl -L` → `200`; Overview loads
+> list (`git stash list` → one entry, "more concurrent Service-page edits to App.html").
+> **RESOLVED 2026-08-14 (v5.30 session): that stash has been verified redundant and dropped.** Its
+> 30 lines were the Service page's metric-glossary / `KPI_METRIC` / `TITLE_METRIC` entries and the
+> `init()` `buildServiceHeader()` call. The session that owned them had already re-applied every one
+> by hand after noticing they were missing (commit `4728ff0`), so each added line was confirmed
+> present in `HEAD` before `git stash drop`. `git stash list` is now empty. Verified live: `curl -L`
+> → `200`; Overview loads
 > with real data, 0 console errors. Footer version not re-checked pixel-by-pixel on the live page
 > (this session's browser automation couldn't scroll that far down the real production page today)
 > but the fix itself is a static string constant — low risk without that last visual confirmation.
@@ -1171,6 +1261,9 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 14. **(from 2026-07-31 review) Add real focus-trap + focus-restore to both drawers** (`#filterDrawer` AND `#centerDrawer` — live-reproduced escaping into background content on the center-detail drawer, not just the filter drawer already parked above in the 2026-07-29 fix-wave notes).
 15. **(from 2026-07-31 review) Decide the fate of the confirmed-dead non-CD code** in `Api.js`/`ExecOverview.js`/`TopCustomers.js` (verified via grep — `ep()` at `App.html:73` always routes to the `CD` endpoints) — either delete it or explicitly document why it's intentionally retained, before someone "fixes a bug" in a file the client never calls.
 16. **(from 2026-07-31 review) Investigate the Overview-vs-Centers-tab KPI count mismatch** — Overview shows 18,370 centers, the Centers-tab KPI strip shows 28,482 "all centers", both under the identical default "Status: Active" filter chip. Not yet root-caused; may be a fresh instance of the SQL-vs-JS filter-path disagreement class the 2026-07-29 fix wave already fixed once for Hub/State (item I4/I8 above).
+17. **(v5.29/v5.30) Run `profileJoinKeys` in the Apps Script editor** — `src/server/ProfileNewSources.js` is a temporary read-only diagnostic. `profileNewSources()` has been run (its output shaped both new pages); **`profileJoinKeys()` has NOT.** It answers whether `servicewrk_Tickets.customer_id` and `tom_tickets.center_id` actually resolve to `center_details.CenterID`, whether the `zoho_ticket`/`zoho_id` cross-references resolve to `zoho_data.ticketNumber`, and whether ANY row carries time-of-day. **If centre coverage is good, Hub/Centre filtering and centre-drawer click-through can be added to both new pages** (they are currently ignored — see each page's filter-coverage note). Delete the whole file once it has served its purpose.
+18. **(v5.30) Confirm what TOM actually is.** The page is built as a CS issue tracker because `remarks` records outcomes, but the user was asked twice and did not answer, and `comments` hints at machine transfers. If it's really machine movement, re-frame the page's labels/KPIs around movements and turnaround — the underlying queries mostly survive.
+19. **(v5.29/v5.30) `Charts.rankBar` x-axis labels collide in narrow `span-4` cards** — visible on "Top service types" (Service) and the three Top Customers charts. Pre-existing, not introduced by the new pages, so it was deliberately left alone rather than changing five charts' rendering during a release. `rankBar` already prints the value at the end of each bar, so the x-axis is arguably redundant at that width and could simply be hidden.
 
 ---
 

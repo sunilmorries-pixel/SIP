@@ -1057,6 +1057,7 @@
         <label>To <input id="filterDateTo" class="input" type="date"></label>
       </div>
       <p class="filter-note">Customers/Map/Numbers: deployment date · Support: ticket created date · Asset: Jira created date · Top Customers/Overview: Segment/Status/State/Hub only, no date · Raw Data: date range applies to Zoho Tickets (created) and Jira Devices (created) only, per-source (see the Raw Data page for details).</p>
+      <p class="filter-note"><strong>Service</strong> reads ServiceWRK, which carries its own Segment/State/City but no Hub, Centre, Status or Device dimension — those four are ignored there. <strong>TOM</strong> carries only Centre, so every other dimension is ignored on that page. Both use their own created/received date for the range.</p>
     </section>
   </div>
   <footer class="center-panel-head" style="border-top:1px solid var(--border);border-bottom:none;">

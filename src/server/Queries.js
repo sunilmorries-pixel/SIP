@@ -6,8 +6,18 @@
  *  - All statements aggregate server-side; raw rows never ship to the client
  *    except the paginated Device / Center explorers.
  *  - @hub is a named parameter on fleet/support queries; empty string = all.
- *  - Zoho date strings are parsed with SAFE.PARSE_DATETIME so malformed rows
- *    become NULL instead of failing the query.
+ *  - zoho_data.CreatedAt/ClosedAt are native DATETIME columns in production
+ *    (tricogde-dwh) — used bare, no PARSE_DATETIME. CORRECTED 2026-08-13: an
+ *    earlier assumption that they were STRING (format '%d-%b-%Y %I:%M:%S %p')
+ *    was only true of the sandbox project (magnaquest-sand-box), which has a
+ *    different column type for this table — real schema drift between the
+ *    two, not a code bug that was ever actually exercised against prod until
+ *    this broke live with "Unable to coerce type DATETIME to expected type
+ *    STRING". Every zoho_data query in this file was affected; all fixed in
+ *    the same pass. Lesson: this project's local verification harness can
+ *    only reach the sandbox (no `bigquery.jobs.create` on tricogde-dwh), so
+ *    schema assumptions about the real project must be treated as unverified
+ *    until confirmed against a live error or an explicit admin-side check.
  *  - Grain rules (docs/SOURCES.md): COUNT DISTINCT on fanned sources,
  *    AVG/MAX on device_metrics, ratio-of-sums for rates.
  *
@@ -42,9 +52,8 @@ function T(table) {
  * Support page — same reasoning as the dedup itself, this is the one choke
  * point every real Zoho read goes through.
  *
- * CreatedAt is a STRING (CONFIG.ZOHO_DT_FORMAT), not a native timestamp — the
- * ORDER BY must parse it (SAFE.PARSE_DATETIME), not sort the raw string,
- * which would order by day-of-month/month-name text instead of real time.
+ * CreatedAt is a native DATETIME in production — ORDER BY sorts it directly
+ * (see the file-header note on the 2026-08-13 STRING-assumption correction).
  * The IFNULL fallback guards against any future NULL ticketNumber row
  * merging with others of the same NULL rather than staying its own row.
  * @return {string}
@@ -54,7 +63,7 @@ function zohoDedupSql_() {
     " WHERE NULLIF(TRIM(assignee), '') IS NOT NULL" +
     " QUALIFY ROW_NUMBER() OVER (" +
     "PARTITION BY IFNULL(CAST(ticketNumber AS STRING), GENERATE_UUID()) " +
-    "ORDER BY SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) DESC" +
+    "ORDER BY CreatedAt DESC" +
     ") = 1)";
 }
 
@@ -173,8 +182,8 @@ function likeEscape_(value) {
 /**
  * DATE column bounds check against a 'YYYY-MM-DD' from/to pair; '' if both
  * are empty/invalid. `column` must already be a DATE/DATETIME-typed SQL
- * expression at the call site (callers wrap SAFE.PARSE_DATETIME themselves
- * for string-typed columns like zoho_data.CreatedAt — see buildDashboardQuerySpecs).
+ * expression at the call site — zoho_data.CreatedAt is passed bare (native
+ * DATETIME in production, see the file-header note).
  * @param {string} column
  * @param {string=} from
  * @param {string=} to
@@ -224,14 +233,12 @@ function filterHash_(filters) {
  * @return {string} full SQL
  */
 function centerUptimeSql_(tailSelect) {
-  var f = CONFIG.ZOHO_DT_FORMAT;
-  var P = "SAFE.PARSE_DATETIME('" + f + "', ";
   return "WITH tix AS (" +
-    " SELECT CenterID AS center_id, " + P + "CreatedAt) AS s, " +
-    "  COALESCE(" + P + "ClosedAt), CURRENT_DATETIME()) AS e " +
+    " SELECT CenterID AS center_id, CreatedAt AS s, " +
+    "  COALESCE(ClosedAt, CURRENT_DATETIME()) AS e " +
     " FROM " + zohoDedupSql_() + " WHERE CenterID IS NOT NULL " +
     "  AND " + techBoolSql_("IFNULL(IssueCategory,'')") + " " +
-    "  AND " + P + "CreatedAt) IS NOT NULL), " +
+    "  AND CreatedAt IS NOT NULL), " +
     "birth AS (SELECT centerid AS center_id, MIN(startdatetime) AS b " +
     "  FROM " + T('device_center_mapping') + " WHERE startdatetime IS NOT NULL GROUP BY centerid), " +
     "flagged AS (SELECT center_id, s, e, " +
@@ -260,8 +267,8 @@ function centerUptimeSql_(tailSelect) {
 
 /** Zoho stringly-typed datetime parser fragments. */
 function zohoParsedDates_() {
-  return "SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created, " +
-         "SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', ClosedAt) AS closed";
+  return "CreatedAt AS created, " +
+         "ClosedAt AS closed";
 }
 
 /**
@@ -276,7 +283,7 @@ function buildDashboardQuerySpecs(hub, filters) {
   var FLEET_BUCKET_SQL = fleetBucketSql_();
   var f = filters || {};
   var centerCond = centerFilterSubqueryCond_(f);          // for cloud_devices / zoho_data
-  var supportDateCond = dateRangeCond_("SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt)", f.dateFrom, f.dateTo);
+  var supportDateCond = dateRangeCond_("CreatedAt", f.dateFrom, f.dateTo);
 
   return [
 
@@ -489,7 +496,7 @@ function buildDashboardQuerySpecs(hub, filters) {
       params: p,
       sql:
         "WITH t AS (SELECT IssueCategory, HubName, hub_master_segment, CenterID, CreatedAt, " +
-        " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
+        " CreatedAt AS created " +
         " FROM " + zohoDedupSql_() + ") " +
         "SELECT IFNULL(NULLIF(TRIM(IssueCategory), ''), 'Uncategorised') AS category, COUNT(*) AS cnt " +
         "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
@@ -500,7 +507,7 @@ function buildDashboardQuerySpecs(hub, filters) {
       params: p,
       sql:
         "WITH t AS (SELECT priority, HubName, hub_master_segment, CenterID, CreatedAt, " +
-        " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
+        " CreatedAt AS created " +
         " FROM " + zohoDedupSql_() + ") " +
         "SELECT IFNULL(NULLIF(TRIM(priority), ''), 'Unset') AS priority, COUNT(*) AS cnt " +
         "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
@@ -511,7 +518,7 @@ function buildDashboardQuerySpecs(hub, filters) {
       params: p,
       sql:
         "WITH t AS (SELECT Channel, HubName, hub_master_segment, CenterID, CreatedAt, " +
-        " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
+        " CreatedAt AS created " +
         " FROM " + zohoDedupSql_() + ") " +
         "SELECT IFNULL(NULLIF(TRIM(Channel), ''), 'Unknown') AS channel, COUNT(*) AS cnt " +
         "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
@@ -522,7 +529,7 @@ function buildDashboardQuerySpecs(hub, filters) {
       params: p,
       sql:
         "WITH t AS (SELECT hub_master_segment, HubName, CenterID, CreatedAt, " +
-        " SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS created " +
+        " CreatedAt AS created " +
         " FROM " + zohoDedupSql_() + ") " +
         "SELECT " + segmentGroupSql_('hub_master_segment', 'Unknown') + " AS segment, COUNT(*) AS cnt " +
         "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
@@ -700,7 +707,7 @@ function buildCenterDetailSpecs(centerId) {
         " IFNULL(TicketLink,'') AS link " +
         "FROM " + zohoDedupSql_() + " " +
         "WHERE CenterID = @cid AND status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + " " +
-        "ORDER BY SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) DESC " +
+        "ORDER BY CreatedAt DESC " +
         "LIMIT 25"
     },
     {
@@ -714,10 +721,10 @@ function buildCenterDetailSpecs(centerId) {
         " IFNULL(NULLIF(TRIM(subject),''),'(no subject)') AS subject, " +
         " IFNULL(NULLIF(TRIM(IssueCategory),''),'') AS category, " +
         " IFNULL(TicketLink,'') AS link, " +
-        " CAST(SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) AS STRING) AS created " +
+        " CAST(CreatedAt AS STRING) AS created " +
         "FROM " + zohoDedupSql_() + " " +
         "WHERE CenterID = @cid " +
-        "ORDER BY SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) DESC " +
+        "ORDER BY CreatedAt DESC " +
         "LIMIT 50"
     }
   ];

@@ -66,8 +66,8 @@ var FLAGS_CD = [
  * the whole-branch-review fix wave, 2026-07-29 (finding I8).
  *
  * The DATE range is deliberately NOT part of this helper: its column differs
- * per call site (center_details.deploymentdate vs the SAFE.PARSE_DATETIME of
- * zoho_data.CreatedAt), so callers add their own dateRangeCond_.
+ * per call site (center_details.deploymentdate vs zoho_data.CreatedAt), so
+ * callers add their own dateRangeCond_.
  * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array}=} filters
  * @return {string} '' when no center-attribute dimension is active
  */
@@ -93,15 +93,13 @@ function centerAttrCond_(filters) {
  * @param {string} tailSelect a SELECT over the final `scored` CTE
  */
 function centerUptimeSqlCD_(tailSelect, filters) {
-  var f = CONFIG.ZOHO_DT_FORMAT;
-  var P = "SAFE.PARSE_DATETIME('" + f + "', ";
   var ff = filters || {};
   return "WITH tix AS (" +
-    " SELECT CenterID AS center_id, " + P + "CreatedAt) AS s, " +
-    "  COALESCE(" + P + "ClosedAt), CURRENT_DATETIME()) AS e " +
+    " SELECT CenterID AS center_id, CreatedAt AS s, " +
+    "  COALESCE(ClosedAt, CURRENT_DATETIME()) AS e " +
     " FROM " + zohoDedupSql_() + " WHERE CenterID IS NOT NULL " +
     "  AND " + techBoolSql_("IFNULL(IssueCategory,'')") + " " +
-    "  AND " + P + "CreatedAt) IS NOT NULL), " +
+    "  AND CreatedAt IS NOT NULL), " +
     "birth AS (SELECT CenterID AS center_id, MIN(DATETIME(deploymentdate)) AS b " +
     "  FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_() +
     centerAttrCond_(ff) +
@@ -266,13 +264,12 @@ function buildDashboardQuerySpecsCD(hub, filters) {
       " WHERE " + F + " AND NULLIF(TRIM(Spoke_Country), '') IS NOT NULL ORDER BY country"
   });
   // Per-center Zoho failure aggregate (Zoho only — no jira) feeding the JS cohort.
-  var P = "SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', ";
   specs.push({
     key: 'zohoFailByCenter', maxRows: 60000,
     sql:
-      "WITH ftix AS (SELECT CenterID AS cid, " + P + "CreatedAt) AS created, IssueCategory AS cat " +
+      "WITH ftix AS (SELECT CenterID AS cid, CreatedAt AS created, IssueCategory AS cat " +
       " FROM " + zohoDedupSql_() + " WHERE CenterID IS NOT NULL AND " +
-      techBoolSql_("IFNULL(IssueCategory,'')") + " AND " + P + "CreatedAt) IS NOT NULL), " +
+      techBoolSql_("IFNULL(IssueCategory,'')") + " AND CreatedAt IS NOT NULL), " +
       "pc AS (SELECT cid, CAST(MIN(created) AS STRING) AS first_fail, COUNT(*) AS n_fail FROM ftix GROUP BY cid), " +
       "cr AS (SELECT cid, cat, ROW_NUMBER() OVER (PARTITION BY cid ORDER BY COUNT(*) DESC) AS rn " +
       " FROM ftix GROUP BY cid, cat) " +

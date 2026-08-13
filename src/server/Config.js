@@ -87,9 +87,6 @@ var CONFIG = {
    */
   FAILURE_CATEGORY_REGEX: 'machine|device|hardware|cable|network|sim|accessor|acquisition|battery|printer|connector',
 
-  /** Format string for Zoho's stringly-typed datetimes: 02-Jul-2026 04:59:16 PM */
-  ZOHO_DT_FORMAT: '%d-%b-%Y %I:%M:%S %p',
-
   /**
    * Fallback SLA target (days) for IssueCategory values not present in the CS
    * team's SLA catalog (SlaCatalog.js). ~5 days ≈ the modal Tech SLA.

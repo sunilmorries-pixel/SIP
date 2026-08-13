@@ -804,9 +804,10 @@
     <span><?= appName ?> · version <?= appVersion ?> on <?= appDeployedAt ?> · a Tricog Service Insights Platform · BigQuery · Apps Script</span>
     <div class="page-footer-right">
       <span>Data refreshes every 5 min · read-only service account</span>
-      <!-- "Updated HH:MM:SS" lives here rather than under the topbar: it's
-           passive provenance, not something to act on, so it belongs with the
-           other provenance line instead of occupying prime space up top. -->
+      <!-- "Updated HH:MM:SS" sits inline right after the provenance text (per
+           user), not under the topbar: it's passive provenance, not something
+           to act on, so it belongs beside the other provenance line rather
+           than occupying prime space up top. -->
       <div id="statusStrip" class="status-strip" role="status" aria-live="polite">
         <span class="pulse-dot" aria-hidden="true"></span>
         <span id="lastUpdated">Connecting to BigQuery…</span>

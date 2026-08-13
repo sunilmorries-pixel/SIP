@@ -1077,7 +1077,13 @@ a.ticket-row:hover .ticket-ext { color: var(--primary); }
 }
 /* Stacks the provenance line and the "Updated HH:MM:SS" strip, right-aligned
    so both read as one block against the app/version line on the left. */
-.page-footer-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+/* One row, "Updated HH:MM:SS" trailing the provenance text (per user) rather
+   than stacked under it. The status strip's own pulse-dot reads as the
+   separator, so no extra "·" is added. Wraps on narrow viewports. */
+.page-footer-right {
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: 12px; flex-wrap: wrap;
+}
 
 /* ── batch signal (cohort failure callout) ──────────────────────── */
 .batch-signal { display: flex; flex-direction: column; gap: 14px; padding: 4px 2px; }

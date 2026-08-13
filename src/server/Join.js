@@ -49,22 +49,34 @@ function leftJoin(left, right, opts) {
   });
 }
 
+/** Two-value comparator shared by sortRows' primary/tiebreak passes. */
+function compareValues_(x, y, sign) {
+  if (x === y) return 0;
+  if (x === null || x === undefined || x === '') return 1;  // empties last
+  if (y === null || y === undefined || y === '') return -1;
+  if (typeof x === 'number' && typeof y === 'number') return (x - y) * sign;
+  return String(x).localeCompare(String(y)) * sign;
+}
+
 /**
- * Generic in-memory sort for joined rows.
+ * Generic in-memory sort for joined rows, with an optional secondary
+ * tiebreak column (per user, 2026-08-13 — Customer 360's default sort is
+ * open_tickets desc, tiebroken by uptime_pct asc so 0-ticket rows surface
+ * their worst-uptime centers first instead of being left in fetch order).
  * @param {Array<Object>} rows mutated in place, also returned
  * @param {string} column
  * @param {string} direction 'asc' | 'desc'
+ * @param {string=} tieColumn only compared when `column` ties between two rows
+ * @param {string=} tieDirection 'asc' | 'desc', default 'asc'
  * @return {Array<Object>}
  */
-function sortRows(rows, column, direction) {
+function sortRows(rows, column, direction, tieColumn, tieDirection) {
   var sign = direction === 'asc' ? 1 : -1;
+  var tieSign = tieDirection === 'desc' ? -1 : 1;
   rows.sort(function (a, b) {
-    var x = a[column], y = b[column];
-    if (x === y) return 0;
-    if (x === null || x === undefined || x === '') return 1;  // empties last
-    if (y === null || y === undefined || y === '') return -1;
-    if (typeof x === 'number' && typeof y === 'number') return (x - y) * sign;
-    return String(x).localeCompare(String(y)) * sign;
+    var primary = compareValues_(a[column], b[column], sign);
+    if (primary !== 0 || !tieColumn) return primary;
+    return compareValues_(a[tieColumn], b[tieColumn], tieSign);
   });
   return rows;
 }

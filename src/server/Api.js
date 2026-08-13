@@ -104,7 +104,8 @@ function apiGetCenters(options) {
               String(row.state).toLowerCase().indexOf(clean.search) !== -1);
     });
 
-    sortRows(filtered, CENTER_SORT_KEYS[clean.sortBy] || 'devices', clean.sortDir);
+    var sortCol = CENTER_SORT_KEYS[clean.sortBy] || 'devices';
+    sortRows(filtered, sortCol, clean.sortDir, sortCol === 'open_tickets' ? 'uptime_pct' : null, 'asc');
 
     var start = clean.page * clean.pageSize;
     return {

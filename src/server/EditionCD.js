@@ -166,7 +166,9 @@ function buildDashboardQuerySpecsCD(hub, filters) {
       // Distinct CENTERS per state (the reload duplicated rows; every other
       // Centers metric dedupes — this one was still COUNT(*)). Field name stays
       // `devices` for client-payload compatibility; the card is retitled
-      // "Centers by state" client-side.
+      // "Centers by state" client-side. Feeds Overview's "Where centers are"
+      // chart ONLY — always by-state, deliberately untouched by the
+      // single-state-selected switch below (see geoCustomers).
       "SELECT IFNULL(NULLIF(TRIM(State), ''), 'Unknown') AS state, COUNT(DISTINCT CenterID) AS devices " +
       "FROM " + CD + " WHERE " + F + filterCond + dateCond + " GROUP BY state ORDER BY devices DESC LIMIT 12",
     // One row per center (MIN deploymentdate); counts DISTINCT centers so the
@@ -223,6 +225,23 @@ function buildDashboardQuerySpecsCD(hub, filters) {
   // exact bug already fixed once in getCenter360RowsCD_ (see its own maxRows comment).
   specs.forEach(function (s) {
     if (s.key === 'reliability' || s.key === 'assetHealth') s.maxRows = 60000;
+  });
+
+  // Customers page's OWN "Customers by state" chart (per user, 2026-08-13):
+  // switches to a City breakdown once the filter drawer has exactly one State
+  // selected (a by-state chart is uninformative once already scoped to one
+  // state). A genuinely NEW key, not an override of an existing base spec —
+  // must be specs.push()'d like segmentOptions/zohoFailByCenter below, not
+  // added to the `cd` object above (that only overrides keys the base
+  // buildDashboardQuerySpecs() list already has — see the .map() above).
+  // Deliberately separate from `geo` (unchanged, always by-state): that field
+  // feeds Overview's "Where centers are" card, a different page whose title
+  // shouldn't silently go stale from a filter change made on the Customers page.
+  specs.push({
+    key: 'geoCustomers',
+    sql: "SELECT IFNULL(NULLIF(TRIM(" + ((ff.states && ff.states.length === 1) ? 'City' : 'State') + "), ''), 'Unknown') AS state, " +
+      "COUNT(DISTINCT CenterID) AS devices " +
+      "FROM " + CD + " WHERE " + F + filterCond + dateCond + " GROUP BY state ORDER BY devices DESC LIMIT 12"
   });
 
   // Distinct real segment/state values, for the global filter drawer's Segment
@@ -704,7 +723,10 @@ function apiGetCentersCD(options) {
               String(row.hub).toLowerCase().indexOf(clean.search) !== -1 ||
               String(row.state).toLowerCase().indexOf(clean.search) !== -1);
     });
-    sortRows(filtered, CENTER_SORT_KEYS[clean.sortBy] || 'devices', clean.sortDir);
+    var sortCol = CENTER_SORT_KEYS[clean.sortBy] || 'devices';
+    // Per user, 2026-08-13: sorting by open tickets tiebreaks on uptime asc,
+    // so the 0-ticket majority still surfaces its worst-uptime centers first.
+    sortRows(filtered, sortCol, clean.sortDir, sortCol === 'open_tickets' ? 'uptime_pct' : null, 'asc');
     var start = clean.page * clean.pageSize;
     return {
       rows: filtered.slice(start, start + clean.pageSize),

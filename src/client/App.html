@@ -46,7 +46,9 @@
     activeTab: 'tab-overview',
     devices: { status: '', sortBy: 'last_seen', sortDir: 'desc', page: 0, pageSize: 15 },
     deviceRows: [], deviceTotal: 0,
-    centers: { sortBy: 'devices', sortDir: 'desc', page: 0, pageSize: 15 },
+    // Default sort: open tickets most->least (server tiebreaks 0-ticket rows
+    // by uptime ascending — see sortRows/EditionCD.js, per user 2026-08-13).
+    centers: { sortBy: 'open_tickets', sortDir: 'desc', page: 0, pageSize: 15 },
     centerRows: [], centerTotal: 0,
     // The filter set each paginated table's CURRENT rows were fetched with —
     // the same guard state.dashFilters gives the shared dashboard payload, for
@@ -122,9 +124,10 @@
         var n = rnd(1, 14);
         var up = rnd(88, 100);
         var fails = rnd(0, 6);
+        var hubN = rnd(1, 30);
         crows.push({
           center_id: rnd(1000, 60000), center: 'Demo Center ' + rnd(1, 4000),
-          hub: 'Demo Hub ' + rnd(1, 30),
+          hub: 'Demo Hub ' + hubN, hub_id: 40000 + hubN,
           city: ['Bengaluru', 'Mumbai', 'Chennai', 'Hisar', 'Delhi'][rnd(0, 5)],
           state: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Haryana', 'Delhi'][rnd(0, 5)],
           devices: n, jira_devices: rnd(0, n + 3),
@@ -398,6 +401,11 @@
       centerKpis: [{ centers: 28482, centers_with_open_tickets: 187 }],
       filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' },
       geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
+      // Customers page's own state/city breakdown (see EditionCD.js's
+      // geoCustomers spec) — the mock doesn't branch on filters like the
+      // real endpoint does, but renderGeoCustomersHeading_ still retitles
+      // the card correctly since that reads live client-side filter state.
+      geoCustomers: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
       deploymentAge: ['<1y', '1-2y', '2-3y', '3-5y', '5y+'].map(function (b) { return { band: b, devices: rnd(400, 3200) }; }),
       activeVsEnded: [{ status: 'SME', devices: 14316 }, { status: 'Government', devices: 4754 }, { status: 'LE', devices: 5107 }, { status: 'ECHO', devices: 788 }, { status: 'Project', devices: 65 }],
       zohoKpis: [{ open_tickets: 211, created_7d: 340, closed_7d: 361, avg_open_age_days: 6.2, total_tickets: 84545 }],
@@ -702,7 +710,8 @@
     renderCohort(data.cohortReliability || []);
 
     /* Centers charts */
-    Charts.geo(data.geo);
+    Charts.geo(data.geoCustomers);
+    renderGeoCustomersHeading_();
     Charts.deploymentAge(data.deploymentAge);
     Charts.activeVsEnded(data.activeVsEnded);
 
@@ -729,6 +738,22 @@
    * Failure Detection). Draws the combo chart, the detail table and the
    * "batch signal" callout for the cohort that most warrants attention.
    */
+  /**
+   * Swaps the "Customers by state" card's title/subtitle to "by city" once
+   * the Filters drawer has exactly one State selected — matches the data
+   * switch in EditionCD.js's `geoCustomers` spec (per user, 2026-08-13).
+   */
+  function renderGeoCustomersHeading_() {
+    var singleState = state.globalFilters.states.length === 1;
+    $('chartGeoTitle').textContent = singleState ? 'Customers by city' : 'Customers by state';
+    $('chartGeoSub').textContent = singleState ?
+      'Distinct active customers per city in ' + state.globalFilters.states[0] :
+      'Distinct active customers per state';
+    $('chartGeo').setAttribute('aria-label', singleState ?
+      'Bar chart of customers per city in ' + state.globalFilters.states[0] :
+      'Bar chart of customers per state');
+  }
+
   function renderCohort(rows) {
     Charts.cohort(rows);
 
@@ -984,12 +1009,13 @@
   }
 
   /* ── Customer-360 explorer (Customers view) ───────────────────
-     Labels say "Customer" (a center IS an independent customer; the hub is its
-     parent in the hub-and-spoke model) — sort keys stay the server's center*. */
+     Column label reverted to "Centers" (per user, 2026-08-13 — was
+     "Customer" from an earlier rename); sort keys stay the server's center*. */
   var CENTER_COLUMNS = [
-    { key: 'center', label: 'Customer', sortable: true },
-    { key: 'center_id', label: 'ID', sortable: false, num: true },
+    { key: 'center', label: 'Centers', sortable: true },
+    { key: 'center_id', label: 'Center ID', sortable: false, num: true },
     { key: 'hub', label: 'Hub', sortable: false },
+    { key: 'hub_id', label: 'Hub ID', sortable: false, num: true },
     { key: 'city', label: 'City', sortable: false },
     { key: 'state', label: 'State', sortable: true },
     { key: 'devices', label: 'Devices', sortable: true, num: true },
@@ -1059,6 +1085,7 @@
           '<td><strong>' + escapeHtml(r.center || '—') + '</strong></td>' +
           '<td class="num">' + escapeHtml(r.center_id) + '</td>' +
           '<td>' + escapeHtml(r.hub || '—') + '</td>' +
+          '<td class="num">' + escapeHtml(r.hub_id != null ? r.hub_id : '—') + '</td>' +
           '<td>' + escapeHtml(r.city || '—') + '</td>' +
           '<td>' + escapeHtml(r.state || '—') + '</td>' +
           '<td class="num">' + FMT.format(r.devices || 0) + '</td>' +

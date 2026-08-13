@@ -518,17 +518,96 @@
     </div>
   </section>
 
-  <!-- ══════════════ VIEW 4 · SERVICE ══════════════ -->
+  <!-- ══════════════ VIEW 4 · SERVICE ══════════════
+       ServiceWRK field-service operations. Filters come from this table's own
+       state/city/customer_category columns — NOT from a center join, which is
+       unverified and at best partial. See the design spec §4.2. -->
   <section id="panel-service" class="panel" role="tabpanel" aria-labelledby="tab-service" hidden>
-    <p class="page-lead">Service tickets — this page is awaiting its own data source (not Zoho). The
-      <strong>Support</strong> page keeps every Zoho ticket in the meantime.</p>
-    <div id="serviceKpiGrid" class="kpi-grid"></div>
+    <div id="serviceKpiGrid" class="kpi-grid kpi-grid-4"></div>
 
     <div class="card-grid">
-      <article class="card span-12 empty-state-card">
-        <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <h2 class="card-title">Data source not yet connected</h2>
-        <p class="card-sub">Service will show its own charts and SLA breakdown once that source is wired up.</p>
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Service ticket flow</h2>
+          <p class="card-sub">Raised vs closed per month · ServiceWRK</p>
+        </header>
+        <div id="chartSvcFlow" class="chart chart-tall" role="img"
+             aria-label="Line chart of service tickets raised versus closed per month"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Turnaround time</h2>
+          <p class="card-sub">Closed tickets by days to close</p>
+        </header>
+        <div id="chartSvcTat" class="chart chart-tall" role="img"
+             aria-label="Bar chart of closed tickets by turnaround band"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Resolution mix</h2>
+          <p class="card-sub">Site visit vs resolved over the phone</p>
+        </header>
+        <div id="chartSvcResolution" class="chart chart-tall" role="img"
+             aria-label="Donut chart of centre visits versus remote resolutions"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Top service types</h2>
+          <p class="card-sub">Most common work carried out</p>
+        </header>
+        <div id="chartSvcTypes" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of tickets by service type"></div>
+      </article>
+
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">By device model</h2>
+          <p class="card-sub">Service load per machine category</p>
+        </header>
+        <div id="chartSvcModels" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of tickets by device model"></div>
+      </article>
+
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">Field force</h2>
+          <p class="card-sub">Top engineers by tickets closed</p>
+        </header>
+        <div id="chartSvcReps" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of tickets closed per engineer"></div>
+      </article>
+
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Service tickets</h2>
+          <p class="card-sub">One row per ServiceWRK ticket · newest first</p>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table" id="serviceTable" aria-describedby="serviceTableInfo">
+            <caption class="sr-only">Service ticket explorer</caption>
+            <thead><tr id="serviceTableHead"></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span id="serviceTableInfo" class="table-info" aria-live="polite">Loading…</span>
+          <div class="pager">
+            <button id="svcPrevBtn" class="btn btn-ghost btn-icon" type="button" aria-label="Previous page" disabled>
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <span id="svcPageIndicator" class="page-indicator">–</span>
+            <button id="svcNextBtn" class="btn btn-ghost btn-icon" type="button" aria-label="Next page" disabled>
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
       </article>
     </div>
   </section>

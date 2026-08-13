@@ -575,10 +575,63 @@ var Charts = (function () {
     }));
   }
 
+  /* ── Service page (ServiceWRK) ───────────────────────────────── */
+
+  // SQL returns bands alphabetically; this is the order a human reads them in.
+  var SVC_TAT_ORDER = ['Same day', '1-2d', '3-7d', '8-30d', '30d+'];
+
+  function svcTatBands(rows) {
+    if (!rows || !rows.length) return showEmpty('chartSvcTat');
+    var byBand = {};
+    rows.forEach(function (r) { byBand[r.band] = r.cnt; });
+    var cats = SVC_TAT_ORDER.filter(function (b) { return byBand[b]; });
+    render('chartSvcTat', base({
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      xAxis: catAxis({ data: cats }),
+      yAxis: valAxis(),
+      series: [{
+        type: 'bar', barMaxWidth: 36,
+        data: cats.map(function (b) {
+          return {
+            value: byBand[b],
+            // The slowest band is the one that costs money — colour it as a
+            // warning rather than leaving the reader to find it.
+            itemStyle: {
+              borderRadius: [6, 6, 0, 0],
+              color: b === '30d+' ? C.danger : C.primary
+            }
+          };
+        })
+      }]
+    }));
+  }
+
+  function svcResolution(rows) {
+    if (!rows || !rows.length) return showEmpty('chartSvcResolution');
+    var COLORS = { CENTER_VISIT: C.warn, OVERCALL_RESOLUTION: C.ok };
+    render('chartSvcResolution', base({
+      legend: { bottom: 0, icon: 'circle', textStyle: { color: C.text, fontSize: 12 },
+        itemWidth: 9, itemHeight: 9 },
+      series: [{
+        type: 'pie', radius: ['55%', '78%'], center: ['50%', '44%'],
+        itemStyle: { borderColor: C.sliceBorder, borderWidth: 2 },
+        label: { show: false },
+        data: rows.map(function (r, i) {
+          return {
+            name: r.label, value: r.cnt,
+            itemStyle: { color: COLORS[r.label] || STATUS_PALETTE[i % STATUS_PALETTE.length] }
+          };
+        })
+      }]
+    }));
+  }
+
   return {
     setLoading: setLoading,
     flushVisible: flushVisible,
     showEmpty: showEmpty,
+    svcTatBands: svcTatBands,
+    svcResolution: svcResolution,
     cohort: cohort,
     applyTheme: applyTheme,
     rankBar: rankBar,

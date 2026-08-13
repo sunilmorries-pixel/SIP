@@ -50,6 +50,11 @@
     // by uptime ascending — see sortRows/EditionCD.js, per user 2026-08-13).
     centers: { sortBy: 'open_tickets', sortDir: 'desc', page: 0, pageSize: 15 },
     centerRows: [], centerTotal: 0,
+    // Service page (ServiceWRK). Fetches its own payload rather than sharing the
+    // Zoho dashboard one — different table, different filter coverage.
+    serviceLoaded: false, serviceFilters: null,
+    service: { sortBy: 'created_on', sortDir: 'desc', page: 0, pageSize: 15 },
+    serviceRows: [], serviceTotal: 0,
     // The filter set each paginated table's CURRENT rows were fetched with —
     // the same guard state.dashFilters gives the shared dashboard payload, for
     // the two tables that fetch their own data (review finding I2). Siblings of
@@ -117,6 +122,51 @@
         });
       }
       return Promise.resolve({ rows: rows, totalRows: 11331, page: (args && args.page) || 0, pageSize: 15 });
+    }
+    if (fn === 'apiGetServiceCD') {
+      // Figures mirror the profiled table (36,403 rows: 205 open / 36,198
+      // closed, CENTER_VISIT 30,822 / OVERCALL_RESOLUTION 5,259) so the preview
+      // reads like production rather than like noise.
+      return Promise.resolve({
+        kpis: { open_tickets: 205, closed_tickets: 36198, median_tat_days: 1.4,
+          invalid_tat: 12, remote_pct: 14.5, visits_30d: 812 },
+        flow: ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08']
+          .map(function (m) { return { month: m, created: rnd(900, 1600), closed: rnd(900, 1600) }; }),
+        tatBands: [{ band: 'Same day', cnt: 14320 }, { band: '1-2d', cnt: 9880 },
+          { band: '3-7d', cnt: 6410 }, { band: '8-30d', cnt: 4120 }, { band: '30d+', cnt: 1468 }],
+        resolution: [{ label: 'CENTER_VISIT', cnt: 30822 },
+          { label: 'OVERCALL_RESOLUTION', cnt: 5259 }, { label: 'Unknown', cnt: 322 }],
+        serviceTypes: ['Breakdown call', 'Preventive maintenance', 'Installation',
+          'Document collection', 'Training', 'Lead cable replacement', 'Battery swap',
+          'Printer service'].map(function (s) { return { label: s, cnt: rnd(400, 6000) }; }),
+        models: [{ label: 'MAC 600', cnt: 17109 }, { label: 'VCARDIA', cnt: 16994 },
+          { label: 'TR 100', cnt: 1312 }, { label: 'TR 200', cnt: 344 },
+          { label: 'TR 110', cnt: 182 }, { label: 'ECHO', cnt: 131 }],
+        reps: ['Abhisekh Mohapatra', 'Dadapeer Z', 'Saidha Rao', 'Mustaq Ahmed', 'Ravi Kumar',
+          'Anil Sharma', 'Prakash N', 'Vinod S'].map(function (s) {
+          return { label: s, cnt: rnd(200, 900) };
+        }),
+        invalidTat: 12
+      });
+    }
+    if (fn === 'apiGetServiceTicketsCD') {
+      var svcRows = [];
+      for (var si = 0; si < 15; si++) {
+        svcRows.push({
+          ticket_id: 'TRI-MAC-MC9-' + (16022026 + si),
+          created: '2026-08-' + ('0' + (1 + (si % 12))).slice(-2),
+          closed: '2026-08-' + ('0' + (2 + (si % 12))).slice(-2),
+          status: si % 10 === 0 ? 'Open' : 'Closed',
+          contact: ['CDMO Khordha', 'SCB Accounts', 'Apollo Bhubaneswar'][si % 3],
+          territory: ['Odisha India', 'Karnataka India', 'Bihar India'][si % 3],
+          product: ['Mac 600 - DB9', 'BORON', 'TR 100 GSM'][si % 3],
+          service_type: ['Breakdown call', 'Preventive maintenance', 'Training'][si % 3],
+          representative: ['Abhisekh Mohapatra', 'Dadapeer Z', 'Saidha Rao'][si % 3],
+          tat_days_: Math.round(rnd(0, 400) / 10) / 10,
+          closure_type: si % 5 === 0 ? 'OVERCALL_RESOLUTION' : 'CENTER_VISIT'
+        });
+      }
+      return Promise.resolve({ rows: svcRows, totalRows: 36403, page: 0, pageSize: 15 });
     }
     if (fn === 'apiGetCenters') {
       var crows = [];
@@ -545,10 +595,10 @@
       kpiTile('kpiZOut', 'online', 'var(--ok)', 'Closed · 7d', 'resolved this week') +
       kpiTile('kpiZAge', 'clock', 'var(--violet)', 'Avg open age', 'days per open ticket');
     $('serviceKpiGrid').innerHTML =
-      kpiTile('kpiSvcOpen', 'inbox', 'var(--accent)', 'Open tickets', 'active backlog') +
-      kpiTile('kpiSvcIn', 'ticket', 'var(--info)', 'Created · 7d', 'new this week') +
-      kpiTile('kpiSvcOut', 'online', 'var(--ok)', 'Closed · 7d', 'resolved this week') +
-      kpiTile('kpiSvcAge', 'clock', 'var(--violet)', 'Avg open age', 'days per open ticket');
+      kpiTile('kpiSvcOpen', 'inbox', 'var(--accent)', 'Open tickets', 'active field backlog') +
+      kpiTile('kpiSvcTat', 'clock', 'var(--info)', 'Median TAT', 'days to close') +
+      kpiTile('kpiSvcRemote', 'online', 'var(--ok)', 'Remote resolution', 'closed without a visit') +
+      kpiTile('kpiSvcVisits', 'fleet', 'var(--violet)', 'Field visits · 30d', 'site visits raised');
     $('mapKpiGrid').innerHTML =
       kpiTile('mapCenters', 'building', 'var(--secondary)', 'Centers', 'matching filters') +
       kpiTile('mapDevices', 'fleet', 'var(--info)', 'Devices', 'at shown centers') +
@@ -691,10 +741,8 @@
     // Service KPIs: awaiting its own data source (2026-08-12), no longer
     // wired to Zoho like Support — setKpiText's null→'—' fallback clears the
     // loading shimmer instead of leaving it spinning forever.
-    setKpiText('kpiSvcOpen', null, 'data source pending');
-    setKpiText('kpiSvcIn', null, 'data source pending');
-    setKpiText('kpiSvcOut', null, 'data source pending');
-    setKpiText('kpiSvcAge', null, 'data source pending');
+    // Service KPIs are filled by renderService() from apiGetServiceCD — this
+    // page no longer piggybacks on the shared Zoho dashboard payload.
 
     /* Asset charts */
     Charts.fleetStatus(data.fleetStatus, function (statusName) {
@@ -1006,6 +1054,130 @@
       }).join('');
     }
     renderPager(state.deviceTotal, state.devices, 'deviceTableInfo', 'pageIndicator', 'prevPageBtn', 'nextPageBtn', 'devices');
+  }
+
+  /* ── Service page (ServiceWRK) ─────────────────────────────────
+     Sort keys are the UNDERLYING column names, matching SERVICE_SORT_KEYS in
+     ServiceWrk.js — not the aliased output names the rows carry. */
+  var SERVICE_COLUMNS = [
+    { key: 'ticket_id', label: 'Ticket', sortable: false },
+    { key: 'created_on', label: 'Created', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'contact', label: 'Contact', sortable: false },
+    { key: 'ticket_territory', label: 'Territory', sortable: true },
+    { key: 'product', label: 'Product', sortable: true },
+    { key: 'service_type', label: 'Service type', sortable: true },
+    { key: 'representative', label: 'Engineer', sortable: true },
+    { key: 'tat_days_', label: 'TAT (days)', sortable: true, num: true },
+    { key: 'closure_type', label: 'Closure', sortable: true }
+  ];
+
+  var serviceRequestId = 0;
+  function loadService() {
+    var requestId = ++serviceRequestId;
+    var sentFilters = JSON.parse(JSON.stringify(state.globalFilters)); // see loadDevices
+    gsCall(ep('apiGetService'), { filters: state.globalFilters })
+      .then(function (payload) {
+        if (requestId !== serviceRequestId) return;
+        state.serviceLoaded = true;
+        state.serviceFilters = sentFilters;
+        renderService(payload);
+      })
+      .catch(function (err) {
+        if (requestId !== serviceRequestId) return;
+        toast('Service page failed: ' + err.message, 'error');
+      });
+    loadServiceTickets();
+  }
+
+  function renderService(d) {
+    var k = d.kpis || {};
+    setKpi('kpiSvcOpen', k.open_tickets, 'active field backlog');
+    setKpiText('kpiSvcTat', k.median_tat_days == null ? '—' : k.median_tat_days + 'd',
+      // The excluded count is shown, not hidden: some ServiceWRK rows carry a
+      // closed_date earlier than created_on, and a silently-filtered median
+      // would be indistinguishable from a clean one.
+      d.invalidTat ? d.invalidTat + ' rows had invalid TAT' : 'days to close');
+    setKpiText('kpiSvcRemote', k.remote_pct == null ? '—' : k.remote_pct + '%',
+      'closed without a visit');
+    setKpi('kpiSvcVisits', k.visits_30d, 'site visits raised');
+
+    Charts.zohoTrend(d.flow || [], 'chartSvcFlow');
+    Charts.svcTatBands(d.tatBands || []);
+    Charts.svcResolution(d.resolution || []);
+    // rankBar reads r.label / r.cnt directly — it has no labelKey/valueKey
+    // options, which is why every spec in ServiceWrk.js aliases to those names.
+    Charts.rankBar('chartSvcTypes', d.serviceTypes || [], { color: '#2E9BD6', empty: 'No service data' });
+    Charts.rankBar('chartSvcModels', d.models || [], { color: '#7C5CFF', empty: 'No model data' });
+    Charts.rankBar('chartSvcReps', d.reps || [], { color: '#2FD39B', empty: 'No engineer data' });
+  }
+
+  var serviceTicketsRequestId = 0;
+  function loadServiceTickets() {
+    var requestId = ++serviceTicketsRequestId;
+    $('serviceTableInfo').textContent = 'Loading…';
+    var query = Object.assign({}, state.service,
+      { search: state.search, filters: state.globalFilters });
+    gsCall(ep('apiGetServiceTickets'), query)
+      .then(function (result) {
+        if (requestId !== serviceTicketsRequestId) return;
+        state.serviceRows = result.rows;
+        state.serviceTotal = result.totalRows;
+        renderServiceTable();
+      })
+      .catch(function (err) {
+        if (requestId !== serviceTicketsRequestId) return;
+        $('serviceTableInfo').textContent = 'Failed to load service tickets';
+        toast('Service tickets failed: ' + err.message, 'error');
+      });
+  }
+
+  function buildServiceHeader() {
+    $('serviceTableHead').innerHTML = SERVICE_COLUMNS.map(function (col) {
+      return sortableHeader(col, state.service);
+    }).join('');
+    Array.prototype.forEach.call($('serviceTableHead').querySelectorAll('.th-sort'), function (btn) {
+      btn.addEventListener('click', function () {
+        var key = btn.getAttribute('data-sort');
+        if (state.service.sortBy === key) {
+          state.service.sortDir = state.service.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.service.sortBy = key;
+          state.service.sortDir = 'desc';
+        }
+        state.service.page = 0;
+        buildServiceHeader();
+        loadServiceTickets();
+      });
+    });
+  }
+
+  function renderServiceTable() {
+    var body = $('serviceTable').querySelector('tbody');
+    if (!state.serviceRows.length) {
+      body.innerHTML = '<tr><td colspan="' + SERVICE_COLUMNS.length + '">' +
+        '<div class="chart-empty" style="padding:32px 0">' +
+        '<strong>No service tickets match</strong><span>Try clearing the search</span>' +
+        '</div></td></tr>';
+    } else {
+      body.innerHTML = state.serviceRows.map(function (r) {
+        var statusBadge = r.status === 'Open' ? 'warn' : 'ok';
+        return '<tr>' +
+          '<td><strong>' + escapeHtml(r.ticket_id || '—') + '</strong></td>' +
+          '<td>' + escapeHtml(r.created || '—') + '</td>' +
+          '<td><span class="badge badge-' + statusBadge + '">' + escapeHtml(r.status || '—') + '</span></td>' +
+          '<td>' + escapeHtml(r.contact || '—') + '</td>' +
+          '<td>' + escapeHtml(r.territory || '—') + '</td>' +
+          '<td>' + escapeHtml(r.product || '—') + '</td>' +
+          '<td>' + escapeHtml(r.service_type || '—') + '</td>' +
+          '<td>' + escapeHtml(r.representative || '—') + '</td>' +
+          '<td class="num">' + (r.tat_days_ == null ? '—' : escapeHtml(r.tat_days_)) + '</td>' +
+          '<td>' + escapeHtml(r.closure_type || '—') + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    renderPager(state.serviceTotal, state.service, 'serviceTableInfo',
+      'svcPageIndicator', 'svcPrevBtn', 'svcNextBtn', 'tickets');
   }
 
   /* ── Customer-360 explorer (Customers view) ───────────────────
@@ -2187,6 +2359,11 @@
       tcMap.ensureMap();
       if (!state.topLoaded) loadTopCustomers();
     }
+    var serviceStale = state.serviceFilters && !filtersEqual_(state.serviceFilters, state.globalFilters);
+    if (tabId === 'tab-service' && (!state.serviceLoaded || serviceStale)) {
+      state.service.page = 0;
+      loadService();
+    }
     var numbersStale = state.numbersFilters && !filtersEqual_(state.numbersFilters, state.globalFilters);
     if (tabId === 'tab-numbers') {
       if (!state.numbersLoaded || numbersStale) loadNumbers();
@@ -2422,6 +2599,7 @@
     loadDashboard(bypassCache);
     loadDevices();
     loadCenters();
+    if (state.serviceLoaded) loadService();
     if (state.mapLoaded) loadMapData();
     if (state.topLoaded) loadTopCustomers();
     // Numbers page (incl. the Google-Sheet devices count) — only when it's in play.
@@ -2744,6 +2922,14 @@
     $('nextPageBtn').addEventListener('click', function () {
       state.devices.page += 1;
       loadDevices();
+    });
+    $('svcPrevBtn').addEventListener('click', function () {
+      state.service.page = Math.max(0, state.service.page - 1);
+      loadServiceTickets();
+    });
+    $('svcNextBtn').addEventListener('click', function () {
+      state.service.page += 1;
+      loadServiceTickets();
     });
     $('ctrPrevBtn').addEventListener('click', function () {
       state.centers.page = Math.max(0, state.centers.page - 1);

@@ -1,24 +1,21 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-13 · **Live version:** 5.27 · **Status:** ✅ **Git, the Apps Script
+**Last updated:** 2026-08-14 · **Live version:** 5.28 · **Status:** ✅ **Git, the Apps Script
 editor, and production are in sync.** Production
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always)
-serves Apps Script **@56 / v5.27**, still built from git `main` @ **`3b35939`** (no new commit —
-@56 is a redeploy of the identical editor content @55 already had; see its own entry below for
-why). `3b35939` is tagged **`v5.26`** (pushed to `origin/main`); v5.27 itself has no separate tag.
-v5.21–v5.25 were deployed **without** tags; only `v5.16`–`v5.18`, `v5.20` and `v5.26` are tagged,
-so tags are not a reliable release index.
+serves Apps Script **@57 / v5.28**, built from git `main` @ **`6288f65`** (pushed to
+`origin/main`). No tag cut for v5.27/v5.28. v5.21–v5.25, v5.27 and v5.28 were deployed **without**
+tags; only `v5.16`–`v5.18`, `v5.20` and `v5.26` are tagged, so tags are not a reliable release index.
 
 ⚠️ **`CONFIG.APP_VERSION` / `APP_DEPLOYED_AT` must be set to the version THIS DEPLOY WILL CREATE
 — i.e. (current live `@N`) + 1 — in the same change as the `clasp deploy`.** Nothing derives them
-(Apps Script cannot read its own deployment version at runtime). **This has now gone wrong TWICE:**
-@54 shipped carrying `'53'` (caught and fixed in v5.26); then **@56/v5.27 repeated the exact same
-mistake** — that deploy went out via `clasp push` + `clasp deploy` with no Config.js change at all
-(nothing to push, so nothing to bump), so the footer read `55` while production actually ran `@56`.
-Don't copy the "just deploy, nothing changed" reasoning that caused this — the rule applies even
-when a deploy is a content-identical redeploy. **Fix in progress this session**: `APP_VERSION`
-bumped to `'57'` / `APP_DEPLOYED_AT` to `'Aug 14, 2026, 12:23 AM'`, to be deployed as the very next
-`clasp deploy` (which will create @57, matching) — see the v5.28 entry once that lands.
+(Apps Script cannot read its own deployment version at runtime). **This has gone wrong TWICE so
+far** — @54 shipped carrying `'53'` (fixed in v5.26); @56/v5.27 repeated the exact mistake (a
+content-identical redeploy with no Config.js change, so nothing got bumped). **Fixed again in
+v5.28/@57** (this session, commit `6288f65`): `APP_VERSION: '57'` / `APP_DEPLOYED_AT: 'Aug 14,
+2026, 12:23 AM'`, deployed as @57 — footer now correctly matches. Don't copy the "just deploy,
+nothing changed" reasoning that caused the repeat — the rule applies even to a content-identical
+redeploy, because the NEXT deploy always creates a new `@N` regardless of what changed.
 
 **Two Claude Code sessions have been working this same directory concurrently** (confirmed by the
 user). Files were repeatedly modified on disk mid-edit, and one session's change was silently
@@ -30,6 +27,28 @@ reverted by the other's save at least once. Consequences to know:
 - **Before editing `src/client/App.html` / `Index.html` / `Styles.html`, re-read the file
   immediately before and after each edit** and grep for your own identifier to confirm the change
   survived. A successful Edit call is not proof the change is still on disk a minute later.
+
+### v5.28 / @57 (2026-08-14) — fix footer version drift (this session)
+
+> **Deployed 2026-08-14** from commit `6288f65`, per user request ("next" → confirmed fixing +
+> redeploying). Bumped `CONFIG.APP_VERSION`/`APP_DEPLOYED_AT` (see the ⚠️ above) and cut a fresh
+> deploy so the footer would actually match. **Isolated from concurrent work** (same pattern as the
+> v5.14 Centers-360 deploy): the working tree had the other session's in-progress, uncommitted
+> Service-page work sitting in `App.html`/`Charts.html`/`Index.html` plus several new untracked
+> files (`ServiceWrk.js`, `ProfileNewSources.js`, two `docs/superpowers/` planning docs, a test
+> file) — `git stash push -u` twice (the second stash appeared because the other session kept
+> editing `App.html` mid-operation), confirmed a clean tree matching `6288f65` exactly, ran
+> `npm test` (69/69), then `clasp push` + `clasp deploy`. **`git stash pop` afterward hit a genuine
+> conflict**: the bulk of the Service-page work (first stash, 8 files) restored cleanly, but a
+> small second stash — 30 lines of further `App.html` edits made by the other session while the
+> first stash was already isolating the file — conflicts with it and is still sitting in the stash
+> list (`git stash list` → one entry, "more concurrent Service-page edits to App.html"). **Left
+> unresolved deliberately**: this is the other session's own in-progress edit to a file it's
+> actively building; reconciling it requires knowing what those 30 lines were meant to do, which
+> only that session (or the user) can judge safely. Verified live: `curl -L` → `200`; Overview loads
+> with real data, 0 console errors. Footer version not re-checked pixel-by-pixel on the live page
+> (this session's browser automation couldn't scroll that far down the real production page today)
+> but the fix itself is a static string constant — low risk without that last visual confirmation.
 
 ### v5.27 / @56 (2026-08-13) — redeploy, no code change (this session)
 

@@ -35,7 +35,12 @@ function T(table) {
  * reference, so an unaliased parenthesized subquery substitutes cleanly).
  * Deliberately NOT used by RawData.js's raw browser/export — that page's
  * whole purpose is showing the true unfiltered rows for reconciliation
- * against Zoho itself, duplicates included.
+ * against Zoho itself, duplicates AND unassigned tickets included.
+ *
+ * Also excludes "Unassigned" tickets (per user, 2026-08-13): rows with no
+ * agent in `assignee` (blank or NULL). Applied globally, not just on the
+ * Support page — same reasoning as the dedup itself, this is the one choke
+ * point every real Zoho read goes through.
  *
  * CreatedAt is a STRING (CONFIG.ZOHO_DT_FORMAT), not a native timestamp — the
  * ORDER BY must parse it (SAFE.PARSE_DATETIME), not sort the raw string,
@@ -46,6 +51,7 @@ function T(table) {
  */
 function zohoDedupSql_() {
   return "(SELECT * FROM " + T('zoho_data') +
+    " WHERE NULLIF(TRIM(assignee), '') IS NOT NULL" +
     " QUALIFY ROW_NUMBER() OVER (" +
     "PARTITION BY IFNULL(CAST(ticketNumber AS STRING), GENERATE_UUID()) " +
     "ORDER BY SAFE.PARSE_DATETIME('" + CONFIG.ZOHO_DT_FORMAT + "', CreatedAt) DESC" +
@@ -188,7 +194,8 @@ function dateRangeCond_(column, from, to) {
  * ['A','B'] and ['B','A'] hash identically, and fixes key order so the
  * shape of `filters` (Task 3) never produces two different hashes for the
  * same logical filter set.
- * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array,dateFrom:string,dateTo:string}} filters
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array,
+ *          deviceTypes:Array,deviceStatusExclude:Array,dateFrom:string,dateTo:string}} filters
  * @return {string}
  */
 function filterHash_(filters) {
@@ -198,6 +205,7 @@ function filterHash_(filters) {
     segments: sorted(f.segments), statuses: sorted(f.statuses),
     states: sorted(f.states), hubs: sorted(f.hubs),
     cities: sorted(f.cities), countries: sorted(f.countries),
+    deviceTypes: sorted(f.deviceTypes), deviceStatusExclude: sorted(f.deviceStatusExclude),
     dateFrom: String(f.dateFrom || ''), dateTo: String(f.dateTo || '')
   });
   return shortHash(canonical);

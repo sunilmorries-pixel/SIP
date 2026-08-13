@@ -89,13 +89,21 @@ function readJiraData_() {
  * serial resolves to a center via deviceCenterMap_ for global-filter matching
  * only (see below) — device→center coverage itself is not surfaced as a stat.
  * Cached.
- * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array}=} filters
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array,
+ *          deviceTypes:Array,deviceStatusExclude:Array}=} filters
  * @return {{total,by_status,source,center_source}}
  */
 function jiraDeviceStats_(filters) {
   filters = filters || {};
-  return withCache('jiradev_v7_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v7: City/Country filter dimensions
+  return withCache('jiradev_v8_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v8: Device Type/Status filter
     var jiraRows = readJiraData_().filter(function (row) { return isTrackedJiraDeviceType_(row.issuetype_name); });
+    // Device Type (issuetype_name, INCLUDE list) / Device Status in Jira
+    // (status_name, EXCLUDE list) — per user, 2026-08-13. Applies everywhere
+    // this function is called (Overview/Numbers/Asset).
+    var typeFilter = filters.deviceTypes || [];
+    var statusExclude = filters.deviceStatusExclude || [];
+    if (typeFilter.length) jiraRows = jiraRows.filter(function (row) { return typeFilter.indexOf(row.issuetype_name) !== -1; });
+    if (statusExclude.length) jiraRows = jiraRows.filter(function (row) { return statusExclude.indexOf(row.status_name) === -1; });
     // The Jira "Customer ID" column is IGNORED — a device's center comes from
     // its serial (parsed from Summary) via deviceCenterMap_.
     var dcm = deviceCenterMap_();
@@ -159,7 +167,7 @@ function jiraDeviceStats_(filters) {
 function apiGetNumbers(options) {
   options = options || {};
   return respond_(function () {
-    return withCache('numbers_v5', function () { // v5: zoho_data dedup
+    return withCache('numbers_v7', function () { // v7: Device Type/Status default applied to devices stat
       var CD = T('center_details');
       var ZOHO = zohoDedupSql_();
       var techBool = techBoolSql_("IFNULL(IssueCategory,'')");
@@ -203,7 +211,15 @@ function apiGetNumbers(options) {
       var hubsTot = (r.hubsTot && r.hubsTot[0]) || {};
       var ticketsTot = (r.ticketsTot && r.ticketsTot[0]) || {};
 
-      var devices = jiraDeviceStats_();
+      // Numbers is exempt from the 6 center-attribute filter dimensions (see
+      // the Filters-drawer note), but the Device Type/Status default still
+      // applies here (per user, "everywhere") — there's no live Numbers-page
+      // control for it, so it always uses the same default the Asset page
+      // starts with.
+      var devices = jiraDeviceStats_({
+        deviceTypes: CONFIG.JIRA_DEVICE_TYPE_DEFAULT,
+        deviceStatusExclude: CONFIG.JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT
+      });
 
       return {
         centers: {

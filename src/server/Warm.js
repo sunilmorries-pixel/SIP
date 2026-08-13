@@ -31,10 +31,13 @@
  * (which carries the mirror-image comment). Server .js and client .html are
  * separate execution contexts in Apps Script, so they cannot share a constant —
  * if you change the default on one side, change it here too.
- * @return {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array,dateFrom:string,dateTo:string}}
+ * @return {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array,
+ *           deviceTypes:Array,deviceStatusExclude:Array,dateFrom:string,dateTo:string}}
  */
 function warmDefaultFilters_() {
-  return { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], cities: [], countries: [], dateFrom: '', dateTo: '' };
+  return { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], cities: [], countries: [],
+    deviceTypes: CONFIG.JIRA_DEVICE_TYPE_DEFAULT, deviceStatusExclude: CONFIG.JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT,
+    dateFrom: '', dateTo: '' };
 }
 
 /** Rebuilds every default cache. Safe to run manually at any time. */

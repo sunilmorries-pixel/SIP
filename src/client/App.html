@@ -13,6 +13,11 @@
   var FMT = new Intl.NumberFormat('en-IN');
   var REFRESH_SECONDS = 300;
 
+  // Mirrors CONFIG.JIRA_DEVICE_TYPE_DEFAULT / JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT
+  // (Config.js) — server .js and client .html can't share a constant.
+  var JIRA_DEVICE_TYPE_DEFAULT = ['Connector', 'ECG Machine'];
+  var JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT = ['Decommissioned'];
+
   var state = {
     search: '',
     // DEFAULT global filter state. Mirrored server-side by warmDefaultFilters_()
@@ -20,7 +25,9 @@
     // filterHash_ as a real first load or it warms cache keys nobody requests
     // (review finding I6). Change one, change the other: server .js and client
     // .html are separate execution contexts and can't share a constant.
-    globalFilters: { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], cities: [], countries: [], dateFrom: '', dateTo: '' },
+    globalFilters: { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], cities: [], countries: [],
+      deviceTypes: JIRA_DEVICE_TYPE_DEFAULT.slice(), deviceStatusExclude: JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT.slice(),
+      dateFrom: '', dateTo: '' },
     globalFiltersPending: null, // staged edits inside the open drawer; null when drawer is closed
     dashFilters: null,          // the filter set the CURRENT dashboard payload was fetched with
     // STICKY filter-drawer option lists, stashed by renderDashboard from the
@@ -30,6 +37,7 @@
     // where reading the options off the payload showed empty lists. (Hub is not
     // here — it's searched server-side, see searchHubs_.)
     segmentOptions: [], stateOptions: [], cityOptions: [], countryOptions: [],
+    deviceTypeOptions: [], deviceStatusOptions: [],
     ticketBucket: '', // '' | none | low | high — clickable map legend
     activeTab: 'tab-overview',
     devices: { status: '', sortBy: 'last_seen', sortDir: 'desc', page: 0, pageSize: 15 },
@@ -240,7 +248,7 @@
         centers: pts, assets: asset, assetTypes: types, assetCats: cats,
         unlocatedCenters: 2412, matchedAssets: 1430,
         geo: { located: 5210, failed: 64, pending: 2790, total: 8064 },
-        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], dateFrom: '', dateTo: '' }
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' }
       });
     }
     if (fn === 'apiGetExecOverview') {
@@ -265,7 +273,7 @@
           age_bands: [{ k: '<1y', n: 3566 }, { k: '1-2y', n: 3343 }, { k: '2-3y', n: 7072 }, { k: '3-5y', n: 6358 }, { k: '5y+', n: 8105 }],
           by_status: [{ k: 'Deployed', n: 5210 }, { k: 'Store', n: 1180 }, { k: 'Hardware', n: 640 },
             { k: 'Decommissioned', n: 410 }, { k: 'Field', n: 260 }, { k: 'Exported', n: 90 }] },
-        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], dateFrom: '', dateTo: '' }
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' }
       });
     }
     if (fn === 'apiGetTopCustomers') {
@@ -289,7 +297,7 @@
         }
       });
       return Promise.resolve({ customers: custs, mapCenters: mapc, totals: totals,
-        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], dateFrom: '', dateTo: '' } });
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' } });
     }
     if (fn === 'apiGetCenterDetail') {
       return Promise.resolve({
@@ -364,8 +372,8 @@
       // not independently re-verified here, no local BigQuery access to
       // tricogde-dwh). devices/cities/active_deployments dropped: dead since
       // the Centers KPI rebuild removed their tiles, nothing reads them.
-      centerKpis: [{ centers: 28482, states: 357 }],
-      filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], dateFrom: '', dateTo: '' },
+      centerKpis: [{ centers: 28482, centers_with_open_tickets: 187 }],
+      filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' },
       geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
       deploymentAge: ['<1y', '1-2y', '2-3y', '3-5y', '5y+'].map(function (b) { return { band: b, devices: rnd(400, 3200) }; }),
       activeVsEnded: [{ status: 'SME', devices: 14316 }, { status: 'Government', devices: 4754 }, { status: 'LE', devices: 5107 }, { status: 'ECHO', devices: 788 }, { status: 'Project', devices: 65 }],
@@ -392,7 +400,12 @@
       segmentOptions: ['SME', 'Government', 'LE', 'ECHO', 'Project'].map(function (sg) { return { segment: sg }; }),
       stateOptions: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Delhi', 'Gujarat', 'Uttar Pradesh', 'West Bengal'].map(function (s) { return { state: s }; }),
       cityOptions: ['Bengaluru', 'Mumbai', 'Chennai', 'Delhi', 'Hyderabad', 'Pune', 'Kolkata', 'Ahmedabad'].map(function (c) { return { city: c }; }),
-      countryOptions: ['India', 'Philippines', 'Kenya', 'Malaysia', 'Nigeria'].map(function (c) { return { country: c }; })
+      countryOptions: ['India', 'Philippines', 'Kenya', 'Malaysia', 'Nigeria'].map(function (c) { return { country: c }; }),
+      deviceTypeOptions: ['ECG Machine', 'Connector', 'SIM Card', 'UPS', 'Printer', 'TriCare Assets', 'Tab',
+        'BP Machine', 'IV Trolley', 'Mobile', 'Laptop', 'ECG Device', 'WiFi Dongle'].map(function (t) { return { type: t }; }),
+      deviceStatusOptions: ['Deployed', 'Exported', 'Delivered', 'Hardware', 'Store', 'Field',
+        'Ownership Transferred', 'UNKNOWN', 'Decommissioned', 'Misplaced', 'Transit', 'Ready to ship']
+        .map(function (s) { return { status: s }; })
     });
   }
 
@@ -493,7 +506,7 @@
     $('centersKpiGrid').innerHTML =
       kpiTile('kpiCenters', 'building', 'var(--secondary)', 'Centers', 'all centers') +
       kpiTile('kpiUptime', 'online', 'var(--ok)', 'Center uptime', 'avg per-center uptime') +
-      kpiTile('kpiStates', 'map', 'var(--accent)', 'States', 'geographic reach') +
+      kpiTile('kpiStates', 'inbox', 'var(--accent)', 'Open ticket centers', 'at least 1 open ticket') +
       kpiTile('kpiMtbf', 'clock', 'var(--violet)', 'MTBF', 'avg days between failures');
     $('supportKpiGrid').innerHTML =
       kpiTile('kpiZOpen', 'inbox', 'var(--accent)', 'Open tickets', 'active backlog') +
@@ -615,6 +628,8 @@
     state.stateOptions = data.stateOptions || state.stateOptions || [];
     state.cityOptions = data.cityOptions || state.cityOptions || [];
     state.countryOptions = data.countryOptions || state.countryOptions || [];
+    state.deviceTypeOptions = data.deviceTypeOptions || state.deviceTypeOptions || [];
+    state.deviceStatusOptions = data.deviceStatusOptions || state.deviceStatusOptions || [];
     /* Asset KPIs (device grain) */
     var kpi = (data.kpis && data.kpis[0]) || {};
     var fleet = data.fleet || {};
@@ -632,7 +647,7 @@
     var ck = (data.centerKpis && data.centerKpis[0]) || {};
     setKpi('kpiCenters', ck.centers, 'all centers');
     uptimeKpi('kpiUptime', up);
-    setKpi('kpiStates', ck.states, 'geographic reach');
+    setKpi('kpiStates', ck.centers_with_open_tickets, 'at least 1 open ticket');
     setKpi('kpiMtbf', up && up.avg_mtbf_days != null ? up.avg_mtbf_days : null, 'avg days between failures');
 
     /* Support KPIs (all Zoho tickets) */
@@ -1137,12 +1152,13 @@
     return arrEq(a.segments, b.segments) && arrEq(a.statuses, b.statuses) &&
       arrEq(a.states, b.states) && arrEq(a.hubs, b.hubs) &&
       arrEq(a.cities, b.cities) && arrEq(a.countries, b.countries) &&
+      arrEq(a.deviceTypes, b.deviceTypes) && arrEq(a.deviceStatusExclude, b.deviceStatusExclude) &&
       a.dateFrom === b.dateFrom && a.dateTo === b.dateTo;
   }
 
   function filterActiveCount_(f) {
     return f.segments.length + f.statuses.length + f.states.length + f.hubs.length +
-      f.cities.length + f.countries.length +
+      f.cities.length + f.countries.length + f.deviceTypes.length + f.deviceStatusExclude.length +
       (f.dateFrom ? 1 : 0) + (f.dateTo ? 1 : 0);
   }
 
@@ -1163,6 +1179,8 @@
     f.hubs.forEach(function (v) { chips.push({ dim: 'hubs', label: 'Hub: ' + v, value: v }); });
     f.cities.forEach(function (v) { chips.push({ dim: 'cities', label: 'City: ' + v, value: v }); });
     f.countries.forEach(function (v) { chips.push({ dim: 'countries', label: 'Country: ' + v, value: v }); });
+    f.deviceTypes.forEach(function (v) { chips.push({ dim: 'deviceTypes', label: 'Device type: ' + v, value: v }); });
+    f.deviceStatusExclude.forEach(function (v) { chips.push({ dim: 'deviceStatusExclude', label: 'Hides: ' + v, value: v }); });
     if (f.dateFrom || f.dateTo) chips.push({ dim: 'date', label: 'Date: ' + (f.dateFrom || '…') + '–' + (f.dateTo || '…'), value: null });
 
     $('filterChips').innerHTML = chips.map(function (c, i) {
@@ -1180,11 +1198,13 @@
     });
   }
 
-  var FILTER_DIM_LABELS = { segments: 'segment', statuses: 'status', states: 'state', hubs: 'hub', cities: 'city', countries: 'country' };
+  var FILTER_DIM_LABELS = { segments: 'segment', statuses: 'status', states: 'state', hubs: 'hub', cities: 'city', countries: 'country',
+    deviceTypes: 'device type', deviceStatusExclude: 'device status' };
   // Plain "+ 's'" mispluralizes status -> statuss and city -> citys; the only
   // two dimensions that need their own irregular plural (the others already
   // end cleanly in a consonant).
-  var FILTER_DIM_PLURAL = { segments: 'segments', statuses: 'statuses', states: 'states', hubs: 'hubs', cities: 'cities', countries: 'countries' };
+  var FILTER_DIM_PLURAL = { segments: 'segments', statuses: 'statuses', states: 'states', hubs: 'hubs', cities: 'cities', countries: 'countries',
+    deviceTypes: 'device types', deviceStatusExclude: 'device statuses' };
 
   function openFilterDrawer_(preserveStaged) {
     // preserveStaged: true when the caller (Clear all) already staged the
@@ -1207,6 +1227,8 @@
     renderFilterCombo_('filterHub', 'hubs', [], searchHubs_);
     renderFilterCombo_('filterCity', 'cities', (state.cityOptions || []).map(function (s) { return s.city; }));
     renderFilterCombo_('filterCountry', 'countries', (state.countryOptions || []).map(function (s) { return s.country; }));
+    renderFilterCombo_('filterDeviceType', 'deviceTypes', (state.deviceTypeOptions || []).map(function (s) { return s.type; }));
+    renderFilterCombo_('filterDeviceStatus', 'deviceStatusExclude', (state.deviceStatusOptions || []).map(function (s) { return s.status; }));
     $('filterDateFrom').value = state.globalFiltersPending.dateFrom;
     $('filterDateTo').value = state.globalFiltersPending.dateTo;
     $('filterScrim').hidden = false;
@@ -2382,7 +2404,7 @@
       source: 'center_details (sole center source).' },
     hubs: { name: 'Hubs', formula: 'COUNT(DISTINCT HubID) from center_details.', source: 'center_details.' },
     geo: { name: 'Geographic spread', formula: 'Centers / devices grouped by state (or city).', source: 'center_details.state / city.' },
-    statesReach: { name: 'States', formula: 'Distinct states with at least one center.', source: 'center_details.state.' },
+    openTicketCenters: { name: 'Open ticket centers', formula: 'Distinct centers with at least one non-terminal Zoho ticket (status NOT IN Closed/Duplicate/Junk).', source: 'center_details ⋈ zoho_data (deduped).' },
     deployStatus: { name: 'Deployment / lifecycle status', formula: 'Centers (or assets) grouped by status — active vs ended / lifecycle stage.', source: 'center_details.Status / jira_data.status_name.' },
     center360: { name: 'Center 360', formula: 'One row per center: devices (cloud_devices + jira_data), lifecycle (today − deploymentdate), downtime (merged technical-ticket hours), uptime %, MTBF (uptime hours ÷ failures, days), failure count, tickets (total + open) — joined in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data ⋈ jira_data asset index (hash-joined).' },
     centersRaw: { name: 'center_details · raw data', formula: 'Raw center_details rows (no baseline filter), paginated, with a per-center device count and mapped flag.', source: 'center_details + LEFT JOIN cloud_devices.' },
@@ -2408,7 +2430,7 @@
     exSlaBreach: 'slaBreach', tcSlaBreach: 'slaBreach',
     kpiSignal: 'poorSignal', kpiUnsynced: 'unsynced',
     kpiAvgAge: 'assetAge', kpiPastLife: 'assetAge',
-    kpiStates: 'statesReach', kpiMtbf: 'mtbf',
+    kpiStates: 'openTicketCenters', kpiMtbf: 'mtbf',
     kpiZIn: 'created7d', kpiZOut: 'closed7d', kpiZAge: 'openAge',
     kpiSvcIn: 'created7d', kpiSvcOut: 'closed7d', kpiSvcAge: 'openAge',
     mapAssets: 'assetLifecycle', tcAssets: 'assetLifecycle'
@@ -2568,7 +2590,9 @@
       if (changed) commitGlobalFilters_();
     });
     $('filterClearBtn').addEventListener('click', function () {
-      state.globalFiltersPending = { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], cities: [], countries: [], dateFrom: '', dateTo: '' };
+      state.globalFiltersPending = { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], cities: [], countries: [],
+        deviceTypes: JIRA_DEVICE_TYPE_DEFAULT.slice(), deviceStatusExclude: JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT.slice(),
+        dateFrom: '', dateTo: '' };
       openFilterDrawer_(true); // re-render the toggle/combos to reflect the cleared state (don't re-snapshot over it)
     });
     document.addEventListener('keydown', function (event) {

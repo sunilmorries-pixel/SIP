@@ -823,7 +823,7 @@
   </div>
 </aside>
 
-<!-- Global filter drawer: Segment/Status/State/Hub/City/Country/Date range, applies everywhere -->
+<!-- Global filter drawer: Segment/Status/State/Hub/City/Country/Device Type/Device Status/Date range, applies everywhere -->
 <div id="filterScrim" class="drawer-scrim" hidden></div>
 <aside id="filterDrawer" class="center-drawer" hidden aria-label="Filters" role="dialog" aria-modal="true">
   <header class="center-panel-head">
@@ -861,6 +861,15 @@
     <section class="filter-section">
       <h3 class="filter-section-title">Country</h3>
       <div id="filterCountry" class="filter-combo" data-dim="countries"></div>
+    </section>
+    <section class="filter-section">
+      <h3 class="filter-section-title">Device Type</h3>
+      <div id="filterDeviceType" class="filter-combo" data-dim="deviceTypes"></div>
+    </section>
+    <section class="filter-section">
+      <h3 class="filter-section-title">Device Status in Jira</h3>
+      <div id="filterDeviceStatus" class="filter-combo" data-dim="deviceStatusExclude"></div>
+      <p class="filter-note">Selected statuses are HIDDEN, not shown — the opposite of every other filter above.</p>
     </section>
     <section class="filter-section">
       <h3 class="filter-section-title">Date range</h3>

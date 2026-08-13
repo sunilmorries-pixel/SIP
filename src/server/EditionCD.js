@@ -148,11 +148,17 @@ function buildDashboardQuerySpecsCD(hub, filters) {
   var cd = {
     centerKpis:
       "SELECT COUNT(DISTINCT CenterID) AS centers, " +
-      " COUNT(DISTINCT NULLIF(TRIM(State), '')) AS states, " +
       " COUNT(DISTINCT NULLIF(TRIM(City), '')) AS cities, " +
       // center-grain, not row-grain: center_details has duplicate rows per
       // center, so COUNTIF(...) counted rows (25,648 > 18,370 centers → 140%).
-      " COUNT(DISTINCT IF(deactivationdate IS NULL, CenterID, NULL)) AS active_deployments FROM " + CD + " WHERE " + F + filterCond + dateCond,
+      " COUNT(DISTINCT IF(deactivationdate IS NULL, CenterID, NULL)) AS active_deployments, " +
+      // Replaces the old "States" KPI tile (per user) — distinct centers with
+      // at least one non-terminal Zoho ticket. CenterID IN (...), not a JOIN:
+      // keeps every bare column reference above (State/City/deactivationdate)
+      // unambiguous without needing a table alias.
+      " COUNT(DISTINCT IF(CenterID IN (SELECT DISTINCT CenterID FROM " + zohoDedupSql_() +
+      " WHERE CenterID IS NOT NULL AND status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + "), " +
+      " CenterID, NULL)) AS centers_with_open_tickets FROM " + CD + " WHERE " + F + filterCond + dateCond,
     geo:
       // Distinct CENTERS per state (the reload duplicated rows; every other
       // Centers metric dedupes — this one was still COUNT(*)). Field name stays
@@ -396,7 +402,7 @@ function centerBaseSpecCD_() {
  * @param {boolean=} bypassCache force a rebuild (used by the warm trigger)
  */
 function getCenter360RowsCD_(bypassCache) {
-  var ckey = 'ctr360cd_v8'; // v8: zoho_data dedup (see zohoDedupSql_, Queries.js)
+  var ckey = 'ctr360cd_v9'; // v9: zoho_data excludes unassigned tickets (see zohoDedupSql_, Queries.js)
   if (bypassCache !== true) {
     var cached = cacheGetLarge(ckey);
     if (cached) return cached;
@@ -482,6 +488,16 @@ function enrichCenterNamesCD_(rows) {
   return rows;
 }
 
+/** Sorted, non-blank distinct values of one field across an array of objects. */
+function distinctValues_(rows, field) {
+  var seen = {}, out = [];
+  rows.forEach(function (r) {
+    var v = String((r && r[field]) || '').trim();
+    if (v && !seen[v]) { seen[v] = true; out.push(v); }
+  });
+  return out.sort();
+}
+
 /** center_id → {segment, status, state, hub, city, country} from the cached Center-360 rows. */
 function centerFilterMap_() {
   var m = {};
@@ -556,6 +572,8 @@ function apiGetDashboardCD(options) {
     hubs: (options.filters && options.filters.hubs) || [],
     cities: (options.filters && options.filters.cities) || [],
     countries: (options.filters && options.filters.countries) || [],
+    deviceTypes: (options.filters && options.filters.deviceTypes) || [],
+    deviceStatusExclude: (options.filters && options.filters.deviceStatusExclude) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
@@ -571,7 +589,10 @@ function apiGetDashboardCD(options) {
     // data source instead of a Zoho scope).
     // v10: zoho_data dedup (see zohoDedupSql_, Queries.js).
     // v11: City/Country filter dimensions added.
-    var cacheKey = 'dashcd_v11_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
+    // v12: centerKpis.states -> centers_with_open_tickets.
+    // v13: zoho_data excludes unassigned tickets.
+    // v14: Device Type/Status filter applied to asset donuts/cohort + fleet.
+    var cacheKey = 'dashcd_v14_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -592,6 +613,11 @@ function apiGetDashboardCD(options) {
     // v5.8 behavior for Segment alone). Date range checks the asset's OWN Jira
     // Created date directly, not the center's deployment date.
     var assetIdx = getAssetIndex_();
+    // Device Type / Device Status (in Jira) option lists for the Filters
+    // drawer — always the FULL vocabulary (unfiltered by any other active
+    // dimension), same convention as segmentOptions/stateOptions/etc.
+    results.deviceTypeOptions = distinctValues_(assetIdx, 'type').map(function (v) { return { type: v }; });
+    results.deviceStatusOptions = distinctValues_(assetIdx, 'status').map(function (v) { return { status: v }; });
     var hasCenterFilter = filters.segments.length || filters.statuses.length ||
       filters.states.length || filters.hubs.length || filters.cities.length || filters.countries.length;
     if (hasCenterFilter) {
@@ -610,6 +636,15 @@ function apiGetDashboardCD(options) {
         if (filters.dateTo && (!d || d > filters.dateTo)) return false;
         return true;
       });
+    }
+    // Device Type / Device Status (in Jira) — per user, 2026-08-13. Keeps the
+    // Asset page's own donuts/cohort internally consistent with the `fleet`
+    // KPI below, which applies the identical filter inside jiraDeviceStats_.
+    if (filters.deviceTypes.length) {
+      assetIdx = assetIdx.filter(function (a) { return filters.deviceTypes.indexOf(a.type) !== -1; });
+    }
+    if (filters.deviceStatusExclude.length) {
+      assetIdx = assetIdx.filter(function (a) { return filters.deviceStatusExclude.indexOf(a.status) === -1; });
     }
     results.assets = assetsDonutFromIndex_(assetIdx);
     results.cohortReliability = cohortFromIndex_(assetIdx, results.zohoFailByCenter);
@@ -731,7 +766,7 @@ function apiGetMapDataCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    var cacheKey = 'mapcd_v8_' + getCacheEpoch_() + '_' + filterHash_(filters); // v8: City/Country filter dimensions
+    var cacheKey = 'mapcd_v9_' + getCacheEpoch_() + '_' + filterHash_(filters); // v9: zoho_data excludes unassigned tickets
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -862,7 +897,7 @@ function apiGetTopCustomersCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('topcustcd_v8_' + getCacheEpoch_() + '_' + filterHash_(filters), // v8: City/Country filter dimensions
+    return withCache('topcustcd_v9_' + getCacheEpoch_() + '_' + filterHash_(filters), // v9: zoho_data excludes unassigned tickets
       function () { return computeTopCustomersCD_(filters); },
       options.bypassCache === true);
   });
@@ -877,11 +912,13 @@ function apiGetExecOverviewCD(options) {
     hubs: (options.filters && options.filters.hubs) || [],
     cities: (options.filters && options.filters.cities) || [],
     countries: (options.filters && options.filters.countries) || [],
+    deviceTypes: (options.filters && options.filters.deviceTypes) || [],
+    deviceStatusExclude: (options.filters && options.filters.deviceStatusExclude) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('execcd_v8_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v8: City/Country filter dimensions
+    return withCache('execcd_v10_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v10: Device Type/Status filter
       var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters); });
       var top = computeTopCustomersCD_(filters);
       var want = { kpis: 1, fleetStatus: 1, zohoKpis: 1, zohoTrend: 1, geo: 1, reliability: 1, uptimeFleet: 1, slaKpis: 1 };
@@ -936,7 +973,7 @@ function apiGetCenterDetailCD(options) {
   var centerId = parseInt(options && options.centerId, 10);
   return respond_(function () {
     if (!isFinite(centerId)) throw new Error('centerId is required');
-    return withCache('ctrdetcd_v3_' + centerId, function () { // v3: zoho_data dedup
+    return withCache('ctrdetcd_v4_' + centerId, function () { // v4: zoho_data excludes unassigned tickets
       // Reuse the original detail specs (devices/tickets/openTickets are keyed by
       // CenterID, center-table-agnostic); swap only the `info` query.
       var specs = buildCenterDetailSpecs(centerId).map(function (s) {
@@ -984,7 +1021,7 @@ function apiSupportSearchCD(options) {
   var idNum = parseInt(options && options.query, 10);
   return respond_(function () {
     if (!isFinite(idNum)) return { kind: null };
-    return withCache('supportsearchcd_v2_' + idNum, function () { // v2: zoho_data dedup
+    return withCache('supportsearchcd_v3_' + idNum, function () { // v3: zoho_data excludes unassigned tickets
       var centerHit = runQuery(
         "SELECT CenterID AS center_id FROM " + T('center_details') + " WHERE CenterID = @id LIMIT 1",
         { id: idNum }

@@ -240,7 +240,12 @@ var Charts = (function () {
     var sorted = rows.slice().reverse();
     render(id, base({
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      grid: { left: 8, right: 28, top: 12, bottom: 8, containLabel: true },
+      // right: 44 (was 28) to fit the value label these bars draw outside their
+      // own end. containLabel only reserves room for AXIS labels, not series
+      // labels, so the longest bar — which by definition reaches the axis max —
+      // pushed its label past the chart edge and got clipped ("4,979" rendered
+      // as "4,97"). 44 matches rankBar below, which already reserved enough.
+      grid: { left: 8, right: 44, top: 12, bottom: 8, containLabel: true },
       xAxis: valAxis(),
       yAxis: catAxis({ data: sorted.map(function (r) { return r[labelKey]; }),
         axisLabel: { color: C.text, fontSize: 11, width: 170, overflow: 'truncate' } }),
@@ -377,6 +382,10 @@ var Charts = (function () {
     render(id, base({
       tooltip: { trigger: 'axis' },
       legend: { top: 0, textStyle: { color: C.text, fontSize: 12 }, icon: 'circle', itemWidth: 9, itemHeight: 9 },
+      // boundaryGap:false puts the last point ON the right edge, so its month
+      // label ("2026-08") centres there and half of it fell outside the chart.
+      // Wider right gutter than base's 16 so the final label renders whole.
+      grid: { left: 8, right: 34, top: 32, bottom: 8, containLabel: true },
       xAxis: catAxis({ data: rows.map(function (r) { return r.month; }), boundaryGap: false }),
       yAxis: valAxis(),
       series: [

@@ -268,7 +268,11 @@ body.sidebar-pinned .sidebar-collapse-btn .icon { transform: rotate(0deg); }
 .topbar-logo-light { display: none; }
 body[data-theme="light"] .topbar-logo-dark { display: none; }
 body[data-theme="light"] .topbar-logo-light { display: block; }
-.topbar-brand .brand-text { display: flex; flex-direction: column; min-width: 0; }
+/* One line, baseline-aligned: "SIP - Service Insights Platform" reads as a
+   single lockup, with SIP carrying the weight and the descriptor trailing it. */
+.topbar-brand .brand-text {
+  display: flex; flex-direction: row; align-items: baseline; gap: 6px; min-width: 0;
+}
 .topbar-brand .brand-name {
   font-family: var(--font-head);
   font-size: 15px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.2;
@@ -276,7 +280,7 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 }
 .topbar-brand .brand-sub {
   font-size: 10px; color: var(--text-3); letter-spacing: 0.06em; text-transform: uppercase;
-  margin-top: 1px; white-space: nowrap; display: flex; align-items: center; gap: 4px;
+  white-space: nowrap; display: flex; align-items: center; gap: 4px;
 }
 
 .topbar-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -285,7 +289,12 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
   position: absolute; left: 12px; width: 17px; height: 17px;
   color: var(--text-3); pointer-events: none;
 }
-.topbar-search { width: 300px; max-width: 42vw; padding-left: 38px; }
+/* Two-class selector on purpose: `.input` below sets the `padding` SHORTHAND,
+   which resets padding-left. At equal specificity the later rule wins, so a
+   bare `.topbar-search { padding-left }` here was silently dropped and the
+   placeholder rendered underneath the magnifier. This outranks it instead of
+   depending on source order. 38px clears the icon (left:12px + 17px wide). */
+.global-search .topbar-search { width: 300px; max-width: 42vw; padding-left: 38px; }
 
 /* ── fields, buttons, toggles ───────────────────────────────────── */
 .field { display: flex; flex-direction: column; gap: 4px; }
@@ -1298,7 +1307,8 @@ tr.row-flagged > td { background: rgba(248, 113, 113, 0.06); }
   .topbar { justify-content: space-between; }
   .topbar-controls { width: 100%; }
   .global-search { flex: 1 1 100%; }
-  .topbar-search { width: auto; max-width: none; flex: 1 1 auto; }
+  /* Must match the base rule's two-class specificity or it loses to it. */
+  .global-search .topbar-search { width: auto; max-width: none; flex: 1 1 auto; }
 }
 /* Phones: single-column everything; trim chrome. */
 @media (max-width: 560px) {
@@ -1308,7 +1318,10 @@ tr.row-flagged > td { background: rgba(248, 113, 113, 0.06); }
   .page { padding-left: 14px; padding-right: 14px; }
   .edition-bar { padding-left: 14px; padding-right: 14px; }
   .edition-banner { margin-left: 14px; margin-right: 14px; }
-  .brand-sub { display: none; }
+  /* Two-class to outrank `.topbar-brand .brand-sub { display: flex }`; as a
+     bare `.brand-sub` this never actually hid (media queries add no
+     specificity), so the tagline overflowed the topbar on phones. */
+  .topbar-brand .brand-sub { display: none; }
 }
 
 /* ── reduced motion ─────────────────────────────────────────────── */

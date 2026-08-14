@@ -5,7 +5,8 @@
       "name": "sip-preview",
       "runtimeExecutable": "powershell",
       "runtimeArgs": ["-File", "scripts/build_preview.ps1"],
-      "port": 8765
+      "port": 8765,
+      "autoPort": true
     }
   ]
 }

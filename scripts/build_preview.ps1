@@ -31,5 +31,6 @@ $html = '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
 
 [IO.File]::WriteAllText($out, $html, (New-Object Text.UTF8Encoding $false))
 Write-Host "Built $out"
-Write-Host "Serving on http://localhost:8765/preview.html  (Ctrl+C to stop)"
-python -m http.server 8765 --directory $dist
+$port = if ($env:PORT) { $env:PORT } else { 8765 }
+Write-Host "Serving on http://localhost:$port/preview.html  (Ctrl+C to stop)"
+python -m http.server $port --directory $dist

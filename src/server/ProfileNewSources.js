@@ -140,16 +140,37 @@ function profileOneTable_(table) {
 var SW_ = '`' + 'tricogde-dwh.abi_tables' + '.servicewrk_Tickets`';
 var TOM_ = '`' + 'tricogde-dwh.abi_tables' + '.tom_tickets`';
 
-/** Runs one labelled check and logs its single result row. */
+/**
+ * Collected output lines. Every jcheck_ appends here as well as logging, so the
+ * same run can be read either from the editor's execution log OR returned over
+ * HTTP by profileJoinKeysText_() — the editor is not the only way in.
+ */
+var PROFILE_OUT_ = [];
+
+/** Appends to both the collected output and the execution log. */
+function pout_(line) {
+  PROFILE_OUT_.push(line);
+  Logger.log(line);
+}
+
 function jcheck_(label, sql) {
   try {
     var rows = runQuery(sql, null, { maxRows: 30 }) || [];
-    Logger.log('\n── ' + label + ' ──');
-    rows.forEach(function (r) { Logger.log(JSON.stringify(r)); });
-    if (!rows.length) Logger.log('(no rows)');
+    pout_('\n── ' + label + ' ──');
+    rows.forEach(function (r) { pout_(JSON.stringify(r)); });
+    if (!rows.length) pout_('(no rows)');
   } catch (e) {
-    Logger.log('\n── ' + label + ' ── FAILED: ' + e.message);
+    pout_('\n── ' + label + ' ── FAILED: ' + e.message);
   }
+}
+
+/**
+ * Runs profileJoinKeys and returns its output as one text blob.
+ * @return {string}
+ */
+function profileJoinKeysText_() {
+  profileJoinKeys();
+  return PROFILE_OUT_.join('\n');
 }
 
 /**
@@ -162,10 +183,11 @@ function jcheck_(label, sql) {
  *      the Zoho proxy the uptime engine uses now?
  */
 function profileJoinKeys() {
+  PROFILE_OUT_ = [];
   var CD = T('center_details');
   var ZD = zohoDedupSql_();
 
-  Logger.log('═══ 1. KEY RESOLUTION ═══');
+  pout_('═══ 1. KEY RESOLUTION ═══');
 
   jcheck_('servicewrk.customer_id — shape of the real values',
     'SELECT customer_id, COUNT(*) AS n FROM ' + SW_ +
@@ -198,7 +220,7 @@ function profileJoinKeys() {
     'SELECT center_id, center_name, COUNT(*) AS n FROM ' + TOM_ +
     ' WHERE center_id IS NOT NULL GROUP BY 1,2 ORDER BY n DESC LIMIT 10');
 
-  Logger.log('\n═══ 2. ZOHO CROSS-REFERENCE ═══');
+  pout_('\n═══ 2. ZOHO CROSS-REFERENCE ═══');
 
   jcheck_('servicewrk.zoho_ticket vs zoho_data.ticketNumber',
     'SELECT COUNT(*) AS sw_rows,' +
@@ -214,7 +236,7 @@ function profileJoinKeys() {
     '   (SELECT CAST(ticketNumber AS STRING) FROM ' + ZD + ')) AS resolves_to_zoho' +
     ' FROM ' + TOM_);
 
-  Logger.log('\n═══ 3. ARE THE TIMESTAMPS REAL? ═══');
+  pout_('\n═══ 3. ARE THE TIMESTAMPS REAL? ═══');
 
   jcheck_('servicewrk — time-of-day present, and closed-before-created rows',
     'SELECT COUNT(*) AS n,' +
@@ -234,7 +256,7 @@ function profileJoinKeys() {
     ' ROUND(AVG(tat_days_), 2) AS avg_tat_days' +
     ' FROM ' + TOM_);
 
-  Logger.log('\n═══ 4. UPTIME-SWAP FEASIBILITY ═══');
+  pout_('\n═══ 4. UPTIME-SWAP FEASIBILITY ═══');
 
   jcheck_('servicewrk — failure-type volume per year, and how much maps to a center',
     'SELECT EXTRACT(YEAR FROM created_on) AS yr,' +
@@ -250,5 +272,5 @@ function profileJoinKeys() {
     ' COUNT(DISTINCT CenterID) AS centers' +
     ' FROM ' + ZD + ' WHERE CreatedAt IS NOT NULL GROUP BY yr ORDER BY yr');
 
-  Logger.log('\n=== join-key profile complete ===');
+  pout_('\n=== join-key profile complete ===');
 }

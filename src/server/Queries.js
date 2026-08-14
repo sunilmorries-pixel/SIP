@@ -617,6 +617,151 @@ function buildDeviceExplorerQuery(opts) {
   };
 }
 
+/* ═════════════════ CDM — Communicator Device Management ═════════════════
+ * cloud_devices fields not surfaced anywhere else in the app (Latency,
+ * Retries, SpaceAvailable, EcgCounter, the two hardware-version columns) are
+ * the focus here; signal/battery are repeated from the Asset view for
+ * context. All of these are self-contained (own endpoint, own cache key) —
+ * unlike Asset/Centers/Support/Service, CDM does NOT share the dashboard
+ * payload, matching the Map/Top Customers pattern instead. */
+
+/**
+ * Fleet-wide CDM KPI + chart specs. Every spec here reads cloud_devices
+ * directly (single physical table, same across editions) — no CD-suffixed
+ * duplicate builder is needed; centerFilterSubqueryCond_ already dispatches
+ * to the right center dimension internally.
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array,centers:Array}=} filters
+ * @return {Array<{key:string, sql:string}>}
+ */
+function buildCdmQuerySpecs(filters) {
+  var NOW_IST_SQL = nowIstSql_();
+  var centerCond = centerFilterSubqueryCond_(filters || {});
+  var CD = T('cloud_devices');
+  return [
+    {
+      key: 'cdmKpis',
+      sql:
+        "WITH d AS (SELECT LastTimeStamp, SAFE_CAST(CSQ AS INT64) AS csq, " +
+        " SAFE_CAST(NULLIF(UPPER(BatteryLevel), 'CHARGING') AS INT64) AS batt, " +
+        " SAFE_CAST(Latency AS FLOAT64) AS latency, SAFE_CAST(Retries AS INT64) AS retries, " +
+        " SAFE_CAST(UnsyncedData AS INT64) AS unsynced, SAFE_CAST(SpaceAvailable AS FLOAT64) AS space_avail, " +
+        " NULLIF(TRIM(hardwareversion_clouddevices), '') AS hw_cd, " +
+        " NULLIF(TRIM(hardwareversion_devicestable), '') AS hw_dt " +
+        " FROM " + CD + " WHERE TRUE" + centerCond + ") " +
+        "SELECT COUNT(*) AS total, " +
+        " COUNTIF(LastTimeStamp >= TIMESTAMP_SUB(" + NOW_IST_SQL + ", INTERVAL " + CONFIG.ONLINE_WINDOW_HOURS + " HOUR)) AS online, " +
+        " ROUND(AVG(csq), 1) AS avg_csq, " +
+        " COUNTIF(batt IS NOT NULL AND batt < 20) AS low_battery, " +
+        " ROUND(AVG(latency), 1) AS avg_latency, COUNTIF(latency IS NOT NULL) AS latency_reporting, " +
+        " ROUND(AVG(retries), 1) AS avg_retries, " +
+        " SUM(IFNULL(unsynced, 0)) AS unsynced_total, " +
+        " ROUND(AVG(space_avail), 0) AS avg_space, COUNTIF(space_avail IS NOT NULL) AS space_reporting, " +
+        " COUNTIF(hw_cd IS NOT NULL AND hw_dt IS NOT NULL AND hw_cd != hw_dt) AS hw_mismatch, " +
+        " COUNTIF(hw_cd IS NOT NULL AND hw_dt IS NOT NULL) AS hw_both_reporting " +
+        "FROM d"
+    },
+    {
+      // CSQ (signal quality) bucket, same >=10 "poor" threshold the Asset-view
+      // kpis spec already uses for poor_signal, extended to a full breakdown.
+      key: 'cdmSignal',
+      sql:
+        "SELECT CASE " +
+        " WHEN SAFE_CAST(CSQ AS INT64) IS NULL THEN 'Unknown' " +
+        " WHEN SAFE_CAST(CSQ AS INT64) < 10 THEN 'Poor' " +
+        " WHEN SAFE_CAST(CSQ AS INT64) < 20 THEN 'Fair' " +
+        " WHEN SAFE_CAST(CSQ AS INT64) < 30 THEN 'Good' ELSE 'Excellent' END AS k, " +
+        " COUNT(*) AS n " +
+        "FROM " + CD + " WHERE TRUE" + centerCond + " GROUP BY k"
+    },
+    {
+      // BatteryLevel is a STRING column that is EITHER the literal 'Charging'
+      // or a numeric percentage (see buildDashboardQuerySpecs' kpis spec).
+      key: 'cdmBattery',
+      sql:
+        "SELECT CASE " +
+        " WHEN UPPER(IFNULL(BatteryLevel, '')) = 'CHARGING' THEN 'Charging' " +
+        " WHEN SAFE_CAST(BatteryLevel AS INT64) IS NULL THEN 'Unknown' " +
+        " WHEN SAFE_CAST(BatteryLevel AS INT64) < 20 THEN 'Low' ELSE 'Normal' END AS k, " +
+        " COUNT(*) AS n " +
+        "FROM " + CD + " WHERE TRUE" + centerCond + " GROUP BY k"
+    },
+    {
+      key: 'cdmHardware',
+      sql:
+        "SELECT IFNULL(NULLIF(TRIM(hardwareversion_clouddevices), ''), 'Unknown') AS hw, COUNT(*) AS devices " +
+        "FROM " + CD + " WHERE TRUE" + centerCond + " GROUP BY hw ORDER BY devices DESC LIMIT 8"
+    },
+    {
+      // EcgCounter is sparse (~30% of rows) — NULL rows are dropped rather
+      // than bucketed as 'Unknown', so the chart reflects reporting devices only.
+      key: 'cdmEcg',
+      sql:
+        "SELECT CASE " +
+        " WHEN SAFE_CAST(EcgCounter AS INT64) = 0 THEN '0' " +
+        " WHEN SAFE_CAST(EcgCounter AS INT64) <= 5 THEN '1-5' " +
+        " WHEN SAFE_CAST(EcgCounter AS INT64) <= 20 THEN '6-20' " +
+        " ELSE '21+' END AS k, COUNT(*) AS n " +
+        "FROM " + CD + " WHERE SAFE_CAST(EcgCounter AS INT64) IS NOT NULL" + centerCond + " GROUP BY k"
+    }
+  ];
+}
+
+/** Sortable columns for the Communicator explorer — whitelist against injection. */
+var CDM_SORT_COLUMNS = {
+  device: 'DeviceID', center: 'Centername', hub: 'HubName', last_seen: 'LastTimeStamp',
+  csq: 'SAFE_CAST(CSQ AS INT64)', battery: 'SAFE_CAST(BatteryLevel AS INT64)',
+  latency: 'SAFE_CAST(Latency AS FLOAT64)', retries: 'SAFE_CAST(Retries AS INT64)',
+  space: 'SAFE_CAST(SpaceAvailable AS FLOAT64)', ecg: 'SAFE_CAST(EcgCounter AS INT64)'
+};
+
+/**
+ * Paginated, filterable Communicator (cloud_devices) explorer — same shape
+ * as buildDeviceExplorerQuery, with the CDM-specific fields (Latency,
+ * Retries, SpaceAvailable, EcgCounter, hardware version) instead of
+ * FirmwareName/ServiceProvider. No dateFrom/dateTo: cloud_devices has no
+ * "created" column to range against (same exemption as the Device explorer).
+ * @param {{search:string, filters:Object, sortBy:string, sortDir:string,
+ *          page:number, pageSize:number}} opts sanitised by Api.js
+ * @return {{sql:string, params:Object}}
+ */
+function buildCdmDeviceExplorerQuery(opts) {
+  var FLEET_BUCKET_SQL = fleetBucketSql_();
+  var sortCol = CDM_SORT_COLUMNS[opts.sortBy] || 'LastTimeStamp';
+  var sortDir = opts.sortDir === 'asc' ? 'ASC' : 'DESC';
+  var globalCond = centerFilterSubqueryCond_(opts.filters || {});
+  var sql =
+    "WITH d AS (SELECT DeviceID, Centername, HubName, LastTimeStamp, " +
+    " BatteryLevel, CSQ, Latency, Retries, SpaceAvailable, EcgCounter, UnsyncedData, " +
+    " hardwareversion_clouddevices, hardwareversion_devicestable, " +
+    " " + FLEET_BUCKET_SQL + " AS status_bucket " +
+    " FROM " + T('cloud_devices') + " WHERE TRUE" + globalCond + ") " +
+    "SELECT DeviceID AS device, IFNULL(Centername,'') AS center, IFNULL(HubName,'') AS hub, " +
+    " CAST(LastTimeStamp AS STRING) AS last_seen, " +
+    " IFNULL(BatteryLevel,'') AS battery, SAFE_CAST(CSQ AS INT64) AS csq, " +
+    " SAFE_CAST(Latency AS FLOAT64) AS latency, SAFE_CAST(Retries AS INT64) AS retries, " +
+    " SAFE_CAST(SpaceAvailable AS FLOAT64) AS space_avail, SAFE_CAST(EcgCounter AS INT64) AS ecg, " +
+    " SAFE_CAST(UnsyncedData AS INT64) AS unsynced, " +
+    " IFNULL(NULLIF(TRIM(hardwareversion_clouddevices), ''), 'Unknown') AS hardware, " +
+    " IFNULL(NULLIF(TRIM(hardwareversion_devicestable), ''), '') AS hardware_dt, " +
+    " status_bucket AS status, " +
+    " COUNT(*) OVER() AS total_rows " +
+    "FROM d " +
+    "WHERE (@search = '' OR LOWER(DeviceID) LIKE @like " +
+    "      OR LOWER(IFNULL(Centername,'')) LIKE @like " +
+    "      OR LOWER(IFNULL(HubName,'')) LIKE @like) " +
+    "ORDER BY " + sortCol + " " + sortDir + " " +
+    "LIMIT @limit OFFSET @offset";
+  return {
+    sql: sql,
+    params: {
+      search: opts.search,
+      like: '%' + opts.search + '%',
+      limit: opts.pageSize,
+      offset: opts.page * opts.pageSize
+    }
+  };
+}
+
 /* ═══════════ Center-360 sources (Centers view) — joined in Apps Script ══ */
 
 /**
@@ -645,12 +790,17 @@ function buildCenterSourceSpecs() {
     },
     {
       // Live telemetry, present only for the ~4.7k centers with a device now.
+      // avg_csq/avg_battery/low_battery added for the CDM (Communicator Device
+      // Management) map/table — additive columns, existing consumers unaffected.
       key: 'centerTelemetry',
       maxRows: 60000,
       sql:
         "SELECT CenterID AS center_id, COUNT(*) AS devices, " +
         " COUNTIF(LastTimeStamp >= TIMESTAMP_SUB(" + NOW_IST_SQL + ", INTERVAL " + CONFIG.ONLINE_WINDOW_HOURS + " HOUR)) AS online, " +
-        " CAST(MAX(LastTimeStamp) AS STRING) AS last_seen " +
+        " CAST(MAX(LastTimeStamp) AS STRING) AS last_seen, " +
+        " ROUND(AVG(SAFE_CAST(CSQ AS INT64)), 1) AS avg_csq, " +
+        " ROUND(AVG(SAFE_CAST(NULLIF(UPPER(BatteryLevel), 'CHARGING') AS INT64)), 1) AS avg_battery, " +
+        " COUNTIF(SAFE_CAST(NULLIF(UPPER(BatteryLevel), 'CHARGING') AS INT64) < 20) AS low_battery " +
         "FROM " + T('cloud_devices') + " GROUP BY CenterID"
     },
     {

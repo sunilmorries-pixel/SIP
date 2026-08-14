@@ -50,9 +50,47 @@ function apiGetDevices(options) {
     pageSize: Math.min(100, Math.max(5, parseInt(options.pageSize, 10) || 15))
   };
   return respond_(function () {
-    var cacheKey = 'dev_v2_' + shortHash(JSON.stringify(clean));
+    var cacheKey = 'dev_v3_' + shortHash(JSON.stringify(clean)); // v3: country filter sources from hub_country
     return withCache(cacheKey, function () {
       var query = buildDeviceExplorerQuery(clean);
+      var rows = runQuery(query.sql, query.params);
+      var totalRows = rows.length ? rows[0].total_rows : 0;
+      rows.forEach(function (row) { delete row.total_rows; });
+      return { rows: rows, totalRows: totalRows, page: clean.page, pageSize: clean.pageSize };
+    });
+  });
+}
+
+/**
+ * Paginated Communicator (cloud_devices) explorer for the CDM page — same
+ * shape as apiGetDevices, called directly (no CD suffix): cloud_devices is
+ * a single physical table, so nothing here differs by edition.
+ * @param {{search:string, filters:Object=, sortBy:string, sortDir:string,
+ *          page:number, pageSize:number}=} options
+ * @return {Object} envelope with { rows, totalRows, page, pageSize }
+ */
+function apiGetCdmDevices(options) {
+  options = options || {};
+  var clean = {
+    search: String(options.search || '').toLowerCase().slice(0, 80),
+    filters: {
+      segments: ((options.filters && options.filters.segments) || []).map(segClean_).filter(Boolean),
+      statuses: ((options.filters && options.filters.statuses) || []).map(segClean_).filter(Boolean),
+      states: ((options.filters && options.filters.states) || []).map(segClean_).filter(Boolean),
+      hubs: ((options.filters && options.filters.hubs) || []).map(segClean_).filter(Boolean),
+      cities: ((options.filters && options.filters.cities) || []).map(segClean_).filter(Boolean),
+      countries: ((options.filters && options.filters.countries) || []).map(segClean_).filter(Boolean),
+      centers: ((options.filters && options.filters.centers) || []).map(segClean_).filter(Boolean)
+    },
+    sortBy: String(options.sortBy || 'last_seen'),
+    sortDir: options.sortDir === 'asc' ? 'asc' : 'desc',
+    page: Math.max(0, parseInt(options.page, 10) || 0),
+    pageSize: Math.min(100, Math.max(5, parseInt(options.pageSize, 10) || 15))
+  };
+  return respond_(function () {
+    var cacheKey = 'cdmdev_v2_' + shortHash(JSON.stringify(clean)); // v2: country filter sources from hub_country
+    return withCache(cacheKey, function () {
+      var query = buildCdmDeviceExplorerQuery(clean);
       var rows = runQuery(query.sql, query.params);
       var totalRows = rows.length ? rows[0].total_rows : 0;
       rows.forEach(function (row) { delete row.total_rows; });

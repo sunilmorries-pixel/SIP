@@ -178,15 +178,20 @@ body[data-theme="light"] .bg-decor {
 .app-shell { position: relative; min-height: 100dvh; }
 .app-main {
   min-height: 100dvh;
-  margin-left: var(--sidebar-w);
+  margin-left: var(--sidebar-w-collapsed);
   transition: margin-left var(--dur) var(--ease-out);
 }
-body.sidebar-collapsed .app-main { margin-left: var(--sidebar-w-collapsed); }
+body.sidebar-pinned .app-main { margin-left: var(--sidebar-w); }
 
-/* ── sidebar ────────────────────────────────────────────────────── */
+/* ── sidebar ────────────────────────────────────────────────────────
+   Rests as a narrow icon-only "bubble" rail and expands into the full
+   nav on hover/focus — an overlay (position: fixed, .app-main's margin
+   never changes for a hover), so the page underneath doesn't reflow.
+   "Pin" (the foot button) makes the expanded state the resting one,
+   for anyone who wants the labels on screen permanently. */
 .sidebar {
   position: fixed; inset: 0 auto 0 0; z-index: 50;
-  width: var(--sidebar-w);
+  width: var(--sidebar-w-collapsed);
   display: flex; flex-direction: column;
   padding: 18px 14px;
   background: var(--surface);
@@ -196,36 +201,16 @@ body.sidebar-collapsed .app-main { margin-left: var(--sidebar-w-collapsed); }
   -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(160%);
   transition: width var(--dur) var(--ease-out);
 }
-body.sidebar-collapsed .sidebar { width: var(--sidebar-w-collapsed); }
-
-.sidebar-brand {
-  display: flex; align-items: center; gap: 10px;
-  min-height: 44px; padding: 4px 6px 18px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 14px;
+body.sidebar-pinned .sidebar { width: var(--sidebar-w); }
+/* Hover/focus expand is desktop-only — there's no hover on touch, and
+   tablet/phone already force the icon rail permanently (media queries
+   below), so this stays out of their way entirely. */
+@media (min-width: 1181px) {
+  body:not(.sidebar-pinned) .sidebar:hover,
+  body:not(.sidebar-pinned) .sidebar:focus-within {
+    width: var(--sidebar-w);
+  }
 }
-.brand-text { display: flex; flex-direction: column; min-width: 0; }
-.brand-name {
-  font-family: var(--font-head);
-  font-size: 15px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.2;
-  white-space: nowrap;
-}
-.brand-name .brand-accent { font-weight: 400; color: var(--text-2); }
-.brand-sub {
-  font-size: 10px; color: var(--text-3); letter-spacing: 0.06em; text-transform: uppercase;
-  margin-top: 1px; white-space: nowrap; display: flex; align-items: center; gap: 4px;
-}
-.brand-sub b { color: var(--primary); font-weight: 700; }
-body.sidebar-collapsed .brand-text { display: none; }
-/* Official Tricog heart+pulse mark (icon-only crop, no wordmark baked in —
-   "SIP Insights" is set as real text in .brand-text alongside it). Same
-   image, just scaled down, for both expanded and collapsed states. */
-.sidebar-logo {
-  height: 30px; width: auto;
-  flex: none; transition: height var(--dur) var(--ease-out);
-}
-body.sidebar-collapsed .sidebar-logo { height: 26px; }
-body.sidebar-collapsed .sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
 
 .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; overflow-y: auto; }
 .sidebar-foot { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
@@ -237,9 +222,22 @@ body.sidebar-collapsed .sidebar-brand { justify-content: center; padding-left: 0
   transition: background var(--dur-fast), color var(--dur-fast);
 }
 .sidebar-collapse-btn:hover { color: var(--text-1); background: var(--primary-soft); }
-.sidebar-collapse-btn .icon { width: 18px; height: 18px; flex: none; transition: transform var(--dur-fast); }
-body.sidebar-collapsed .sidebar-collapse-btn .icon { transform: rotate(180deg); }
-body.sidebar-collapsed .sidebar-collapse-btn span { display: none; }
+/* Chevrons point right (rotated) by default — "open it" — and flip to
+   point left once pinned — "close it". */
+.sidebar-collapse-btn .icon { width: 18px; height: 18px; flex: none; transform: rotate(180deg); transition: transform var(--dur-fast); }
+.sidebar-collapse-btn span { display: none; white-space: nowrap; overflow: hidden; }
+body.sidebar-pinned .sidebar-collapse-btn .icon { transform: rotate(0deg); }
+/* Label (and the .tab nav-label / justify-content flip below) only makes
+   sense once the rail is wide enough to hold it — pinned open, or mid
+   hover/focus-expand — and hover-expand itself is desktop-only, so all
+   three share the same @media (min-width: 1181px) block above. */
+@media (min-width: 1181px) {
+  body.sidebar-pinned .sidebar-collapse-btn span,
+  body:not(.sidebar-pinned) .sidebar:hover .sidebar-collapse-btn span,
+  body:not(.sidebar-pinned) .sidebar:focus-within .sidebar-collapse-btn span {
+    display: inline;
+  }
+}
 
 /* ── top bar (floats as its own glass card inside .app-main) ──────── */
 /* Same width formula as .page below, so both floating panels line up:
@@ -259,7 +257,21 @@ body.sidebar-collapsed .sidebar-collapse-btn span { display: none; }
   backdrop-filter: blur(var(--blur-glass)) saturate(160%);
   -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(160%);
 }
+/* The one Tricog mark left on the page, now living in the topbar's
+   floating card instead of duplicated into the sidebar too. */
+.topbar-brand { display: flex; align-items: center; gap: 10px; flex: none; }
 .topbar-logo { height: 26px; width: auto; flex: none; }
+.topbar-brand .brand-text { display: flex; flex-direction: column; min-width: 0; }
+.topbar-brand .brand-name {
+  font-family: var(--font-head);
+  font-size: 15px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.2;
+  white-space: nowrap;
+}
+.topbar-brand .brand-name .brand-accent { font-weight: 400; color: var(--text-2); }
+.topbar-brand .brand-sub {
+  font-size: 10px; color: var(--text-3); letter-spacing: 0.06em; text-transform: uppercase;
+  margin-top: 1px; white-space: nowrap; display: flex; align-items: center; gap: 4px;
+}
 
 .topbar-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .global-search { position: relative; display: flex; align-items: center; }
@@ -377,24 +389,34 @@ body.sidebar-collapsed .sidebar-collapse-btn span { display: none; }
 }
 .tab {
   position: relative;
-  display: flex; align-items: center; gap: 12px;
-  min-height: 44px; padding: 0 12px;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  min-height: 44px; padding: 0;
   font-size: 14px; font-weight: 600; white-space: nowrap;
   color: var(--text-3);
   border-radius: var(--radius-sm);
-  transition: color var(--dur-fast), background var(--dur-fast);
+  transition: color var(--dur-fast), background var(--dur-fast), justify-content var(--dur-fast);
 }
 .tab:hover { color: var(--text-1); background: rgba(46, 155, 214, 0.08); }
 .tab .nav-icon { width: 20px; height: 20px; flex: none; }
-.tab .nav-label { overflow: hidden; text-overflow: ellipsis; }
+.tab .nav-label { display: none; overflow: hidden; text-overflow: ellipsis; }
 .tab.is-active {
   color: #fff;
   background: linear-gradient(135deg, var(--primary), #C21F3A);
   box-shadow: 0 6px 16px rgba(229, 52, 79, 0.35);
 }
 .tab.is-active:hover { color: #fff; background: linear-gradient(135deg, var(--primary), #C21F3A); }
-body.sidebar-collapsed .tab { justify-content: center; padding: 0; }
-body.sidebar-collapsed .tab .nav-label { display: none; }
+@media (min-width: 1181px) {
+  body.sidebar-pinned .tab,
+  body:not(.sidebar-pinned) .sidebar:hover .tab,
+  body:not(.sidebar-pinned) .sidebar:focus-within .tab {
+    justify-content: flex-start; padding: 0 12px;
+  }
+  body.sidebar-pinned .tab .nav-label,
+  body:not(.sidebar-pinned) .sidebar:hover .tab .nav-label,
+  body:not(.sidebar-pinned) .sidebar:focus-within .tab .nav-label {
+    display: block;
+  }
+}
 
 /* ── layout ─────────────────────────────────────────────────────── */
 /* One floating glass panel per page, same width formula as .topbar so
@@ -860,7 +882,7 @@ body.sidebar-collapsed .tab .nav-label { display: none; }
   border-radius: var(--radius-sm);
 }
 .map-wrap { position: relative; overflow: hidden; padding: 0; }
-#assetMap, #tcMap {
+#assetMap, #tcMap, #cdmMap {
   width: 100%; height: 72vh; min-height: 480px;
   background: #0B111E; z-index: 0;
 }
@@ -1252,17 +1274,12 @@ tr.row-flagged > td { background: rgba(248, 113, 113, 0.06); }
   .kpi-grid-4 { grid-template-columns: repeat(2, 1fr); }
   .span-4, .span-5, .span-7, .span-8 { grid-column: span 6; }
 
-  /* Sidebar auto-collapses to the icon rail below desktop width — the
-     manual expand/collapse toggle has no room to do anything useful here,
-     so the "collapsed" treatment applies unconditionally, not just via
-     body.sidebar-collapsed. */
+  /* Sidebar stays the icon-only rail below desktop width — hover/focus
+     expand and the pin toggle are both gated to @media (min-width: 1181px)
+     up in the sidebar rules, so nothing there can widen it here. This just
+     covers the body.sidebar-pinned width var so a pin set on desktop
+     doesn't leave the rail stuck wide after resizing down. */
   :root { --sidebar-w: var(--sidebar-w-collapsed); }
-  .sidebar-logo { height: 26px; }
-  .sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
-  .brand-text { display: none; }
-  .tab { justify-content: center; padding: 0; }
-  .tab .nav-label { display: none; }
-  .sidebar-collapse-btn span { display: none; }
 }
 /* Tablets: 2-up KPIs; every dashboard card and hero stacks full width. */
 @media (max-width: 820px) {

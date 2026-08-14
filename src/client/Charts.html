@@ -265,6 +265,31 @@ var Charts = (function () {
   function assetTypes(rows)  { horizontalBar('chartAssetTypes', rows, 'label', 'cnt', C.violet); }
   function zohoCategories(rows) { horizontalBar('chartZohoCategories', rows, 'category', 'cnt', C.info); }
   function firmware(rows)    { horizontalBar('chartFirmware', rows, 'firmware', 'devices', C.info); }
+  function cdmHardware(rows) { horizontalBar('chartCdmHardware', rows, 'hw', 'devices', C.violet); }
+
+  // Fixed band order (0/1-5/6-20/21+), not by count — this is a natural
+  // progression, not a ranked breakdown (mirrors deploymentAge's AGE_ORDER pattern).
+  var ECG_ORDER = ['0', '1-5', '6-20', '21+'];
+  function cdmEcg(rows) {
+    if (!rows || !rows.length) return showEmpty('chartCdmEcg');
+    var byBand = {};
+    rows.forEach(function (r) { byBand[r.k] = r.n; });
+    var cats = ECG_ORDER.filter(function (b) { return byBand[b]; });
+    render('chartCdmEcg', base({
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      xAxis: catAxis({ data: cats }),
+      yAxis: valAxis(),
+      series: [{
+        type: 'bar', barMaxWidth: 36,
+        itemStyle: {
+          borderRadius: [6, 6, 0, 0],
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: C.teal }, { offset: 1, color: 'rgba(4,224,184,0.3)' }])
+        },
+        data: cats.map(function (b) { return byBand[b]; })
+      }]
+    }));
+  }
   function zohoSegment(rows) { horizontalBar('chartZohoSegment', rows, 'segment', 'cnt', C.primary); }
 
   // Matches the Asset-page Device age chart's bands exactly (see deviceAges below).
@@ -659,6 +684,8 @@ var Charts = (function () {
     jiraStatus: jiraStatus,
     geo: geo,
     firmware: firmware,
+    cdmHardware: cdmHardware,
+    cdmEcg: cdmEcg,
     deploymentAge: deploymentAge,
     deviceAges: deviceAges,
     activeVsEnded: activeVsEnded,

@@ -12,7 +12,10 @@
  *   CenterID/Centername/HubID/HubName/City/State → same (BQ case-insensitive;
  *     new schema stores centerid/city/state lowercase — SQL still resolves).
  *   pin      → PinCode         (old bare `pin` column removed)
- *   country  → Spoke_Country   (old bare `Country` column removed)
+ *   country  → hub_country     (old bare `Country` column removed; switched from
+ *              Spoke_Country per user, 2026-08-14 — Spoke_Country has ~9%
+ *              NULLs plus typos/non-country values ("Inida", "Phillipines",
+ *              "Nairobi", "Africa") that hub_country doesn't)
  *   startdatetime  → deploymentdate  (DATE, center-level)
  *   enddatetime    → deactivationdate (active = deactivationdate IS NULL)
  *   coords   → NONE (latitude/longitude REMOVED by reload) → pin-geocode store
@@ -81,7 +84,7 @@ function centerAttrCond_(filters) {
     multiCond_('State', f.states) +
     multiCond_('HubName', f.hubs) +
     multiCond_('City', f.cities) +
-    multiCond_('Spoke_Country', f.countries) +
+    multiCond_('hub_country', f.countries) +
     // Center filters on the ID, not the name: center names are not unique in
     // center_details, so a name-keyed filter would match unrelated centers.
     // CAST so the numeric column compares against the string values the client
@@ -280,12 +283,14 @@ function buildDashboardQuerySpecsCD(hub, filters) {
       " WHERE " + F + " AND NULLIF(TRIM(City), '') IS NOT NULL ORDER BY city"
   });
   specs.push({
-    // Small (~15-20 distinct real Spoke_Country values on the sandbox, plus a
-    // handful of data-entry variants like "Inida"/"Phillipines") — shipped raw,
-    // same as Segment/State: the app doesn't merge Country variants.
+    // Small (~15-20 distinct real hub_country values on the sandbox) — shipped
+    // raw, same as Segment/State: the app doesn't merge Country variants.
+    // Switched from Spoke_Country (per user, 2026-08-14): Spoke_Country has
+    // ~9% NULLs plus data-entry variants ("Inida"/"Phillipines"/"Nairobi"/
+    // "Africa") that hub_country doesn't.
     key: 'countryOptions', maxRows: 200,
-    sql: "SELECT DISTINCT TRIM(Spoke_Country) AS country FROM " + CD +
-      " WHERE " + F + " AND NULLIF(TRIM(Spoke_Country), '') IS NOT NULL ORDER BY country"
+    sql: "SELECT DISTINCT TRIM(hub_country) AS country FROM " + CD +
+      " WHERE " + F + " AND NULLIF(TRIM(hub_country), '') IS NOT NULL ORDER BY country"
   });
   // Per-center Zoho failure aggregate (Zoho only — no jira) feeding the JS cohort.
   specs.push({
@@ -396,9 +401,11 @@ function centerBaseSpecCD_() {
     key: 'centerBase', maxRows: 60000,
     sql:
       // DISTINCT: the 2026-07-07 reload has exact duplicate rows per center.
-      // PinCode/Spoke_Country replace the removed pin/Country columns; the
-      // reload dropped latitude/longitude entirely → NULL here, coordinates
-      // come from the pin-geocode store fallback (coordsForCD_).
+      // PinCode replaces the removed pin column; the reload dropped
+      // latitude/longitude entirely → NULL here, coordinates come from the
+      // pin-geocode store fallback (coordsForCD_). country sources from
+      // hub_country, not Spoke_Country (per user, 2026-08-14 — Spoke_Country
+      // has ~9% NULLs plus typos/non-country values hub_country doesn't).
       //
       // state/hub/city/country are TRIM'd for the same reason segment/status
       // already were: centerPassesFilters_ compares these fields against the
@@ -409,7 +416,7 @@ function centerBaseSpecCD_() {
       "SELECT DISTINCT CenterID AS center_id, Centername AS center, HubID AS hub_id, " +
       " IFNULL(TRIM(HubName), '') AS hub, " +
       " IFNULL(TRIM(City), '') AS city, IFNULL(TRIM(State), '') AS state, PinCode AS pin, " +
-      " IFNULL(TRIM(Spoke_Country), '') AS country, " +
+      " IFNULL(TRIM(hub_country), '') AS country, " +
       " " + segmentGroupSql_('hub_master_segment') + " AS segment, " +   // segment = hub_master_segment, SME/LE variants merged (per user)
       " IFNULL(TRIM(Status), '') AS status, " +                // NEW: needed for the global Status filter
       " CAST(NULL AS FLOAT64) AS lat, CAST(NULL AS FLOAT64) AS lng, " +
@@ -423,7 +430,7 @@ function centerBaseSpecCD_() {
  * @param {boolean=} bypassCache force a rebuild (used by the warm trigger)
  */
 function getCenter360RowsCD_(bypassCache) {
-  var ckey = 'ctr360cd_v9'; // v9: zoho_data excludes unassigned tickets (see zohoDedupSql_, Queries.js)
+  var ckey = 'ctr360cd_v11'; // v11: country sources from hub_country, not Spoke_Country
   if (bypassCache !== true) {
     var cached = cacheGetLarge(ckey);
     if (cached) return cached;
@@ -446,7 +453,9 @@ function getCenter360RowsCD_(bypassCache) {
         status: base.status || '',
         lat: base.lat, lng: base.lng, deployment_date: base.deployment_date || '',
         devices: tel ? tel.devices : 0, online: tel ? tel.online : 0,
-        last_seen: (tel && tel.last_seen) || ''
+        last_seen: (tel && tel.last_seen) || '',
+        avg_csq: tel ? tel.avg_csq : null, avg_battery: tel ? tel.avg_battery : null,
+        low_battery: tel ? tel.low_battery : 0
       };
     }
   });
@@ -619,7 +628,7 @@ function apiGetDashboardCD(options) {
     // v12: centerKpis.states -> centers_with_open_tickets.
     // v13: zoho_data excludes unassigned tickets.
     // v14: Device Type/Status filter applied to asset donuts/cohort + fleet.
-    var cacheKey = 'dashcd_v14_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
+    var cacheKey = 'dashcd_v15_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub); // v15: country filter sources from hub_country
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -850,7 +859,7 @@ function apiGetMapDataCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    var cacheKey = 'mapcd_v9_' + getCacheEpoch_() + '_' + filterHash_(filters); // v9: zoho_data excludes unassigned tickets
+    var cacheKey = 'mapcd_v10_' + getCacheEpoch_() + '_' + filterHash_(filters); // v10: country filter sources from hub_country
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -900,6 +909,58 @@ function apiGetMapDataCD(options) {
       edition: 'center_details', flags: FLAGS_CD
     };
     cachePutLarge(cacheKey, payload, 1800); // outlives the 10-min warm interval
+    return payload;
+  });
+}
+
+/**
+ * CDM (Communicator Device Management) page: fleet-wide KPIs/charts
+ * (buildCdmQuerySpecs, cloud_devices-only — no CD-suffixed duplicate needed)
+ * plus a center-location map reusing the same Center-360 rows + pin-geocode
+ * store as apiGetMapDataCD. Self-contained (own endpoint, own cache key) —
+ * does NOT share the Asset/Centers/Support/Service/Overview dashboard payload.
+ */
+function apiGetCdmDataCD(options) {
+  options = options || {};
+  var filters = {
+    segments: (options.filters && options.filters.segments) || [],
+    statuses: (options.filters && options.filters.statuses) || [],
+    states: (options.filters && options.filters.states) || [],
+    hubs: (options.filters && options.filters.hubs) || [],
+    cities: (options.filters && options.filters.cities) || [],
+    countries: (options.filters && options.filters.countries) || [],
+    centers: (options.filters && options.filters.centers) || []
+  };
+  return respond_(function () {
+    var cacheKey = 'cdmcd_v2_' + getCacheEpoch_() + '_' + filterHash_(filters); // v2: country filter sources from hub_country
+    if (options.bypassCache !== true) {
+      var cached = cacheGetLarge(cacheKey);
+      if (cached) return cached;
+    }
+
+    var results = runQueriesParallel(buildCdmQuerySpecs(filters));
+
+    var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters); });
+    var geoStore = loadGeoStore();
+    var located = [], unlocated = 0;
+    centers.forEach(function (row) {
+      var c = coordsForCD_(row, geoStore);
+      if (c) {
+        located.push([
+          row.center_id, row.center, c[0], c[1], row.devices, row.online,
+          row.low_battery || 0, row.avg_csq, row.hub || '', row.hub_id != null ? row.hub_id : '', row.state || ''
+        ]);
+      } else { unlocated++; }
+    });
+
+    var payload = {
+      kpis: (results.cdmKpis && results.cdmKpis[0]) || {},
+      signal: results.cdmSignal || [], battery: results.cdmBattery || [],
+      hardware: results.cdmHardware || [], ecg: results.cdmEcg || [],
+      centers: located, unlocatedCenters: unlocated,
+      edition: 'center_details', flags: FLAGS_CD
+    };
+    cachePutLarge(cacheKey, payload, CONFIG.CACHE_TTL_SECONDS);
     return payload;
   });
 }
@@ -982,7 +1043,7 @@ function apiGetTopCustomersCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('topcustcd_v9_' + getCacheEpoch_() + '_' + filterHash_(filters), // v9: zoho_data excludes unassigned tickets
+    return withCache('topcustcd_v10_' + getCacheEpoch_() + '_' + filterHash_(filters), // v10: country filter sources from hub_country
       function () { return computeTopCustomersCD_(filters); },
       options.bypassCache === true);
   });
@@ -1004,7 +1065,7 @@ function apiGetExecOverviewCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('execcd_v10_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v10: Device Type/Status filter
+    return withCache('execcd_v11_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v11: country filter sources from hub_country
       var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters); });
       var top = computeTopCustomersCD_(filters);
       var want = { kpis: 1, fleetStatus: 1, zohoKpis: 1, zohoTrend: 1, geo: 1, reliability: 1, uptimeFleet: 1, slaKpis: 1 };
@@ -1059,7 +1120,7 @@ function apiGetCenterDetailCD(options) {
   var centerId = parseInt(options && options.centerId, 10);
   return respond_(function () {
     if (!isFinite(centerId)) throw new Error('centerId is required');
-    return withCache('ctrdetcd_v4_' + centerId, function () { // v4: zoho_data excludes unassigned tickets
+    return withCache('ctrdetcd_v5_' + centerId, function () { // v5: country filter sources from hub_country
       // Reuse the original detail specs (devices/tickets/openTickets are keyed by
       // CenterID, center-table-agnostic); swap only the `info` query.
       var specs = buildCenterDetailSpecs(centerId).map(function (s) {
@@ -1069,7 +1130,7 @@ function apiGetCenterDetailCD(options) {
           sql:
             "SELECT ANY_VALUE(Centername) AS center, ANY_VALUE(HubID) AS hub_id, " +
             " ANY_VALUE(HubName) AS hub, ANY_VALUE(City) AS city, ANY_VALUE(State) AS state, " +
-            " ANY_VALUE(PinCode) AS pin, ANY_VALUE(Spoke_Country) AS country, " +
+            " ANY_VALUE(PinCode) AS pin, ANY_VALUE(hub_country) AS country, " +
             " CAST(DATE(MIN(deploymentdate)) AS STRING) AS first_deployment, " +
             " DATE_DIFF(CURRENT_DATE(), DATE(MIN(deploymentdate)), MONTH) AS age_months, " +
             " NULL AS devices_ever " +           // no device grain in center_details

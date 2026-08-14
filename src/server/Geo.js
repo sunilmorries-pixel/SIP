@@ -82,13 +82,16 @@ function saveGeoStore_(store) {
  * ORDERED ACTIVE-FIRST so runGeocodeBatch spends its quota on active centers
  * before deactivated ones. Locations serving any ACTIVE center sort ahead; the
  * JS dedup below then keeps that active-first row per geo key.
- * Reads PinCode/City/State/Spoke_Country (post-reload column names). No
- * baseline filter applies (CD_SEG_FILTER = '1=1' since 2026-07-22).
+ * Reads PinCode/City/State/hub_country (post-reload column names; country
+ * switched from Spoke_Country to hub_country per user, 2026-08-14 — MUST
+ * match centerBaseSpecCD_'s own country source, EditionCD.js, or geoKeyFor
+ * builds a different cache key here than coordsForCD_ looks up at runtime).
+ * No baseline filter applies (CD_SEG_FILTER = '1=1' since 2026-07-22).
  */
 function distinctLocations_() {
   var rows = runQuery(
     "SELECT pin, city, state, country FROM ( " +
-    " SELECT PinCode AS pin, City AS city, State AS state, Spoke_Country AS country, " +
+    " SELECT PinCode AS pin, City AS city, State AS state, hub_country AS country, " +
     "  MAX(IF(Status = 'ACTIVE', 1, 0)) AS any_active " +
     " FROM " + T('center_details') + " WHERE " + CD_SEG_FILTER + " " +
     " GROUP BY pin, city, state, country) " +

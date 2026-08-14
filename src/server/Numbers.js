@@ -98,7 +98,7 @@ function readJiraData_() {
  */
 function jiraDeviceStats_(filters) {
   filters = filters || {};
-  return withCache('jiradev_v8_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v8: Device Type/Status filter
+  return withCache('jiradev_v9_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v9: country filter sources from hub_country
     var jiraRows = readJiraData_().filter(function (row) { return isTrackedJiraDeviceType_(row.issuetype_name); });
     // Device Type (issuetype_name, INCLUDE list) / Device Status in Jira
     // (status_name, EXCLUDE list) — per user, 2026-08-13. Applies everywhere
@@ -187,7 +187,7 @@ function apiGetNumbers(options) {
     // Hubs use the center-attribute chain + deploymentdate (matches Centers/
     // Map); Tickets bridge to center_details via CenterID + CreatedAt (matches
     // Support); Devices already accepted the full filters object.
-    return withCache('numbers_v8_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
+    return withCache('numbers_v9_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v9: country filter sources from hub_country
       var CD = T('center_details');
       var ZOHO = zohoDedupSql_();
       var techBool = techBoolSql_("IFNULL(IssueCategory,'')");

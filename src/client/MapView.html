@@ -49,21 +49,28 @@ function MapView(containerId) {
     return true;
   }
 
-  function setData(rows, onClick) {
+  function defaultTooltip(c) {
+    return esc(c[1]) + ' · ' + esc(c[4]) + ' device' + (c[4] === 1 ? '' : 's') +
+      ' · ' + esc(c[6]) + ' open ticket' + (c[6] === 1 ? '' : 's') +
+      (c[7] ? ' · ' + esc(c[7]) + ' assets' : '');
+  }
+
+  // opts lets a page override marker color/tooltip while reusing the same
+  // clustering/rendering plumbing — e.g. CDM colors by low-battery count and
+  // labels tooltips accordingly, instead of the default open-ticket severity.
+  function setData(rows, onClick, opts) {
     centers = rows || [];
-    if (!map) { pendingRender = function () { setData(centers, onClick); }; return; }
+    if (!map) { pendingRender = function () { setData(centers, onClick, opts); }; return; }
+    var colorFn = (opts && opts.colorFn) || function (c) { return ticketColor(c[6]); };
+    var tooltipFn = (opts && opts.tooltipFn) || defaultTooltip;
     cluster.clearLayers();
     var markers = centers.map(function (c) {
       var radius = Math.min(18, 5 + Math.sqrt(c[4] || 1) * 1.9);
-      var color = ticketColor(c[6]);
+      var color = colorFn(c);
       var marker = L.circleMarker([c[2], c[3]], {
         radius: radius, color: color, weight: 1.5, fillColor: color, fillOpacity: 0.4
       });
-      marker.bindTooltip(
-        esc(c[1]) + ' · ' + esc(c[4]) + ' device' + (c[4] === 1 ? '' : 's') +
-        ' · ' + esc(c[6]) + ' open ticket' + (c[6] === 1 ? '' : 's') +
-        (c[7] ? ' · ' + esc(c[7]) + ' assets' : ''),
-        { direction: 'top' });
+      marker.bindTooltip(tooltipFn(c), { direction: 'top' });
       marker.on('click', function () { onClick(c); });
       return marker;
     });

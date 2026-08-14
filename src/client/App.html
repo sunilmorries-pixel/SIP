@@ -65,11 +65,19 @@
     // state.centers/state.devices rather than fields ON them, because those two
     // objects are spread straight into the server query object.
     centerFilters: null, deviceFilters: null, numbersFilters: null, rawDataFilters: null,
+    cdmDeviceFilters: null,
     autoRefresh: true,
     countdown: REFRESH_SECONDS,
     loading: false,
     mapLoaded: false,
     mapBundle: null,
+    // CDM (Communicator Device Management) — self-contained payload (KPIs +
+    // charts + map), same pattern as mapLoaded/mapBundle; the explorer table
+    // is its own paginated fetch, mirroring devices/deviceRows/deviceTotal.
+    cdmLoaded: false,
+    cdmBundle: null,
+    cdmDevices: { sortBy: 'last_seen', sortDir: 'desc', page: 0, pageSize: 15 },
+    cdmDeviceRows: [], cdmDeviceTotal: 0,
     topLoaded: false,
     topBundle: null,
     execLoaded: false,
@@ -126,6 +134,50 @@
         });
       }
       return Promise.resolve({ rows: rows, totalRows: 11331, page: (args && args.page) || 0, pageSize: 15 });
+    }
+    if (fn === 'apiGetCdmDevices') {
+      var cdmRows = [];
+      for (var ci = 0; ci < 15; ci++) {
+        cdmRows.push({
+          device: 'H4-' + (100000 + rnd(0, 899999)).toString(16).toUpperCase(),
+          center: 'Demo Center ' + rnd(1, 400), hub: 'Demo Hub ' + rnd(1, 30),
+          last_seen: new Date(Date.now() - rnd(0, 96) * 36e5).toISOString().replace('T', ' ').slice(0, 19),
+          csq: rnd(3, 31), battery: String(rnd(5, 100)),
+          latency: rnd(0, 4) === 0 ? null : rnd(50, 20000),
+          retries: rnd(0, 4) === 0 ? null : rnd(0, 3),
+          space_avail: rnd(0, 3) === 0 ? null : rnd(900000, 970000),
+          ecg: rnd(0, 3) === 0 ? null : rnd(0, 40),
+          hardware: ['TR110', 'Helium Rev.4.2', 'Helium Rev.2', 'Hydro2'][rnd(0, 4)],
+          status: Charts.FLEET_ORDER[rnd(0, 4)]
+        });
+      }
+      return Promise.resolve({ rows: cdmRows, totalRows: 11331, page: (args && args.page) || 0, pageSize: 15 });
+    }
+    if (fn === 'apiGetCdmData') {
+      var cdmCenters = [];
+      for (var cm = 0; cm < 40; cm++) {
+        var devs = rnd(1, 20);
+        cdmCenters.push([
+          rnd(1000, 60000), 'Demo Center ' + rnd(1, 4000),
+          8 + Math.random() * 25, 70 + Math.random() * 25,
+          devs, rnd(0, devs), rnd(0, 5), rnd(3, 31),
+          'Demo Hub ' + rnd(1, 30), 40000 + rnd(1, 30), ['Karnataka', 'Maharashtra', 'Tamil Nadu'][rnd(0, 3)]
+        ]);
+      }
+      return Promise.resolve({
+        kpis: { total: 11331, online: 3120, avg_csq: 20.4, low_battery: 1033,
+          avg_latency: 8297.1, latency_reporting: 157, avg_retries: 0.1, unsynced_total: 1340,
+          avg_space: 962984, space_reporting: 3881, hw_mismatch: 1028, hw_both_reporting: 3122 },
+        signal: [{ k: 'Unknown', n: 8284 }, { k: 'Good', n: 1480 }, { k: 'Fair', n: 1072 },
+          { k: 'Poor', n: 208 }, { k: 'Excellent', n: 287 }],
+        battery: [{ k: 'Normal', n: 2162 }, { k: 'Low', n: 1033 }, { k: 'Unknown', n: 7483 }, { k: 'Charging', n: 653 }],
+        hardware: [{ hw: 'TR110', devices: 3708 }, { hw: 'Helium Rev.4.2', devices: 2116 },
+          { hw: 'Helium Rev.2', devices: 1085 }, { hw: 'Helium Rev.6', devices: 1003 },
+          { hw: 'Hydro2', devices: 704 }, { hw: 'Helium Rev.4', devices: 499 },
+          { hw: 'CGW', devices: 360 }, { hw: 'HydrogenD', devices: 308 }],
+        ecg: [{ k: '0', n: 257 }, { k: '1-5', n: 545 }, { k: '6-20', n: 348 }, { k: '21+', n: 2384 }],
+        centers: cdmCenters, unlocatedCenters: rnd(50, 200)
+      });
     }
     // NB: mockCall strips a trailing "CD" above, so these match the BASE names
     // — matching 'apiGetServiceCD' here silently never fires.
@@ -664,6 +716,12 @@
       kpiTile('kpiTomResolved', 'online', 'var(--ok)', 'Closed out', 'resolved without a visit') +
       kpiTile('kpiTomTat', 'clock', 'var(--info)', 'Avg TAT', 'days to close') +
       kpiTile('kpiTomOpen', 'inbox', 'var(--danger)', 'Unresolved', 'not resolved or no response');
+    $('cdmKpiGrid').innerHTML =
+      kpiTile('kpiCdmTotal', 'fleet', 'var(--secondary)', 'Total communicators', 'cloud_devices, matching filters') +
+      kpiTile('kpiCdmOnline', 'online', 'var(--ok)', 'Online now', 'heartbeat < 24h') +
+      kpiTile('kpiCdmSignal', 'signal', 'var(--info)', 'Avg signal', 'CSQ, higher = better') +
+      kpiTile('kpiCdmBattery', 'battery', 'var(--warn)', 'Low battery', '< 20% charge') +
+      kpiTile('kpiCdmHwMismatch', 'wrench', 'var(--violet)', 'HW version mismatch', 'cloud vs. device record');
     $('mapKpiGrid').innerHTML =
       kpiTile('mapCenters', 'building', 'var(--secondary)', 'Centers', 'matching filters') +
       kpiTile('mapDevices', 'fleet', 'var(--info)', 'Devices', 'at shown centers') +
@@ -1121,6 +1179,98 @@
     renderPager(state.deviceTotal, state.devices, 'deviceTableInfo', 'pageIndicator', 'prevPageBtn', 'nextPageBtn', 'devices');
   }
 
+  /* ── communicator explorer (CDM view) ───────────────────────────
+     Same shape as the Device explorer above, plus the cloud_devices fields
+     not surfaced anywhere else: Latency, Retries, free space, ECG count,
+     hardware version. No status chips/hub filter — global filters + search
+     already cover it, and this table is new enough not to need the parity. */
+  var CDM_COLUMNS = [
+    { key: 'device', label: 'Device', sortable: true },
+    { key: 'status', label: 'Status', sortable: false },
+    { key: 'center', label: 'Center', sortable: true },
+    { key: 'hub', label: 'Hub', sortable: true },
+    { key: 'last_seen', label: 'Last seen', sortable: true, num: true },
+    { key: 'csq', label: 'Signal', sortable: true, num: true },
+    { key: 'battery', label: 'Battery', sortable: true, num: true },
+    { key: 'latency', label: 'Latency', sortable: true, num: true },
+    { key: 'retries', label: 'Retries', sortable: true, num: true },
+    { key: 'space', label: 'Free space', sortable: true, num: true },
+    { key: 'ecg', label: 'ECG count', sortable: true, num: true },
+    { key: 'hardware', label: 'Hardware', sortable: false }
+  ];
+
+  function buildCdmDeviceHeader() {
+    $('cdmDeviceTableHead').innerHTML = CDM_COLUMNS.map(function (col) {
+      return sortableHeader(col, state.cdmDevices);
+    }).join('');
+    Array.prototype.forEach.call($('cdmDeviceTableHead').querySelectorAll('.th-sort'), function (btn) {
+      btn.addEventListener('click', function () {
+        var key = btn.getAttribute('data-sort');
+        if (state.cdmDevices.sortBy === key) {
+          state.cdmDevices.sortDir = state.cdmDevices.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.cdmDevices.sortBy = key;
+          state.cdmDevices.sortDir = 'desc';
+        }
+        state.cdmDevices.page = 0;
+        buildCdmDeviceHeader();
+        loadCdmDevices();
+      });
+    });
+  }
+
+  var cdmDevicesRequestId = 0;
+  function loadCdmDevices() {
+    var requestId = ++cdmDevicesRequestId;
+    $('cdmDeviceTableInfo').textContent = 'Loading…';
+    var sentFilters = JSON.parse(JSON.stringify(state.globalFilters));
+    var query = Object.assign({}, state.cdmDevices, { search: state.search, filters: state.globalFilters });
+    gsCall('apiGetCdmDevices', query)
+      .then(function (result) {
+        if (requestId !== cdmDevicesRequestId) return;
+        state.cdmDeviceFilters = sentFilters;
+        state.cdmDeviceRows = result.rows;
+        state.cdmDeviceTotal = result.totalRows;
+        renderCdmDeviceTable();
+      })
+      .catch(function (err) {
+        if (requestId !== cdmDevicesRequestId) return;
+        $('cdmDeviceTableInfo').textContent = 'Failed to load communicators';
+        toast('Communicator list failed: ' + err.message, 'error');
+      });
+  }
+
+  function renderCdmDeviceTable() {
+    var body = $('cdmDeviceTable').querySelector('tbody');
+    if (!state.cdmDeviceRows.length) {
+      body.innerHTML = '<tr><td colspan="' + CDM_COLUMNS.length + '">' +
+        '<div class="chart-empty" style="padding:32px 0">' +
+        '<strong>No communicators match</strong><span>Try clearing the search</span>' +
+        '</div></td></tr>';
+    } else {
+      body.innerHTML = state.cdmDeviceRows.map(function (r) {
+        var badge = STATUS_BADGES[r.status] || 'muted';
+        var batteryText = r.battery === '' ? '—' :
+          (isNaN(parseInt(r.battery, 10)) ? r.battery : parseInt(r.battery, 10) + '%');
+        return '<tr>' +
+          '<td><strong>' + escapeHtml(r.device) + '</strong></td>' +
+          '<td><span class="badge badge-' + badge + '">' + escapeHtml(r.status) + '</span></td>' +
+          '<td>' + escapeHtml(r.center || '—') + '</td>' +
+          '<td>' + escapeHtml(r.hub || '—') + '</td>' +
+          '<td class="num" title="' + escapeHtml(r.last_seen || '') + '">' + escapeHtml(relTime(r.last_seen)) + '</td>' +
+          '<td class="num">' + (r.csq == null ? '—' : escapeHtml(r.csq)) + '</td>' +
+          '<td class="num">' + escapeHtml(batteryText) + '</td>' +
+          '<td class="num">' + (r.latency == null ? '—' : FMT.format(r.latency) + ' ms') + '</td>' +
+          '<td class="num">' + (r.retries == null ? '—' : escapeHtml(r.retries)) + '</td>' +
+          '<td class="num">' + (r.space_avail == null ? '—' : FMT.format(r.space_avail)) + '</td>' +
+          '<td class="num">' + (r.ecg == null ? '—' : FMT.format(r.ecg)) + '</td>' +
+          '<td>' + escapeHtml(r.hardware || '—') + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    renderPager(state.cdmDeviceTotal, state.cdmDevices, 'cdmDeviceTableInfo', 'cdmPageIndicator', 'cdmPrevPageBtn', 'cdmNextPageBtn', 'communicators');
+  }
+
   /* ── TOM page (tom_tickets) ────────────────────────────────────
      Sort keys are the underlying column names, matching TOM_SORT_KEYS in
      TomTickets.js — not the aliased output names the rows carry. */
@@ -1542,6 +1692,50 @@
       });
   }
 
+  /* ── CDM (Communicator Device Management) ─────────────────────
+   * Compact center-row indices for the CDM map — a SEPARATE shape from the
+   * main Map's CI (index 6 is low-battery count here, not open tickets), but
+   * deliberately keeps low-battery at index 6 so MapView's default colorFn
+   * (ticketColor(c[6])) still applies unmodified — only the tooltip differs. */
+  var CDMI = { id: 0, name: 1, lat: 2, lng: 3, devices: 4, online: 5, lowBattery: 6, avgCsq: 7, hub: 8, hubId: 9, state: 10 };
+
+  function cdmTooltip_(c) {
+    var n = c[CDMI.devices] || 0, lb = c[CDMI.lowBattery] || 0;
+    return escapeHtml(c[CDMI.name]) + ' · ' + n + ' communicator' + (n === 1 ? '' : 's') +
+      ' · ' + lb + ' low-battery' +
+      (c[CDMI.avgCsq] == null ? '' : ' · avg signal ' + escapeHtml(c[CDMI.avgCsq]));
+  }
+
+  function renderCdmKpis(k) {
+    k = k || {};
+    setKpi('kpiCdmTotal', k.total || 0);
+    var onlinePct = k.total ? Math.round((k.online || 0) / k.total * 1000) / 10 : null;
+    setKpiText('kpiCdmOnline', onlinePct == null ? '—' : onlinePct + '%',
+      FMT.format(k.online || 0) + ' of ' + FMT.format(k.total || 0));
+    setKpiText('kpiCdmSignal', k.avg_csq == null ? '—' : String(k.avg_csq), 'CSQ, higher = better');
+    setKpi('kpiCdmBattery', k.low_battery || 0);
+    var mismatchPct = k.hw_both_reporting ? Math.round((k.hw_mismatch || 0) / k.hw_both_reporting * 1000) / 10 : null;
+    setKpiText('kpiCdmHwMismatch', mismatchPct == null ? '—' : mismatchPct + '%',
+      FMT.format(k.hw_mismatch || 0) + ' of ' + FMT.format(k.hw_both_reporting || 0) + ' reporting both');
+  }
+
+  function loadCdmData() {
+    gsCall(ep('apiGetCdmData'), { filters: state.globalFilters })
+      .then(function (payload) {
+        state.cdmLoaded = true;
+        state.cdmBundle = payload;
+        renderCdmKpis(payload.kpis);
+        Charts.jiraStatus(payload.signal, 'chartCdmSignal');
+        Charts.jiraStatus(payload.battery, 'chartCdmBattery');
+        Charts.cdmHardware(payload.hardware);
+        Charts.cdmEcg(payload.ecg);
+        cdmMap.setData(payload.centers, CenterDetail.open, { tooltipFn: cdmTooltip_ });
+      })
+      .catch(function (err) {
+        toast('CDM data failed: ' + err.message, 'error');
+      });
+  }
+
   /** Populates a <select>, preserving the current selection if still present. */
   function fillSelect(id, values, allLabel) {
     var el = $(id);
@@ -1864,7 +2058,7 @@
     // Numbers/Raw Data now respect the global filter too (per user,
     // 2026-08-13); they refetch below when active, and via activateTab's
     // numbersFilters/rawDataFilters staleness check otherwise.
-    state.execLoaded = false; state.mapLoaded = false; state.topLoaded = false;
+    state.execLoaded = false; state.mapLoaded = false; state.topLoaded = false; state.cdmLoaded = false;
     // Invalidate the dashboard payload by marking WHICH filters it belongs to as
     // unknown — NOT by nulling the payload itself. activateTab's refetch guard
     // reads `state.lastDashboard && !filtersEqual_(state.dashFilters, ...)`, so
@@ -1883,6 +2077,10 @@
     if (sharesPayload) loadDashboard(false);
     if (state.activeTab === 'tab-map') { state.mapLoaded = false; loadMapData(); }
     if (state.activeTab === 'tab-topcust') { state.topLoaded = false; loadTopCustomers(); }
+    if (state.activeTab === 'tab-cdm') {
+      state.cdmLoaded = false; state.cdmDevices.page = 0;
+      loadCdmData(); loadCdmDevices();
+    }
     if (state.activeTab === 'tab-overview') { state.execLoaded = false; loadExec(); }
     if (state.activeTab === 'tab-numbers') { loadNumbers(); loadCdRaw(); }
     if (state.activeTab === 'tab-rawdata') { state.rawData.page = 0; loadRawTable(); }
@@ -2245,6 +2443,7 @@
 
   var mainMap = MapView('assetMap');
   var tcMap = MapView('tcMap');
+  var cdmMap = MapView('cdmMap');
   var CenterDetail = makeCenterDetail({
     panel: 'centerDrawer', scrim: 'centerScrim',
     title: 'centerDrawerTitle', sub: 'centerDrawerSub', body: 'centerDrawerBody'
@@ -2271,14 +2470,26 @@
     if (state.topLoaded) renderTopCustomers(state.topBundle);
   }
 
-  function applySidebarCollapsed(collapsed, persist) {
-    document.body.classList.toggle('sidebar-collapsed', collapsed);
+  /**
+   * The sidebar rests as a narrow icon-only "bubble" and expands into the
+   * full nav on hover/focus (pure CSS, see Styles.html — .app-main never
+   * reflows for a hover). "Pinned" makes the expanded state the resting
+   * one instead, for anyone who wants the labels on screen permanently.
+   */
+  function applySidebarPinned(pinned, persist) {
+    document.body.classList.toggle('sidebar-pinned', pinned);
     var btn = $('sidebarCollapseBtn');
     if (btn) {
-      btn.setAttribute('aria-expanded', String(!collapsed));
-      btn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+      btn.setAttribute('aria-expanded', String(pinned));
+      btn.setAttribute('aria-label', pinned ? 'Unpin sidebar' : 'Pin sidebar open');
+      // Unlike the old always-expanded sidebar, this label is only ever on
+      // screen once the rail is already wide (pinned, or mid hover/focus
+      // peek) — so, unlike before, it must match whichever of those two
+      // visible states is live, not just a static caption.
+      var label = btn.querySelector('span');
+      if (label) label.textContent = pinned ? 'Unpin' : 'Pin open';
     }
-    if (persist) localStorage.setItem('sip.sidebarCollapsed', collapsed ? '1' : '0');
+    if (persist) localStorage.setItem('sip.sidebarPinned', pinned ? '1' : '0');
     // Charts/maps size themselves off the viewport at render time — the
     // sidebar width change needs a resize tick so they don't stay stale.
     // .app-main's width transitions over --dur, so a resize fired only now
@@ -2503,7 +2714,7 @@
   }
 
   /* ── tabs ────────────────────────────────────────────────────── */
-  var TAB_IDS = ['tab-overview', 'tab-asset', 'tab-centers', 'tab-support', 'tab-service', 'tab-tom', 'tab-map', 'tab-topcust', 'tab-numbers', 'tab-rawdata'];
+  var TAB_IDS = ['tab-overview', 'tab-asset', 'tab-centers', 'tab-support', 'tab-service', 'tab-tom', 'tab-cdm', 'tab-map', 'tab-topcust', 'tab-numbers', 'tab-rawdata'];
 
   /* ── hash routing (#overview, #asset, …) ─────────────────────── */
   function pageOf(tabId) { return tabId.replace('tab-', ''); }
@@ -2551,6 +2762,10 @@
       tcMap.ensureMap();
       if (!state.topLoaded) loadTopCustomers();
     }
+    if (tabId === 'tab-cdm') {
+      cdmMap.ensureMap();
+      if (!state.cdmLoaded) { loadCdmData(); loadCdmDevices(); }
+    }
     var serviceStale = state.serviceFilters && !filtersEqual_(state.serviceFilters, state.globalFilters);
     var tomStale = state.tomFilters && !filtersEqual_(state.tomFilters, state.globalFilters);
     if (tabId === 'tab-tom' && (!state.tomLoaded || tomStale)) {
@@ -2591,6 +2806,10 @@
     if (tabId === 'tab-asset' && state.deviceFilters && !filtersEqual_(state.deviceFilters, state.globalFilters)) {
       state.devices.page = 0;
       loadDevices();
+    }
+    if (tabId === 'tab-cdm' && state.cdmDeviceFilters && !filtersEqual_(state.cdmDeviceFilters, state.globalFilters)) {
+      state.cdmDevices.page = 0;
+      loadCdmDevices();
     }
 
     updateHash();
@@ -3091,6 +3310,7 @@
     buildKpiSkeletons();
     buildDeviceHeader();
     buildStatusChips();
+    buildCdmDeviceHeader();
     buildCenterHeader();
     buildServiceHeader();
     buildTomHeader();
@@ -3105,10 +3325,10 @@
     $('themeDark').addEventListener('click', function () { applyTheme('dark', true); });
     $('themeLight').addEventListener('click', function () { applyTheme('light', true); });
 
-    // Sidebar collapse (persisted).
-    applySidebarCollapsed(localStorage.getItem('sip.sidebarCollapsed') === '1', false);
+    // Sidebar pin (persisted) — unpinned/bubble by default.
+    applySidebarPinned(localStorage.getItem('sip.sidebarPinned') === '1', false);
     $('sidebarCollapseBtn').addEventListener('click', function () {
-      applySidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'), true);
+      applySidebarPinned(!document.body.classList.contains('sidebar-pinned'), true);
     });
 
     // Auto-refresh now runs unconditionally in the background.
@@ -3190,6 +3410,14 @@
       state.centers.page += 1;
       loadCenters();
     });
+    $('cdmPrevPageBtn').addEventListener('click', function () {
+      state.cdmDevices.page = Math.max(0, state.cdmDevices.page - 1);
+      loadCdmDevices();
+    });
+    $('cdmNextPageBtn').addEventListener('click', function () {
+      state.cdmDevices.page += 1;
+      loadCdmDevices();
+    });
     $('exportCsvBtn').addEventListener('click', exportCsv);
 
     // Shared center drawer close (button, scrim click, Esc).
@@ -3268,6 +3496,7 @@
     else if (state.activeTab === 'tab-tom') { state.tom.page = 0; loadTomTickets(); }
     else if (state.activeTab === 'tab-map') applyMapFilters();
     else if (state.activeTab === 'tab-topcust') renderTcTable(topCustFilteredRows());
+    else if (state.activeTab === 'tab-cdm') { state.cdmDevices.page = 0; loadCdmDevices(); }
   }
 
   /**
@@ -3280,6 +3509,7 @@
   var SEARCH_TAB_INFO = {
     'tab-overview': { disabled: true, placeholder: "Search isn't available on this page" },
     'tab-asset': { placeholder: 'Search devices by ID, center or hub…' },
+    'tab-cdm': { placeholder: 'Search communicators by ID, center or hub…' },
     'tab-centers': { placeholder: 'Search customers by name, ID, hub or state…' },
     'tab-support': { placeholder: 'Search by center ID or ticket number…' },
     'tab-service': { placeholder: 'Search service tickets by id, contact or engineer…' },

@@ -1,22 +1,26 @@
 # Data Sources — SIP Insights
 
-The dashboard is powered **entirely by BigQuery tables** in `tricogde-dwh.abi_tables`
-(migrated 2026-07-22 from the `magnaquest-sand-box.abi_team_sip_devtest_poc` dev/test dataset
-— same six table names, byte-identical schema, live-verified). **No Google Sheets remain as
-data sources** — the CS/Service tracker Sheet was removed 2026-07-29, and the Jira devices
-Sheet was removed 2026-07-30 (see below for both). The `sql/*.lineage.sql` files describe the
-upstream DWH queries that originally produced these tables — read them for column semantics.
+The dashboard is powered **entirely by BigQuery tables** in `tricogde-dwh.abi_tables`. The
+original six tables (migrated 2026-07-22 from the `magnaquest-sand-box.abi_team_sip_devtest_poc`
+dev/test dataset — same names, byte-identical schema, live-verified) were joined by two more as
+of 2026-08-14: `tom_tickets` (TOM page) and `servicewrk_Tickets` (Service page). **No Google
+Sheets remain as data sources** — the CS/Service tracker Sheet was removed 2026-07-29, and the
+Jira devices Sheet was removed 2026-07-30 (see below for both). The `sql/*.lineage.sql` files
+describe the upstream DWH queries that produced the original six tables — read them for column
+semantics (no equivalent lineage file exists yet for `tom_tickets`/`servicewrk_Tickets`).
 
 ## BigQuery tables
 
 | Table | Grain | Powers | Watch out |
 |---|---|---|---|
-| `center_details` | dup rows per center (~35.8k rows; **27,410** distinct centers) | **SOLE center source** — all center counts, uptime/MTBF/health, geo, deployment age | `COUNT(DISTINCT CenterID)` always; no F2P baseline (`cdFilter_()` unconditionally returns `1=1`, removed 2026-07-22); `Status` is one of the 5 global-filter dimensions (multi-select, defaults to `ACTIVE` as a removable chip), not a toggle; has `Current_MRR`/`Device_Rental`/`Status`/`Spoke_Center_Segment`, and (since the 2026-07-07 reload) `DeviceID`/`MacSerialID`/`MachineType` too — `deviceCenterMap_()` in `Numbers.js` uses them as a fallback serial→center source behind `cloud_devices` |
-| `cloud_devices` | 1 row / device (~11.3k) | Fleet-status donut, device explorer, **serial→center bridge** | `LastTimeStamp` is **IST wall-time** (+330 min at load — see `sql/cloud_devices.lineage.sql:9`); `BatteryLevel` can be `"Charging"`; epoch-1970 = never seen |
-| `zoho_data` | 1 row / ticket (~84.5k) | Support view: ticket analytics, SLA compliance, uptime downtime proxy | `CreatedAt`/`ClosedAt` are **strings** `02-Jul-2026 04:59:16 PM` → `SAFE.PARSE_DATETIME('%d-%b-%Y %I:%M:%S %p', …)`; priority often empty; **lacks** business-hours SLA fields (blocks FCR/FRT/CHI) |
+| `center_details` | dup rows per center (~35.8k rows; **27,410** distinct centers) | **SOLE center source** — all center counts, uptime/MTBF/health, geo, deployment age | `COUNT(DISTINCT CenterID)` always; no F2P baseline (`cdFilter_()` unconditionally returns `1=1`, removed 2026-07-22); `Status` is one of the global-filter dimensions (multi-select, defaults to `ACTIVE` as a removable chip), not a toggle; has `Current_MRR`/`Device_Rental`/`Status`/`Spoke_Center_Segment`, and (since the 2026-07-07 reload) `DeviceID`/`MacSerialID`/`MachineType` too — `deviceCenterMap_()` in `Numbers.js` uses them as a fallback serial→center source behind `cloud_devices`. **Country filter source switched from `Spoke_Country` to `hub_country` (v5.33, 2026-08-14)** — `Spoke_Country` had ~9% NULLs plus data-entry noise (typos, a city name, a continent name); `hub_country` is used everywhere the country dimension is derived (`centerAttrCond_`, `countryOptions`, `centerBaseSpecCD_`, the center-detail drawer, and `Geo.js`'s geocode-key source) |
+| `cloud_devices` | 1 row / device (~11.3k) | Fleet-status donut, device explorer, **serial→center bridge**, and (v5.33) the **CDM (Communicator Device Management) page** | `LastTimeStamp` is **IST wall-time** (+330 min at load — see `sql/cloud_devices.lineage.sql:9`); `BatteryLevel` can be `"Charging"`; epoch-1970 = never seen |
+| `zoho_data` | 1 row / ticket (~80k after dedup + unassigned-ticket exclusion, v5.22/v5.23) | Support view: ticket analytics, SLA compliance, uptime downtime proxy | `CreatedAt`/`ClosedAt` are native **DATETIME in production** (they were strings in the sandbox — `PARSE_DATETIME` on a DATETIME column crashed live until the v5.24 hotfix, 2026-08-13); priority often empty; **lacks** business-hours SLA fields (blocks FCR/FRT/CHI); the raw table has duplicate rows and unassigned (no-CenterID) tickets — deduped/excluded for every consumer except the Raw Data page, which intentionally shows the true raw count |
 | `device_metrics` | device rows, duplicated | Reliability watchlist (downtime index) | Dedupe with `GROUP BY deviceid`; AVG/MAX only, never SUM |
 | `device_center_mapping` | 1 row / device-center window (~56k) | **Retired as a user-facing source** — retained only for legacy Jira-asset serial linking | Was the old centers/geo source before the center_details migration (v4.4) |
-| `jira_data` | issue × changelog rows (~49.9k rows; ~45.4k distinct `issue_key`) | **THE devices/fleet source** (`readJiraData_()` in `Numbers.js`, since 2026-07-30) — devices/fleet count, asset lifecycle, cohort/FTF analysis, map/drawer asset lists | `GROUP BY issue_key` + `ANY_VALUE`/`MIN` — issue-level fields (`summary`/`status_name`/`issuetype_name`/`ticket_created`/`customerid`) come from the issue side of the upstream LEFT JOIN and are constant per `issue_key`, so no "latest changelog row" logic is needed |
+| `jira_data` | issue × changelog rows (~49.9k rows; ~45.4k distinct `issue_key`) | **THE devices/fleet source** (`readJiraData_()` in `Numbers.js`, since 2026-07-30) — devices/fleet count, asset lifecycle, cohort/FTF analysis, map/drawer asset lists | `GROUP BY issue_key` + `ANY_VALUE`/`MIN` — issue-level fields (`summary`/`status_name`/`issuetype_name`/`ticket_created`/`customerid`) come from the issue side of the upstream LEFT JOIN and are constant per `issue_key`, so no "latest changelog row" logic is needed. Device-type filter (`CONFIG.JIRA_NON_DEVICE_TYPES`) excludes only Task/Epic/Test — every other Issue Type counts as a device |
+| `tom_tickets` | 1 row / issue (1,325 rows, 2025-12-30 → 2026-08-12) | **TOM page** (`TomTickets.js`, v5.30) — CS-owned issue/escalation tracker | Loaded from monthly spreadsheet tabs (`source_tab`, e.g. "2026 \| June 2026"). `remarks` is the OUTCOME column despite its name (Issue Resolved/Auto Resolved/Not resolved/etc.) — **this framing is inferred from the data, not confirmed by the CS team** (asked twice, no answer as of 2026-08-14). `t_o_m` is a single constant value ("Saidha") across all rows — unusable, deliberately not surfaced. `comments` is 98.3% null — can't carry the page even though it hints at machine-swap/HQ-dispatch activity. Filter coverage is **Centre + date range only** — no state/city/segment/hub columns exist on this table |
+| `servicewrk_Tickets` | 1 row / ticket (36,403 rows, `ticket_id` unique — no dedupe needed, unlike `zoho_data`) | **Service page** (`ServiceWrk.js`, v5.29) — field-service ticket analytics | **Deliberately NOT the Machine Uptime (M-A1) source**, despite earlier docs/Config.js comments anticipating that swap once this table landed: `created_on`/`closed_date` are **date-only** (886 distinct values across ~947 days — no same-day downtime resolution), only 870/36,403 rows are `ticket_type='BREAKDOWN'`, and coverage starts 2024-01-08 while center `life` reaches years further back. See `docs/superpowers/specs/2026-08-13-service-tom-pages-design.md` §4.1. **Do not "fix" this** — the uptime engine stays on the `zoho_data` proxy. Filter coverage is the table's own state/city/customer_category columns, not the global center dimensions. The `servicewrk_Tickets.customer_id` → `center_details.CenterID` join has **not yet been verified** (see `ProfileNewSources.js`/`profileJoinKeys()` — open item) |
 
 ## jira_data — the devices/fleet source (switched from a Google Sheet, 2026-07-30)
 
@@ -78,9 +82,11 @@ device). Server layer: `src/server/RawData.js` (`rawSources_()`, `apiGetRawPage(
 
 ## Machine Uptime % (TRD M-A1 — North-Star)
 
-The canonical North-Star KPI. Canonical source is **ServiceWRK** (not yet in the sandbox),
-so it's built here as a **ticket-based proxy** at **center grain** (`centerUptimeSql_` in
-`Queries.js`):
+The canonical North-Star KPI. `servicewrk_Tickets` (ServiceWRK) landed 2026-08-14 (v5.29) —
+**this section previously said "swap the `tix` CTE source when ServiceWRK lands"; that decision
+was reversed once the table was actually profiled.** It's built here as a **ticket-based proxy**
+at **center grain** (`centerUptimeSql_` in `Queries.js`), sourced from `zoho_data`, **and stays
+that way**:
 - **Downtime** = UNION of *merged* device-failure ticket intervals `[CreatedAt, ClosedAt|NOW]`
   from `zoho_data` (overlaps counted once, not summed — unlike the old cumulative %). Failure
   tickets = `IssueCategory` matching `CONFIG.FAILURE_CATEGORY_REGEX` (machine/device/hardware/
@@ -90,7 +96,14 @@ so it's built here as a **ticket-based proxy** at **center grain** (`centerUptim
   `device_center_mapping.startdatetime`.
 - **Uptime %** = `(life − downtime) / life × 100`, clamped 0–100.
 - Fleet KPI = AVG(center uptime) + % of centers ≥ 99%. SLA bands: Critical 99.5 / Standard 95 / Dev 90.
-- When ServiceWRK lands, swap the `tix` CTE source; the merged-interval engine stays.
+- **Why ServiceWRK was NOT swapped in, despite this doc previously saying it would be:**
+  `created_on`/`closed_date` on `servicewrk_Tickets` are date-only (886 distinct values across
+  ~947 days — no same-day downtime resolution), only 870 of 36,403 rows are
+  `ticket_type='BREAKDOWN'`, and its coverage only starts 2024-01-08 while center `life` reaches
+  years further back. The `customer_id` → `CenterID` join is also still unverified. See
+  `src/server/ServiceWrk.js`'s docblock and `docs/superpowers/specs/2026-08-13-service-tom-pages-design.md`
+  §4.1. **Do not "fix" this without re-reading that reasoning first** — it was a deliberate,
+  profiled decision, not an oversight.
 - Powers: the "Fleet uptime" KPI (Overview + Asset) and the Reliability watchlist.
 - **Live engine note:** the failure-ticket filter shown above (`FAILURE_CATEGORY_REGEX`) is
   the legacy `centerUptimeSql_`/`Queries.js` description; the live path

@@ -20,18 +20,27 @@
                                                         └─────────────────────────┘
 ```
 
+## Pages
+
+Overview · Asset · **CDM** (Communicator Device Management, new v5.33 — `cloud_devices`,
+battery/signal/hardware-mix) · Centers · Customers (Top Customers) · Support/CS · **Service**
+(new v5.29 — `servicewrk_Tickets`) · **TOM** (new v5.30 — `tom_tickets`) · Numbers · Raw Data.
+Every page now has a real data source — there are no "not yet connected" placeholder cards left.
+
 ## Data sources
 
-See `docs/SOURCES.md` for the full source-of-truth table. Summary of current roles (v5.0):
+See `docs/SOURCES.md` for the full source-of-truth table. Summary of current roles:
 
 | Source | Rows | Role in the dashboard |
 |---|---|---|
-| `center_details` (BQ) | ~35.8k rows / 27,410 distinct centers (dup rows per center; no F2P-exclusion — full universe) | **Sole center source** — counts, uptime/MTBF/health, geo, deployment age |
+| `center_details` (BQ) | ~35.8k rows / 27,410 distinct centers (dup rows per center; no F2P-exclusion — full universe) | **Sole center source** — counts, uptime/MTBF/health, geo, deployment age. Country filter derives from `hub_country` (switched from `Spoke_Country`, v5.33 — see docs/SOURCES.md) |
 | `jira_data` (BQ) | ~49.9k rows / ~45.4k distinct devices (changelog grain, `GROUP BY issue_key`) | **Devices/fleet count, asset lifecycle, cohort/FTF analysis**; serial (from `summary`) → center via `cloud_devices`/`center_details` |
-| `cloud_devices` (BQ) | ~11.3k | Fleet-status donut, device explorer, serial→center bridge |
-| `zoho_data` (BQ) | ~84.5k | Support tickets, SLA compliance, uptime-downtime proxy. Date strings via `SAFE.PARSE_DATETIME('%d-%b-%Y %I:%M:%S %p', …)` |
+| `cloud_devices` (BQ) | ~11.3k | Fleet-status donut, device explorer, serial→center bridge, and the CDM page |
+| `zoho_data` (BQ) | ~80k (post-dedup + unassigned-ticket exclusion, v5.22/v5.23) | Support tickets, SLA compliance, uptime-downtime proxy. `CreatedAt`/`ClosedAt` are native DATETIME in production (not strings, despite the sandbox — a live-crashing assumption fixed in the v5.24 hotfix) |
 | `device_metrics` (BQ) | dup rows | Reliability watchlist — deduped with `GROUP BY deviceid` |
 | `device_center_mapping` (BQ) | — | **Retired as a user-facing source** (legacy serial-linking only, read internally by `Geo.js` history) |
+| `tom_tickets` (BQ) | 1,325 rows | **TOM page** (v5.30) — CS issue tracker. Centre + date filter only; page framing is an unconfirmed inference (see docs/SOURCES.md) |
+| `servicewrk_Tickets` (BQ) | ~36.4k rows | **Service page** (v5.29) — field-service tickets. Deliberately NOT wired into the Machine Uptime KPI (data-quality reasons, see docs/SOURCES.md) — that stays on the `zoho_data` proxy |
 
 **No Google Sheets remain as data sources.** The CS/Service tracker Sheet was removed
 2026-07-29 (TAT/machine/issue-type/owner panels on Support/CS, plus Overview's field-TAT KPI —
@@ -70,9 +79,11 @@ ever leave BigQuery for the device explorer, which is paginated server-side
 ### 3. Caching
 Every filter-aware endpoint (`apiGetDashboardCD`, `apiGetMapDataCD`, `apiGetTopCustomersCD`,
 `apiGetExecOverviewCD`, …) keys its `CacheService`/large-cache entry on a version tag
-(currently `_v6_`) + the current cache epoch (`getCacheEpoch_()`, a counter in Script
-Properties) + a hash of the active 5-dimension filter set (`filterHash_(filters)`) — e.g.
-`dashcd_v6_<epoch>_<filterHash>_<hub>`. `clearDashboardCache()` in `Setup.js` bumps
+(bumped often as filters/queries change — check the current value in-code rather than trusting
+a specific tag quoted here) + the current cache epoch (`getCacheEpoch_()`, a counter in Script
+Properties) + a hash of the active filter set (`filterHash_(filters)` — 7 dimensions as of
+v5.33: Segment/Status/State/Hub/City/Country/Center, up from the original 4) — e.g.
+`dashcd_v<N>_<epoch>_<filterHash>_<hub>`. `clearDashboardCache()` in `Setup.js` bumps
 `CACHE_EPOCH` by one, instantly invalidating every existing filtered variant at once
 instead of enumerating segment values one by one; the handful of caches that don't vary
 by filter (Center-360 base fetch, Numbers, raw-sheet snapshots) are removed directly.

@@ -1,14 +1,21 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-14 · **Live version:** 5.30 · **Status:** ✅ **Git, the Apps Script
-editor, and production are in sync.** Production
+**Last updated:** 2026-08-14 · **Live version:** 5.33 · **Status:** ✅ **Production is deployed
+from `main`; git has 1 commit production hasn't picked up yet (see below).** Production
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always)
-serves Apps Script **@59 / v5.30**, built from git `main` @ **`4630b67`**. No tag cut for
-v5.27–v5.30. v5.21–v5.25 and v5.27–v5.30 were deployed **without** tags; only `v5.16`–`v5.18`,
+serves Apps Script **@62 / v5.33**, built from git `main` @ **`15eca0b`**. `main`'s current tip is
+`7d98b69` (a local-tooling-only commit, see below — nothing to redeploy for it). No tag cut for
+v5.27–v5.33. v5.21–v5.25 and v5.27–v5.33 were deployed **without** tags; only `v5.16`–`v5.18`,
 `v5.20` and `v5.26` are tagged, so tags are not a reliable release index.
+
+**`7d98b69` (2026-08-14, git only, not deployed):** local preview server switched from a
+hardcoded port 8765 to `autoPort` (`.claude/launch.json`) + reading `$env:PORT`
+(`scripts/build_preview.ps1`) — port 8765 was occupied by an unrelated process on the dev
+machine. Dev-tooling only; doesn't touch `src/`, no redeploy needed.
 
 **The Service and TOM pages are no longer placeholders** (v5.29, v5.30). Every page in the nav now
 has a real data source; there are no "Data source not yet connected" cards left in `Index.html`.
+**CDM (Communicator Device Management) is a new page as of v5.33** — see its own entry below.
 
 ⚠️ **`CONFIG.APP_VERSION` / `APP_DEPLOYED_AT` must be set to the version THIS DEPLOY WILL CREATE
 — i.e. (current live `@N`) + 1 — in the same change as the `clasp deploy`.** Nothing derives them
@@ -30,6 +37,60 @@ reverted by the other's save at least once. Consequences to know:
 - **Before editing `src/client/App.html` / `Index.html` / `Styles.html`, re-read the file
   immediately before and after each edit** and grep for your own identifier to confirm the change
   survived. A successful Edit call is not proof the change is still on disk a minute later.
+
+### v5.33 / @62 (2026-08-14) — CDM page, hub_country country filter, Support KPI grid fix
+
+> Commit `54a5962`. **CDM (Communicator Device Management)** — new page next to Asset, sourced
+> from existing `cloud_devices` (no new table): map colored by low-battery severity, KPIs
+> (total/online/avg signal/low battery/HW-version mismatch), 4 charts (signal quality, battery
+> status, hardware model mix, ECG readings), and a paginated communicator explorer surfacing
+> Latency/Retries/SpaceAvailable/EcgCounter/hardware-version fields not shown anywhere else in
+> the app. `MapView.setData` gained an optional `colorFn`/`tooltipFn` override (backward-compatible)
+> so CDM's map reuses the existing clustering/rendering plumbing instead of duplicating it.
+>
+> **Country filter switched from `Spoke_Country` to `hub_country`** everywhere it's derived
+> (`centerAttrCond_`, `countryOptions`, `centerBaseSpecCD_`, the center-detail drawer, Geo.js's
+> geocode-key source) — `Spoke_Country` has ~9% NULLs plus data-entry noise (typos, a city name,
+> a continent name) that `hub_country` doesn't have. Every cache key that transitively depends on
+> the country filter was bumped so no endpoint serves pre-change cached results. `docs/SOURCES.md`
+> and `docs/ARCHITECTURE.md` were stale on this (and on `tom_tickets`/`servicewrk_Tickets`/the
+> CDM page generally) as of this deploy — **both fixed in this same catch-up pass** (see commit
+> after this one).
+>
+> **Support page**: KPI grid switched to `kpi-grid-4` (was the bare 6-column default rendering
+> only 4 tiles with an empty gap) to match Centers/Service/TOM/Map.
+>
+> **Also bundled in**: the profiling-tooling change from `dffa0fd` (see below) and this session's
+> in-progress sidebar redesign (hover-to-expand icon rail with a pin toggle; Tricog mark moved
+> from the sidebar into the topbar) — **concurrent work from another active session on this
+> repo, bundled in per explicit user instruction rather than surgically separated out.**
+>
+> **`dffa0fd` (2026-08-14, profiling tooling, no version bump of its own):** `profileJoinKeys()`
+> now also collects its output into an array (`profileJoinKeysText_()` returns it as one string)
+> instead of `Logger.log`-only — motivated by `clasp run` not being available (project isn't
+> deployed as an API executable) and the two new tables (`tom_tickets`/`servicewrk_Tickets`) only
+> being readable by this script's service account, so there's no way to run this check from a
+> workstation. A `doGet(?diag=joinkeys)` branch was tried to read it back remotely and reverted —
+> it rendered, but the browser-automation tool lacks host permission for
+> `script.google.com/a/macros/tricog.com/*`, so the output still couldn't be read back, and a
+> live diagnostic endpoint risked being swept into a deploy by the concurrent session. **The
+> actual join-key question (does `servicewrk_Tickets.customer_id` / `tom_tickets.center_id`
+> resolve to `center_details.CenterID`?) is still unanswered** — `profileJoinKeys()` needs to be
+> run directly in the Apps Script editor and its log read by hand.
+
+### v5.32 / @61 (2026-08-14) — rankBar chart axis-label fix
+
+> Commit `678496f`. Removed the redundant/overlapping value (x-)axis from every `rankBar` chart
+> instance — 12 total: 5 on TOM, 3 on Service, 3 on Top Customers, 1 on Overview. The axis
+> duplicated the value already shown as a bar-end label, and the two frequently overlapped.
+
+### v5.31 / @60 (2026-08-14) — redeploy only, no code change
+
+> Commit `c521977` touches only `Config.js` (verified — `git show c521977` has zero diff outside
+> the version bump). Commit message says "filter-drawer coverage note deployed to the stable
+> URL," but that note was already committed earlier (as part of v5.30/`4630b67` or the `456ed7c`
+> docs commit); this deploy just re-cut the version to actually ship whatever had accumulated
+> since @59. No functional change to attribute to v5.31 specifically.
 
 ### v5.30 / @59 (2026-08-14) — TOM page on `tom_tickets`
 
@@ -1261,14 +1322,15 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 14. **(from 2026-07-31 review) Add real focus-trap + focus-restore to both drawers** (`#filterDrawer` AND `#centerDrawer` — live-reproduced escaping into background content on the center-detail drawer, not just the filter drawer already parked above in the 2026-07-29 fix-wave notes).
 15. **(from 2026-07-31 review) Decide the fate of the confirmed-dead non-CD code** in `Api.js`/`ExecOverview.js`/`TopCustomers.js` (verified via grep — `ep()` at `App.html:73` always routes to the `CD` endpoints) — either delete it or explicitly document why it's intentionally retained, before someone "fixes a bug" in a file the client never calls.
 16. **(from 2026-07-31 review) Investigate the Overview-vs-Centers-tab KPI count mismatch** — Overview shows 18,370 centers, the Centers-tab KPI strip shows 28,482 "all centers", both under the identical default "Status: Active" filter chip. Not yet root-caused; may be a fresh instance of the SQL-vs-JS filter-path disagreement class the 2026-07-29 fix wave already fixed once for Hub/State (item I4/I8 above).
-17. **(v5.29/v5.30) Run `profileJoinKeys` in the Apps Script editor** — `src/server/ProfileNewSources.js` is a temporary read-only diagnostic. `profileNewSources()` has been run (its output shaped both new pages); **`profileJoinKeys()` has NOT.** It answers whether `servicewrk_Tickets.customer_id` and `tom_tickets.center_id` actually resolve to `center_details.CenterID`, whether the `zoho_ticket`/`zoho_id` cross-references resolve to `zoho_data.ticketNumber`, and whether ANY row carries time-of-day. **If centre coverage is good, Hub/Centre filtering and centre-drawer click-through can be added to both new pages** (they are currently ignored — see each page's filter-coverage note). Delete the whole file once it has served its purpose.
-18. **(v5.30) Confirm what TOM actually is.** The page is built as a CS issue tracker because `remarks` records outcomes, but the user was asked twice and did not answer, and `comments` hints at machine transfers. If it's really machine movement, re-frame the page's labels/KPIs around movements and turnaround — the underlying queries mostly survive.
-19. **(v5.29/v5.30) `Charts.rankBar` x-axis labels collide in narrow `span-4` cards** — visible on "Top service types" (Service) and the three Top Customers charts. Pre-existing, not introduced by the new pages, so it was deliberately left alone rather than changing five charts' rendering during a release. `rankBar` already prints the value at the end of each bar, so the x-axis is arguably redundant at that width and could simply be hidden.
+17. **(v5.29/v5.30) Run `profileJoinKeys` in the Apps Script editor** — `src/server/ProfileNewSources.js` is a temporary read-only diagnostic. `profileNewSources()` has been run (its output shaped both new pages); **`profileJoinKeys()` STILL has NOT** (reconfirmed 2026-08-14, commit `dffa0fd`). A `doGet(?diag=joinkeys)` remote-read attempt was tried and reverted — it rendered, but the browser-automation tool lacks host permission for `script.google.com/a/macros/tricog.com/*`, so the output couldn't be read back that way; `profileJoinKeysText_()` now at least returns its output as one string for whoever runs it directly in the editor. It answers whether `servicewrk_Tickets.customer_id` and `tom_tickets.center_id` actually resolve to `center_details.CenterID`, whether the `zoho_ticket`/`zoho_id` cross-references resolve to `zoho_data.ticketNumber`, and whether ANY row carries time-of-day. **If centre coverage is good, Hub/Centre filtering and centre-drawer click-through can be added to both new pages** (they are currently ignored — see each page's filter-coverage note). Delete the whole file once it has served its purpose.
+18. **(v5.30) Confirm what TOM actually is.** The page is built as a CS issue tracker because `remarks` records outcomes, but the user was asked twice and did not answer, and `comments` hints at machine transfers. Still unanswered as of 2026-08-14. If it's really machine movement, re-frame the page's labels/KPIs around movements and turnaround — the underlying queries mostly survive.
+19. ~~**(v5.29/v5.30) `Charts.rankBar` x-axis labels collide in narrow `span-4` cards`~~ — **DONE, v5.32/@61 (2026-08-14), commit `678496f`.** Removed the redundant/overlapping value axis from all 12 `rankBar` instances (5 TOM, 3 Service, 3 Top Customers, 1 Overview) — the axis duplicated the value already printed as a bar-end label.
+20. **(2026-08-14 catch-up pass) `docs/SOURCES.md` and `docs/ARCHITECTURE.md` were 3 versions stale** (last touched at v5.13, missing every v5.14–v5.33 change: `tom_tickets`, `servicewrk_Tickets`, `hub_country`, the CDM page, the 7-dimension filter set, the zoho dedup/native-DATETIME fixes, the reversed ServiceWRK-uptime-swap decision). **Fixed in this pass** — both docs now reflect state through v5.33/@62. Re-verify they're still current before trusting them on anything past this point.
 
 ---
 
 ## 7. How to verify after changes
-- `diagnostics()` in the editor logs row counts for every panel + center360/map/top-customers/exec/SLA/devices lines + **Jira device-type filter stats** + **raw-data row counts for all 8 sources**. Use it as the health check.
+- `diagnostics()` in the editor logs row counts for every panel + center360/map/top-customers/exec/SLA/devices lines + **Jira device-type filter stats** + **raw-data row counts for all 4 exposed sources** (`center_details`, `cloud_devices`, `zoho_data`, `jira_data` — `tom_tickets`/`servicewrk_Tickets` are NOT in Raw Data, see `docs/SOURCES.md`). Use it as the health check.
 - Local: rebuild + browser-preview (section 2), check console for errors, screenshot each tab + both themes.
 - SQL: verify new queries on live BQ via the scratchpad node → `bq query < file.sql` pattern (section 2) before wiring.
 - Deliver: hard-refresh editor tab → `clasp push --force` → New version deploy.

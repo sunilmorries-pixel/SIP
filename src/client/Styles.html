@@ -261,13 +261,19 @@ body.sidebar-pinned .sidebar-collapse-btn .icon { transform: rotate(0deg); }
    floating card instead of duplicated into the sidebar too. */
 .topbar-brand { display: flex; align-items: center; gap: 10px; flex: none; }
 .topbar-logo { height: 26px; width: auto; flex: none; }
+/* Two color variants — white wordmark for the (default) dark theme's navy
+   surface, black wordmark for the light theme's pale surface. Defaults to
+   the dark variant so there's no flash before applyTheme() sets data-theme
+   on first load. */
+.topbar-logo-light { display: none; }
+body[data-theme="light"] .topbar-logo-dark { display: none; }
+body[data-theme="light"] .topbar-logo-light { display: block; }
 .topbar-brand .brand-text { display: flex; flex-direction: column; min-width: 0; }
 .topbar-brand .brand-name {
   font-family: var(--font-head);
   font-size: 15px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.2;
   white-space: nowrap;
 }
-.topbar-brand .brand-name .brand-accent { font-weight: 400; color: var(--text-2); }
 .topbar-brand .brand-sub {
   font-size: 10px; color: var(--text-3); letter-spacing: 0.06em; text-transform: uppercase;
   margin-top: 1px; white-space: nowrap; display: flex; align-items: center; gap: 4px;

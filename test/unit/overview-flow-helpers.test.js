@@ -160,4 +160,89 @@ describe('Overview decomposition tree helpers (OverviewFlow.js)', function () {
       expect(band.navDeviceType).toBe('Connector');
     });
   });
+
+  describe('buildTicketsQuerySpecs', function () {
+    let sandbox2;
+    beforeAll(function () {
+      // EditionCD.js is required here (not just Queries.js): the zoho spec's
+      // centerFilterSubqueryCond_ lives there, along with its own
+      // dependencies cdFilter_/centerAttrCond_ — omitting it would throw
+      // "centerFilterSubqueryCond_ is not defined" the moment the test
+      // actually calls buildTicketsQuerySpecs({}), not at load time.
+      sandbox2 = loadGas(['Config.js', 'SlaCatalog.js', 'Queries.js', 'EditionCD.js', 'ServiceWrk.js', 'TomTickets.js', 'OverviewFlow.js']);
+    });
+
+    test('returns one spec per ticket source', function () {
+      const keys = sandbox2.buildTicketsQuerySpecs({}).map(function (s) { return s.key; });
+      expect(keys).toEqual(['zoho', 'servicewrk', 'tom']);
+    });
+
+    test('zoho spec dedupes and counts open vs total', function () {
+      const zoho = sandbox2.buildTicketsQuerySpecs({}).filter(function (s) { return s.key === 'zoho'; })[0];
+      expect(zoho.sql).toContain('QUALIFY ROW_NUMBER()'); // via zohoDedupSql_
+      expect(zoho.sql).toContain('total');
+      expect(zoho.sql).toContain('open');
+    });
+
+    test('servicewrk spec reuses swTable_/swFilterCond_ and groups by closure_type', function () {
+      const sw = sandbox2.buildTicketsQuerySpecs({}).filter(function (s) { return s.key === 'servicewrk'; })[0];
+      expect(sw.sql).toContain('servicewrk_Tickets');
+      expect(sw.sql).toContain('closure_type');
+    });
+
+    test('tom spec buckets into resolved/unresolved/other via the existing outcome conditions', function () {
+      const tom = sandbox2.buildTicketsQuerySpecs({}).filter(function (s) { return s.key === 'tom'; })[0];
+      expect(tom.sql).toContain('tom_tickets');
+      expect(tom.sql).toContain('Issue Resolved');
+      expect(tom.sql).toContain('Not resolved');
+    });
+  });
+
+  describe('nestTicketsTree_', function () {
+    let sandbox3;
+    beforeAll(function () {
+      sandbox3 = loadGas(['Config.js', 'SlaCatalog.js', 'Queries.js', 'OverviewFlow.js']);
+    });
+
+    test('nests source totals under one root, each with its own outcome children', function () {
+      const tree = sandbox3.nestTicketsTree_({
+        zoho: { total: 84545, open: 211 },
+        servicewrk: [{ label: 'CENTER_VISIT', cnt: 30822 }, { label: 'OVERCALL_RESOLUTION', cnt: 5259 }],
+        tom: { resolved: 342, unresolved: 68, other: 915 }
+      });
+      expect(tree.name).toBe('Total tracked records');
+      expect(tree.value).toBe(84545 + 36081 + 1325); // zoho total + SW sum + TOM sum
+      const zoho = tree.children.filter(function (c) { return c.name === 'Zoho'; })[0];
+      expect(zoho.value).toBe(84545);
+      const zohoChildren = zoho.children.map(function (c) { return c.name; }).sort();
+      expect(zohoChildren).toEqual(['Closed', 'Open']);
+      const sw = tree.children.filter(function (c) { return c.name === 'ServiceWRK'; })[0];
+      expect(sw.value).toBe(36081);
+      const tom = tree.children.filter(function (c) { return c.name === 'TOM'; })[0];
+      expect(tom.value).toBe(1325);
+    });
+
+    test('no node on this tree carries filterDim (no ticket-source filter dimension exists)', function () {
+      const tree = sandbox3.nestTicketsTree_({
+        zoho: { total: 10, open: 3 }, servicewrk: [{ label: 'CENTER_VISIT', cnt: 5 }], tom: { resolved: 1, unresolved: 1, other: 1 }
+      });
+      function walk(n) {
+        expect(n.filterDim).toBeUndefined();
+        (n.children || []).forEach(walk);
+      }
+      walk(tree);
+    });
+
+    test('every source and outcome node carries navTab to its own page', function () {
+      const tree = sandbox3.nestTicketsTree_({
+        zoho: { total: 10, open: 3 }, servicewrk: [{ label: 'CENTER_VISIT', cnt: 5 }], tom: { resolved: 1, unresolved: 1, other: 1 }
+      });
+      const zoho = tree.children.filter(function (c) { return c.name === 'Zoho'; })[0];
+      expect(zoho.navTab).toBe('tab-support');
+      const sw = tree.children.filter(function (c) { return c.name === 'ServiceWRK'; })[0];
+      expect(sw.navTab).toBe('tab-service');
+      const tom = tree.children.filter(function (c) { return c.name === 'TOM'; })[0];
+      expect(tom.navTab).toBe('tab-tom');
+    });
+  });
 });

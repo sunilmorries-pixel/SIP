@@ -170,3 +170,97 @@ function buildDevicesTree_(filters) {
 
   return { name: 'Total devices', value: devices.length, children: children };
 }
+
+/* ═══════════════ Tickets tree ═══════════════ */
+
+/**
+ * Three independent counting queries, one per ticket source. Each source
+ * keeps its OWN outcome taxonomy (no shared "status" exists across Zoho/
+ * ServiceWRK/TOM) — see the design spec §5.3 for why this isn't unified.
+ * @param {Object} filters
+ * @return {Array<{key:string, sql:string, maxRows:number}>}
+ */
+function buildTicketsQuerySpecs(filters) {
+  var f = filters || {};
+  return [
+    {
+      key: 'zoho', maxRows: 1,
+      sql: 'SELECT COUNT(*) AS total, ' +
+        ' COUNTIF(status NOT IN ' + CONFIG.ZOHO_TERMINAL_STATUSES + ') AS open ' +
+        'FROM ' + zohoDedupSql_() + ' WHERE TRUE' + centerFilterSubqueryCond_(f)
+    },
+    {
+      key: 'servicewrk', maxRows: 10,
+      sql: 'SELECT IFNULL(NULLIF(TRIM(closure_type), ""), "Unknown") AS label, COUNT(*) AS cnt ' +
+        'FROM ' + swTable_() + ' WHERE TRUE' + swFilterCond_(f) + ' GROUP BY label'
+    },
+    {
+      key: 'tom', maxRows: 1,
+      sql: 'SELECT COUNTIF(' + tomResolvedCond_() + ') AS resolved, ' +
+        ' COUNTIF(' + tomUnresolvedCond_() + ') AS unresolved, ' +
+        ' COUNTIF(NOT (' + tomResolvedCond_() + ') AND NOT (' + tomUnresolvedCond_() + ')) AS other ' +
+        'FROM ' + tomTable_() + ' WHERE TRUE' + tomFilterCond_(f)
+    }
+  ];
+}
+
+/**
+ * Nests the three sources' raw query results into one tree. Pure function —
+ * no BigQuery — so it's fully unit-testable against fixture rows.
+ * @param {{zoho:{total:number,open:number}, servicewrk:Array<{label:string,cnt:number}>,
+ *          tom:{resolved:number,unresolved:number,other:number}}} r
+ * @return {{name:string, value:number, children:Array}}
+ */
+function nestTicketsTree_(r) {
+  var zohoTotal = r.zoho.total || 0;
+  var zohoOpen = r.zoho.open || 0;
+  var swTotal = (r.servicewrk || []).reduce(function (s, x) { return s + (x.cnt || 0); }, 0);
+  var tomTotal = (r.tom.resolved || 0) + (r.tom.unresolved || 0) + (r.tom.other || 0);
+
+  var children = [
+    {
+      name: 'Zoho', value: zohoTotal, navTab: 'tab-support',
+      children: [
+        { name: 'Open', value: zohoOpen },
+        { name: 'Closed', value: zohoTotal - zohoOpen }
+      ]
+    },
+    {
+      name: 'ServiceWRK', value: swTotal, navTab: 'tab-service',
+      children: (r.servicewrk || []).map(function (x) { return { name: x.label, value: x.cnt }; })
+    },
+    {
+      name: 'TOM', value: tomTotal, navTab: 'tab-tom',
+      children: [
+        { name: 'Resolved', value: r.tom.resolved || 0 },
+        { name: 'Unresolved', value: r.tom.unresolved || 0 },
+        { name: 'Visit needed', value: r.tom.other || 0 }
+      ]
+    }
+  ];
+
+  return { name: 'Total tracked records', value: zohoTotal + swTotal + tomTotal, children: children };
+}
+
+/**
+ * Overview page payload — all three decomposition trees, one cached round trip.
+ * @param {{filters:Object, bypassCache:boolean}=} options
+ */
+function apiGetOverviewFlowCD(options) {
+  options = options || {};
+  var filters = options.filters || {};
+  return respond_(function () {
+    return withCache('ovflow_v1_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
+      var ticketRows = runQueriesParallel(buildTicketsQuerySpecs(filters));
+      return {
+        customers: buildCustomersTree_(filters),
+        devices: buildDevicesTree_(filters),
+        tickets: nestTicketsTree_({
+          zoho: (ticketRows.zoho && ticketRows.zoho[0]) || { total: 0, open: 0 },
+          servicewrk: ticketRows.servicewrk || [],
+          tom: (ticketRows.tom && ticketRows.tom[0]) || { resolved: 0, unresolved: 0, other: 0 }
+        })
+      };
+    }, options.bypassCache === true);
+  });
+}

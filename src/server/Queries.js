@@ -288,6 +288,21 @@ function zohoParsedDates_() {
 }
 
 /**
+ * Open-ticket age bucketing — Same day/1-2d/3-7d/8-30d/30d+, identical to
+ * the Service page's TAT bands (ServiceWrk.js's swTatBandSql_) so both pages
+ * describe "how long has this been open" with the same vocabulary. Assumes
+ * an `age_days` column upstream. SQL returns bands alphabetically; the
+ * client orders them with a fixed array (see ZOHO_OPEN_AGE_ORDER).
+ */
+function zohoOpenAgeBandSql_() {
+  return "CASE WHEN age_days < 1 THEN 'Same day' " +
+    "WHEN age_days < 3 THEN '1-2d' " +
+    "WHEN age_days < 8 THEN '3-7d' " +
+    "WHEN age_days <= 30 THEN '8-30d' " +
+    "ELSE '30d+' END";
+}
+
+/**
  * The full parallel batch behind the main dashboard payload — one entry per
  * chart/KPI block across the three views (Asset / Centers / Support).
  * @param {string} hub '' for all hubs
@@ -487,6 +502,32 @@ function buildDashboardQuerySpecs(hub, filters) {
         "FROM s GROUP BY category HAVING resolved_n >= 20 ORDER BY breach_pct DESC, tickets DESC LIMIT 15"
     },
     {
+      // Where the CURRENTLY-OPEN SLA risk sits, by issue type. Sibling of
+      // slaByType above, but a different question: slaByType scores RESOLVED
+      // history (how often did we miss?), this one counts what is open and
+      // late RIGHT NOW (what do we chase today?). Same two thresholds as
+      // slaKpis' breached_open / atrisk_open so the chart's column totals
+      // reconcile exactly with the two numbers on the SLA compliance card:
+      //   breached = open AND age > sla
+      //   at-risk  = open AND 0.75*sla < age <= sla
+      // Ticket-level drill-down of these same rows: SlaRisk.js.
+      key: 'slaRisk',
+      params: p,
+      sql:
+        "WITH t AS (SELECT IFNULL(NULLIF(TRIM(IssueCategory), ''), 'Uncategorised') AS category, status, " +
+        slaDaysCaseSql_("IFNULL(IssueCategory,'')") + " AS sla_days, " +
+        zohoParsedDates_() + " FROM " + zohoDedupSql_() + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + "), " +
+        "s AS (SELECT category, sla_days, " +
+        " (status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS is_open, " +
+        " CASE WHEN created IS NOT NULL THEN DATETIME_DIFF(CURRENT_DATETIME(), created, HOUR) / 24.0 END AS age_days " +
+        " FROM t) " +
+        "SELECT category, " +
+        " COUNTIF(is_open AND age_days > sla_days) AS breached, " +
+        " COUNTIF(is_open AND age_days <= sla_days AND age_days > 0.75 * sla_days) AS atrisk " +
+        "FROM s GROUP BY category " +
+        "HAVING breached + atrisk > 0 ORDER BY breached + atrisk DESC LIMIT 12"
+    },
+    {
       key: 'zohoTrend',
       params: p,
       sql:
@@ -519,26 +560,17 @@ function buildDashboardQuerySpecs(hub, filters) {
         "GROUP BY category ORDER BY cnt DESC LIMIT 10"
     },
     {
-      key: 'zohoPriority',
+      // Open (non-terminal) tickets bucketed by days-since-created. Same
+      // bands as the Service page's TAT chart (swTatBandSql_/SVC_TAT_ORDER)
+      // for one consistent "how long has this been sitting" vocabulary.
+      key: 'zohoOpenAge',
       params: p,
       sql:
-        "WITH t AS (SELECT priority, HubName, hub_master_segment, CenterID, CreatedAt, " +
-        " CreatedAt AS created " +
-        " FROM " + zohoDedupSql_() + ") " +
-        "SELECT IFNULL(NULLIF(TRIM(priority), ''), 'Unset') AS priority, COUNT(*) AS cnt " +
-        "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
-        "GROUP BY priority ORDER BY cnt DESC LIMIT 6"
-    },
-    {
-      key: 'zohoChannel',
-      params: p,
-      sql:
-        "WITH t AS (SELECT Channel, HubName, hub_master_segment, CenterID, CreatedAt, " +
-        " CreatedAt AS created " +
-        " FROM " + zohoDedupSql_() + ") " +
-        "SELECT IFNULL(NULLIF(TRIM(Channel), ''), 'Unknown') AS channel, COUNT(*) AS cnt " +
-        "FROM t WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + " AND created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 90 DAY) " +
-        "GROUP BY channel ORDER BY cnt DESC LIMIT 8"
+        "WITH t AS (SELECT status, " + zohoParsedDates_() + " " +
+        " FROM " + zohoDedupSql_() + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond + "), " +
+        "s AS (SELECT DATETIME_DIFF(CURRENT_DATETIME(), created, HOUR) / 24.0 AS age_days " +
+        " FROM t WHERE status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + " AND created IS NOT NULL) " +
+        "SELECT " + zohoOpenAgeBandSql_() + " AS band, COUNT(*) AS cnt FROM s GROUP BY band"
     },
     {
       key: 'zohoSegment',

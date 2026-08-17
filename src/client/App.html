@@ -585,8 +585,7 @@
       zohoTrend: months.map(function (mo) { return { month: mo, created: rnd(800, 2400), closed: rnd(800, 2400) }; }),
       zohoOpenByStatus: ['Open', 'Pending on Logistics Team', 'Pending on Customer Success Team', 'In Progress', 'On Hold'].map(function (s) { return { status: s, cnt: rnd(10, 210) }; }),
       zohoCategories: ['Prepaid Recharge Request', 'Billing Query', 'Report Related Query', 'Network Issue', 'Lead Cable Issue'].map(function (c) { return { category: c, cnt: rnd(60, 800) }; }),
-      zohoPriority: [{ priority: 'High', cnt: 320 }, { priority: 'Medium', cnt: 610 }, { priority: 'Low', cnt: 120 }, { priority: 'Unset', cnt: 410 }],
-      zohoChannel: ['Email', 'Phone', 'Web', 'Chat', 'Forums'].map(function (ch) { return { channel: ch, cnt: rnd(80, 2400) }; }),
+      zohoOpenAge: [{ band: 'Same day', cnt: 38 }, { band: '1-2d', cnt: 52 }, { band: '3-7d', cnt: 61 }, { band: '8-30d', cnt: 40 }, { band: '30d+', cnt: 20 }],
       zohoSegment: ['Enterprise', 'SMB', 'Government', 'Distributor', 'Direct'].map(function (sg) { return { segment: sg, cnt: rnd(120, 1900) }; }),
       // No hubOptions: Hub is served by the apiSearchHubs mock branch above, the
       // same as the real payload no longer carrying a hub list (finding C1).
@@ -781,8 +780,8 @@
   /* ── dashboard load ──────────────────────────────────────────── */
   var CHART_IDS = ['chartFleetStatus', 'chartFirmware', 'chartDeviceAges',
     'chartAssetStatus', 'chartAssetTypes', 'chartGeo', 'chartDeploymentAge', 'chartActiveEnded',
-    'chartZohoTrend', 'chartZohoPriority', 'chartZohoStatus', 'chartZohoCategories',
-    'chartZohoChannel', 'chartZohoSegment', 'chartCohort'];
+    'chartZohoTrend', 'chartZohoStatus', 'chartZohoCategories',
+    'chartZohoOpenAge', 'chartZohoSegment', 'chartCohort'];
 
   var dashboardRequestId = 0;
   function loadDashboard(bypassCache) {
@@ -890,8 +889,7 @@
     Charts.zohoTrend(data.zohoTrend);
     Charts.zohoStatus(data.zohoOpenByStatus);
     Charts.zohoCategories(data.zohoCategories);
-    Charts.zohoPriority(data.zohoPriority);
-    Charts.zohoChannel(data.zohoChannel);
+    Charts.zohoOpenAge(data.zohoOpenAge);
     Charts.zohoSegment(data.zohoSegment);
     renderSla(data.slaKpis, data.slaByType || []);
 
@@ -3102,9 +3100,8 @@
       formula: 'Centers ranked by number of open tickets (4+ open = flagged).',
       source: 'zoho_data open tickets grouped by center, joined to center_details names.' },
     backlog: { name: 'Active backlog', formula: 'Open (non-terminal) tickets grouped by status. No date window — the whole current backlog.', source: 'zoho_data (status not Closed / Duplicate / Junk).' },
-    priority: { name: 'Priority mix', formula: 'Open tickets grouped by priority (blank = “Unset”).', source: 'zoho_data.priority.' },
     categories: { name: 'Issue categories', formula: 'Ticket counts grouped by issue category / type.', source: 'zoho_data.IssueCategory.' },
-    channels: { name: 'Intake channels', formula: 'Tickets grouped by the channel they arrived through.', source: 'zoho_data.Channel.' },
+    openAgeBuckets: { name: 'Open ticket age', formula: 'Open (non-terminal) tickets bucketed by days since CreatedAt: Same day, 1-2d, 3-7d, 8-30d, 30d+. Same bands as the Service page’s turnaround-time chart.', source: 'zoho_data (now − CreatedAt).' },
     segment: { name: 'Tickets by segment', formula: 'Tickets grouped by customer / hub segment.', source: 'zoho_data.hub_master_segment.' },
     created7d: { name: 'Created · 7d', formula: 'Tickets created in the last 7 days.', source: 'zoho_data.CreatedAt.' },
     closed7d: { name: 'Closed · 7d', formula: 'Tickets closed in the last 7 days.', source: 'zoho_data.ClosedAt.' },
@@ -3225,8 +3222,8 @@
     // for the Map/Numbers cards that still use the center wording.
     'customer 360': 'center360', 'center 360': 'center360',
     'sla compliance': 'sla', 'sla breach by issue type': 'slaType',
-    'priority mix': 'priority', 'active backlog': 'backlog', 'top issue categories': 'categories',
-    'intake channels': 'channels', 'tickets by customer segment': 'segment',
+    'active backlog': 'backlog', 'top issue categories': 'categories',
+    'open ticket age': 'openAgeBuckets', 'tickets by customer segment': 'segment',
     'assets by machine type': 'assetLifecycle', 'asset lifecycle age': 'assetAge',
     'assets by category': 'assetLifecycle', 'centers by state': 'geo',
     'customers by state': 'geo',

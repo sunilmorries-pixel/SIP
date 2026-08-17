@@ -628,7 +628,9 @@ function apiGetDashboardCD(options) {
     // v12: centerKpis.states -> centers_with_open_tickets.
     // v13: zoho_data excludes unassigned tickets.
     // v14: Device Type/Status filter applied to asset donuts/cohort + fleet.
-    var cacheKey = 'dashcd_v15_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub); // v15: country filter sources from hub_country
+    // v15: country filter sources from hub_country.
+    // v16: Support page — dropped zohoPriority/zohoChannel, added zohoOpenAge.
+    var cacheKey = 'dashcd_v16_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;

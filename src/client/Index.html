@@ -564,24 +564,6 @@
 
       <article class="card span-4">
         <header class="card-head">
-          <h2 class="card-title">Priority mix</h2>
-          <p class="card-sub">Tickets created in the last 90 days</p>
-        </header>
-        <div id="chartZohoPriority" class="chart chart-tall" role="img"
-             aria-label="Donut chart of ticket priorities"></div>
-      </article>
-
-      <article class="card span-4">
-        <header class="card-head">
-          <h2 class="card-title">Active backlog</h2>
-          <p class="card-sub">Current open backlog by status · all-time</p>
-        </header>
-        <div id="chartZohoStatus" class="chart" role="img"
-             aria-label="Bar chart of open tickets by status"></div>
-      </article>
-
-      <article class="card span-4">
-        <header class="card-head">
           <h2 class="card-title">Top issue categories</h2>
           <p class="card-sub">Last 90 days</p>
         </header>
@@ -589,13 +571,22 @@
              aria-label="Horizontal bar chart of most frequent issue categories"></div>
       </article>
 
-      <article class="card span-4">
+      <article class="card span-6">
         <header class="card-head">
-          <h2 class="card-title">Intake channels</h2>
-          <p class="card-sub">Where tickets come from · last 90 days</p>
+          <h2 class="card-title">Active backlog</h2>
+          <p class="card-sub">Current open backlog by status · all-time</p>
         </header>
-        <div id="chartZohoChannel" class="chart" role="img"
-             aria-label="Donut chart of tickets by intake channel"></div>
+        <div id="chartZohoStatus" class="chart chart-tall" role="img"
+             aria-label="Bar chart of open tickets by status"></div>
+      </article>
+
+      <article class="card span-6">
+        <header class="card-head">
+          <h2 class="card-title">Open ticket age</h2>
+          <p class="card-sub">How long currently-open tickets have been waiting</p>
+        </header>
+        <div id="chartZohoOpenAge" class="chart chart-tall" role="img"
+             aria-label="Bar chart of open tickets by age band"></div>
       </article>
 
       <article class="card span-12">

@@ -92,10 +92,12 @@ function readJiraData_() {
  * (type/age breakdown). Extracted so there is exactly ONE implementation of
  * this filter chain, not two independently-maintained copies that could
  * silently drift (the SQL-vs-JS filter-path-disagreement bug class this repo
- * has been bitten by before).
+ * has been bitten by before). Returns device array and center-map source
+ * (computed once here, reused by caller) to avoid a redundant deviceCenterMap_()
+ * call in every cache miss.
  * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,
  *          countries:Array,deviceTypes:Array,deviceStatusExclude:Array}=} filters
- * @return {Array<{issue_key:string, type:string, status:string, cid:number, age:(number|null)}>}
+ * @return {{devices:Array<{issue_key:string, type:string, status:string, cid:number, age:(number|null)}>, source:string}}
  */
 function filteredJiraDevices_(filters) {
   filters = filters || {};
@@ -127,7 +129,7 @@ function filteredJiraDevices_(filters) {
     var cfMap = centerFilterMap_();
     out = out.filter(function (o) { return isFinite(o.cid) && centerPassesFilters_(cfMap[o.cid] || {}, filters); });
   }
-  return out;
+  return { devices: out, source: dcm.source };
 }
 
 /**
@@ -143,7 +145,8 @@ function filteredJiraDevices_(filters) {
 function jiraDeviceStats_(filters) {
   filters = filters || {};
   return withCache('jiradev_v9_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
-    var devices = filteredJiraDevices_(filters);
+    var result = filteredJiraDevices_(filters);
+    var devices = result.devices;
     var dTotal = 0, dStatus = {};
     var ageSum = 0, ageN = 0;
     var ageBands = { '<1y': 0, '1-2y': 0, '2-3y': 0, '3-5y': 0, '5y+': 0 };
@@ -167,7 +170,7 @@ function jiraDeviceStats_(filters) {
       aged_devices: ageN,
       past_life: ageBands['5y+'],
       age_bands: Object.keys(ageBands).map(function (k) { return { k: k, n: ageBands[k] }; }),
-      source: 'jira_data', center_source: deviceCenterMap_().source
+      source: 'jira_data', center_source: result.source
     };
   });
 }

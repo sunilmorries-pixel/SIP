@@ -1,11 +1,11 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
 **Last updated:** 2026-08-17 · **Live version:** 5.37 · **Status:** ✅ **Production deployed from
-`main` @ `7ae7549`, in sync — nothing outstanding.** Production
-(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always)
-serves Apps Script **@66 / v5.37**. No tag cut for v5.27–v5.37. v5.21–v5.25 and v5.27–v5.37 were
-deployed **without** tags; only `v5.16`–`v5.18`, `v5.20` and `v5.26` are tagged, so tags are not a
-reliable release index.
+git `main` @ `7ae7549`.** Production (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`,
+same URL as always) serves Apps Script **@66 / v5.37**. `main`'s current tip is `6b1ccda` (the
+HANDOFF catch-up commit itself, docs-only — nothing to redeploy for it). No tag cut for v5.27–v5.37.
+v5.21–v5.25 and v5.27–v5.37 were deployed **without** tags; only `v5.16`–`v5.18`, `v5.20` and
+`v5.26` are tagged, so tags are not a reliable release index.
 
 **This handoff was stale for three deploys** (v5.35–v5.37) before this catch-up pass — it still
 said tip was `7d98b69` / live was v5.33 while `main` had moved 11 commits ahead from a concurrent

@@ -59,6 +59,13 @@
     tomLoaded: false, tomFilters: null,
     tom: { sortBy: 'received_date', sortDir: 'desc', page: 0, pageSize: 15 },
     tomRows: [], tomTotal: 0,
+    // SLA-risk worklist (Support page). Its own paginated fetch, but it lives
+    // on a page whose other cards come from the shared dashboard payload — so
+    // slaRiskFilters guards it the same way centerFilters guards Center-360.
+    // `risk` is the band chip: '' = both, 'breached', 'atrisk'.
+    slaRiskFilters: null,
+    slaRisk: { sortBy: 'days_over', sortDir: 'desc', page: 0, pageSize: 15, risk: '' },
+    slaRiskRows: [], slaRiskTotal: 0,
     // The filter set each paginated table's CURRENT rows were fetched with —
     // the same guard state.dashFilters gives the shared dashboard payload, for
     // the two tables that fetch their own data (review finding I2). Siblings of
@@ -279,6 +286,33 @@
         });
       }
       return Promise.resolve({ rows: svcRows, totalRows: 36403, page: 0, pageSize: 15 });
+    }
+    if (fn === 'apiGetSlaRiskTickets') {
+      var riskRows = [];
+      var riskCats = ['Machine issue', 'Lead cable', 'Network -Sim Card Issue', 'Battery', 'Printer'];
+      var riskWant = String((args && args.risk) || '');
+      for (var ri = 0; ri < 15; ri++) {
+        // Mirror the server's own rule: BREACHED only when age exceeds SLA.
+        var mSla = [5, 6, 6, 6, 5][ri % 5];
+        var mAge = riskWant === 'atrisk'
+          ? Math.round(mSla * 0.85 * 10) / 10
+          : Math.round((mSla + 1 + ri * 1.7) * 10) / 10;
+        if (riskWant === 'breached' && mAge <= mSla) mAge = mSla + 1;
+        riskRows.push({
+          ticket: 4880000 + ri,
+          center_id: 40000 + (ri * 7) % 900,
+          category: riskCats[ri % 5],
+          assignee: ['Mustaq Ahmed', 'Saidha Rao', 'Dadapeer Z'][ri % 3],
+          status: ['Open', 'In Progress', 'On Hold'][ri % 3],
+          created: '2026-0' + (6 + (ri % 3)) + '-' + ('0' + (1 + (ri % 27))).slice(-2),
+          age_days: mAge,
+          sla_days: mSla,
+          days_over: Math.round((mAge - mSla) * 10) / 10,
+          risk: mAge > mSla ? 'BREACHED' : 'AT_RISK',
+          link: ''
+        });
+      }
+      return Promise.resolve({ rows: riskRows, totalRows: riskWant ? 405 : 427, page: 0, pageSize: 15 });
     }
     if (fn === 'apiGetCenters') {
       var crows = [];
@@ -586,6 +620,16 @@
       zohoOpenByStatus: ['Open', 'Pending on Logistics Team', 'Pending on Customer Success Team', 'In Progress', 'On Hold'].map(function (s) { return { status: s, cnt: rnd(10, 210) }; }),
       zohoCategories: ['Prepaid Recharge Request', 'Billing Query', 'Report Related Query', 'Network Issue', 'Lead Cable Issue'].map(function (c) { return { category: c, cnt: rnd(60, 800) }; }),
       zohoOpenAge: [{ band: 'Same day', cnt: 38 }, { band: '1-2d', cnt: 52 }, { band: '3-7d', cnt: 61 }, { band: '8-30d', cnt: 40 }, { band: '30d+', cnt: 20 }],
+      slaRisk: [
+        { category: 'Machine issue', breached: 118, atrisk: 6 },
+        { category: 'Lead cable', breached: 71, atrisk: 4 },
+        { category: 'Network -Sim Card Issue', breached: 44, atrisk: 3 },
+        { category: 'Battery', breached: 33, atrisk: 2 },
+        { category: 'Printer', breached: 22, atrisk: 1 },
+        { category: 'Software Issue', breached: 18, atrisk: 3 },
+        { category: 'OTG Cable', breached: 14, atrisk: 1 },
+        { category: 'Power Adapter', breached: 9, atrisk: 2 }
+      ],
       zohoSegment: ['Enterprise', 'SMB', 'Government', 'Distributor', 'Direct'].map(function (sg) { return { segment: sg, cnt: rnd(120, 1900) }; }),
       // No hubOptions: Hub is served by the apiSearchHubs mock branch above, the
       // same as the real payload no longer carrying a hub list (finding C1).
@@ -892,6 +936,7 @@
     Charts.zohoOpenAge(data.zohoOpenAge);
     Charts.zohoSegment(data.zohoSegment);
     renderSla(data.slaKpis, data.slaByType || []);
+    renderSlaRisk(data.slaRisk || [], data.slaKpis);
 
     // Service charts: awaiting its own data source (2026-08-12) — the
     // Zoho-Tech scope this used to read no longer exists server-side, so
@@ -1520,6 +1565,117 @@
       'svcPageIndicator', 'svcPrevBtn', 'svcNextBtn', 'tickets');
   }
 
+  /* ── SLA-risk worklist (Support view) ─────────────────────────
+     The drill-down behind the SLA compliance card's two counts. Sort keys
+     mirror SLA_RISK_SORT_KEYS in SlaRisk.js — a key not in that whitelist is
+     silently ignored server-side and the list falls back to days_over. */
+  var SLA_RISK_COLUMNS = [
+    { key: 'ticket', label: 'Ticket', sortable: false },
+    { key: 'risk', label: 'Risk', sortable: true },
+    { key: 'center_id', label: 'Center', sortable: true, num: true },
+    { key: 'category', label: 'Issue type', sortable: true },
+    { key: 'assignee', label: 'Assignee', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'created', label: 'Created', sortable: true },
+    { key: 'age_days', label: 'Age (days)', sortable: true, num: true },
+    { key: 'sla_days', label: 'SLA (days)', sortable: true, num: true },
+    { key: 'days_over', label: 'Over (days)', sortable: true, num: true }
+  ];
+
+  /**
+   * The chart half of the SLA-risk card, plus the band chips' counts. Counts
+   * come from slaKpis (the same numbers the SLA compliance card shows) rather
+   * than by summing the chart rows — that spec is LIMIT 12, so summing it
+   * would quietly under-report once more than 12 issue types carry risk.
+   */
+  function renderSlaRisk(rows, kpisArr) {
+    Charts.slaRisk(rows);
+    var k = (kpisArr && kpisArr[0]) || {};
+    var breached = k.breached_open || 0;
+    var atrisk = k.atrisk_open || 0;
+    $('slaRiskBreachedN').textContent = FMT.format(breached);
+    $('slaRiskAtriskN').textContent = FMT.format(atrisk);
+    $('slaRiskAllN').textContent = FMT.format(breached + atrisk);
+  }
+
+  var slaRiskRequestId = 0;
+  function loadSlaRiskTickets() {
+    var requestId = ++slaRiskRequestId;
+    $('slaRiskTableInfo').textContent = 'Loading…';
+    var sentFilters = JSON.parse(JSON.stringify(state.globalFilters)); // see loadDevices
+    var query = Object.assign({}, state.slaRisk,
+      { search: state.search, filters: state.globalFilters });
+    gsCall(ep('apiGetSlaRiskTickets'), query)
+      .then(function (result) {
+        if (requestId !== slaRiskRequestId) return;
+        state.slaRiskRows = result.rows;
+        state.slaRiskTotal = result.totalRows;
+        state.slaRiskFilters = sentFilters;
+        renderSlaRiskTable();
+      })
+      .catch(function (err) {
+        if (requestId !== slaRiskRequestId) return;
+        $('slaRiskTableInfo').textContent = 'Failed to load SLA-risk tickets';
+        toast('SLA-risk tickets failed: ' + err.message, 'error');
+      });
+  }
+
+  function buildSlaRiskHeader() {
+    $('slaRiskTableHead').innerHTML = SLA_RISK_COLUMNS.map(function (col) {
+      return sortableHeader(col, state.slaRisk);
+    }).join('');
+    Array.prototype.forEach.call($('slaRiskTableHead').querySelectorAll('.th-sort'), function (btn) {
+      btn.addEventListener('click', function () {
+        var key = btn.getAttribute('data-sort');
+        if (state.slaRisk.sortBy === key) {
+          state.slaRisk.sortDir = state.slaRisk.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.slaRisk.sortBy = key;
+          state.slaRisk.sortDir = 'desc';
+        }
+        state.slaRisk.page = 0;
+        buildSlaRiskHeader();
+        loadSlaRiskTickets();
+      });
+    });
+  }
+
+  function renderSlaRiskTable() {
+    var body = $('slaRiskTable').querySelector('tbody');
+    if (!state.slaRiskRows.length) {
+      body.innerHTML = '<tr><td colspan="' + SLA_RISK_COLUMNS.length + '">' +
+        '<div class="chart-empty" style="padding:32px 0">' +
+        '<strong>Nothing at SLA risk</strong>' +
+        '<span>No open ticket is past 75% of its target under these filters</span>' +
+        '</div></td></tr>';
+    } else {
+      body.innerHTML = state.slaRiskRows.map(function (r) {
+        var breached = r.risk === 'BREACHED';
+        // Only breached tickets have "days over" — for at-risk it's negative
+        // (time still in hand), which would read as a bug in an "Over" column.
+        var over = breached ? '+' + FMT.format(r.days_over) : '—';
+        var ticket = escapeHtml(String(r.ticket == null ? '—' : r.ticket));
+        return '<tr>' +
+          '<td><strong>' + (r.link
+            ? '<a href="' + escapeHtml(r.link) + '" target="_blank" rel="noopener noreferrer">' + ticket + '</a>'
+            : ticket) + '</strong></td>' +
+          '<td><span class="badge badge-' + (breached ? 'danger' : 'warn') + '">' +
+            (breached ? 'Breached' : 'At-risk') + '</span></td>' +
+          '<td class="num">' + escapeHtml(String(r.center_id == null ? '—' : r.center_id)) + '</td>' +
+          '<td>' + escapeHtml(r.category || '—') + '</td>' +
+          '<td>' + escapeHtml(r.assignee || '—') + '</td>' +
+          '<td>' + escapeHtml(r.status || '—') + '</td>' +
+          '<td>' + escapeHtml(r.created || '—') + '</td>' +
+          '<td class="num">' + (r.age_days == null ? '—' : FMT.format(r.age_days)) + '</td>' +
+          '<td class="num">' + (r.sla_days == null ? '—' : FMT.format(r.sla_days)) + '</td>' +
+          '<td class="num' + (breached ? ' txt-danger' : '') + '">' + over + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    renderPager(state.slaRiskTotal, state.slaRisk, 'slaRiskTableInfo',
+      'slaRiskPageIndicator', 'slaRiskPrevBtn', 'slaRiskNextBtn', 'tickets');
+  }
+
   /* ── Customer-360 explorer (Customers view) ───────────────────
      Column label reverted to "Centers" (per user, 2026-08-13 — was
      "Customer" from an earlier rename); sort keys stay the server's center*. */
@@ -2082,6 +2238,10 @@
     if (state.activeTab === 'tab-overview') { state.execLoaded = false; loadExec(); }
     if (state.activeTab === 'tab-numbers') { loadNumbers(); loadCdRaw(); }
     if (state.activeTab === 'tab-rawdata') { state.rawData.page = 0; loadRawTable(); }
+    // The SLA-risk worklist rides on the Support page but fetches its own rows,
+    // so loadDashboard above only refreshes its chart half — the table needs
+    // its own reload. Off-tab staleness is caught by activateTab.
+    if (state.activeTab === 'tab-support') { state.slaRisk.page = 0; loadSlaRiskTickets(); }
   }
 
   /** Applies the global filters to the map centers + assets, then redraws. */
@@ -2815,6 +2975,15 @@
       state.cdmDevices.page = 0;
       loadCdmDevices();
     }
+    // SLA-risk worklist: same rule, plus a first-visit fetch — it lives on the
+    // Support page but pulls its own rows, so nothing else would populate it.
+    if (tabId === 'tab-support') {
+      if (!state.slaRiskFilters) loadSlaRiskTickets();
+      else if (!filtersEqual_(state.slaRiskFilters, state.globalFilters)) {
+        state.slaRisk.page = 0;
+        loadSlaRiskTickets();
+      }
+    }
 
     updateHash();
   }
@@ -3317,6 +3486,7 @@
     buildCenterHeader();
     buildServiceHeader();
     buildTomHeader();
+    buildSlaRiskHeader();
     setupMetricInfo();
     wireTabs();
 
@@ -3404,6 +3574,25 @@
     $('svcNextBtn').addEventListener('click', function () {
       state.service.page += 1;
       loadServiceTickets();
+    });
+    $('slaRiskPrevBtn').addEventListener('click', function () {
+      state.slaRisk.page = Math.max(0, state.slaRisk.page - 1);
+      loadSlaRiskTickets();
+    });
+    $('slaRiskNextBtn').addEventListener('click', function () {
+      state.slaRisk.page += 1;
+      loadSlaRiskTickets();
+    });
+    // Band chips: All / Breached / At-risk narrow the worklist server-side.
+    ['slaRiskAll', 'slaRiskBreached', 'slaRiskAtrisk'].forEach(function (id) {
+      $(id).addEventListener('click', function () {
+        state.slaRisk.risk = this.getAttribute('data-risk') || '';
+        state.slaRisk.page = 0;
+        ['slaRiskAll', 'slaRiskBreached', 'slaRiskAtrisk'].forEach(function (other) {
+          $(other).classList.toggle('is-active', other === id);
+        });
+        loadSlaRiskTickets();
+      });
     });
     $('ctrPrevBtn').addEventListener('click', function () {
       state.centers.page = Math.max(0, state.centers.page - 1);

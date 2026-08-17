@@ -663,6 +663,31 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 .badge-danger { color: var(--danger); border-color: rgba(248,113,113,.35); background: rgba(248,113,113,.10); }
 .badge-muted  { color: var(--text-3); border-color: var(--border-strong);  background: rgba(122,152,255,.06); }
 
+/* ── SLA-risk card (Support) ────────────────────────────────────
+   Band chips above the chart double as the worklist's server-side filter:
+   All / Breached / At-risk. Sized to the 44px tap-target floor the rest of
+   the app uses (see .chip / .info-dot::before). */
+.sla-risk-bands { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.risk-chip {
+  min-height: 36px; padding: 0 14px;
+  display: inline-flex; align-items: center; gap: 8px;
+  color: var(--text-2); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 999px;
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: border-color var(--dur-fast), color var(--dur-fast), background var(--dur-fast);
+}
+.risk-chip:hover { border-color: var(--border-strong); color: var(--text-1); }
+.risk-chip:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.risk-chip.is-active { color: var(--text-1); border-color: var(--primary); background: var(--primary-soft); }
+.risk-chip-n { font-variant-numeric: tabular-nums; color: var(--text-3); font-weight: 700; }
+.risk-chip.is-active .risk-chip-n { color: var(--text-1); }
+.risk-chip-danger.is-active { border-color: var(--danger); background: rgba(248,113,113,.12); }
+.risk-chip-warn.is-active   { border-color: var(--warn);   background: rgba(251,191,36,.12); }
+/* General-purpose; the pre-existing rule was scoped to .batch-signal-meta dd
+   only, so a bare .txt-danger on a table cell picked up nothing. */
+.txt-danger { color: var(--danger); }
+.txt-warn { color: var(--warn); }
+
 /* ── device explorer ────────────────────────────────────────────── */
 .explorer-toolbar {
   display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap;

@@ -553,6 +553,55 @@
         </div>
       </article>
 
+      <!-- Ticket-level drill-down behind the two counts on the SLA compliance
+           card. Chart = where the risk sits by issue type; table = the actual
+           worklist. Server: SlaRisk.js + the `slaRisk` spec in Queries.js. -->
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">SLA risk · open tickets</h2>
+          <p class="card-sub">Breached (past target) and at-risk (past 75% of target) · most overdue first</p>
+        </header>
+
+        <div class="sla-risk-bands">
+          <button id="slaRiskAll" class="risk-chip is-active" type="button" data-risk="">
+            All <span id="slaRiskAllN" class="risk-chip-n">–</span>
+          </button>
+          <button id="slaRiskBreached" class="risk-chip risk-chip-danger" type="button" data-risk="breached">
+            Breached <span id="slaRiskBreachedN" class="risk-chip-n">–</span>
+          </button>
+          <button id="slaRiskAtrisk" class="risk-chip risk-chip-warn" type="button" data-risk="atrisk">
+            At-risk <span id="slaRiskAtriskN" class="risk-chip-n">–</span>
+          </button>
+        </div>
+
+        <div id="chartSlaRisk" class="chart" role="img"
+             aria-label="Stacked bar chart of open breached and at-risk tickets by issue type"></div>
+
+        <div class="table-scroll">
+          <table class="data-table" id="slaRiskTable">
+            <caption class="sr-only">Open tickets that are breached or at risk of breaching their SLA target</caption>
+            <thead><tr id="slaRiskTableHead"></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span id="slaRiskTableInfo" class="table-info" aria-live="polite">Loading…</span>
+          <div class="pager">
+            <button id="slaRiskPrevBtn" class="btn btn-ghost btn-icon" type="button" aria-label="Previous page" disabled>
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <span id="slaRiskPageIndicator" class="page-indicator">–</span>
+            <button id="slaRiskNextBtn" class="btn btn-ghost btn-icon" type="button" aria-label="Next page" disabled>
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </article>
+
       <article class="card span-8">
         <header class="card-head">
           <h2 class="card-title">Ticket flow</h2>

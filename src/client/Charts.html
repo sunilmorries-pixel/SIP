@@ -409,6 +409,48 @@ var Charts = (function () {
     }));
   }
 
+  /**
+   * SLA risk by issue type — stacked horizontal bar, breached (already past
+   * target) alongside at-risk (past 75% of target but not yet breached).
+   * Same two thresholds as the "Open breached" / "At-risk" figures on the SLA
+   * compliance card, so each bar's total reconciles with those numbers.
+   *
+   * Rows are pre-sorted biggest-first by the server; reversed here for the
+   * same reason rankBar does it — ECharts draws a category axis bottom-up, so
+   * the largest lands at the top of the card.
+   */
+  function slaRisk(rows) {
+    if (!rows || !rows.length) return showEmpty('chartSlaRisk', 'Nothing at SLA risk');
+    var sorted = rows.slice().reverse();
+    // Total sits on the outermost segment; ECharts anchors 'right' to the end
+    // of the whole stack, so it reads as one number per issue type.
+    function total(i) { return (sorted[i].breached || 0) + (sorted[i].atrisk || 0); }
+    render('chartSlaRisk', base({
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      legend: { top: 0, textStyle: { color: C.text, fontSize: 12 }, icon: 'circle', itemWidth: 9, itemHeight: 9 },
+      grid: { left: 8, right: 48, top: 32, bottom: 0, containLabel: true },
+      xAxis: valAxis({ axisLabel: { show: false }, splitLine: { show: false }, axisLine: { show: false } }),
+      yAxis: catAxis({ data: sorted.map(function (r) { return r.category; }),
+        axisLabel: { color: C.text, fontSize: 11, width: 150, overflow: 'truncate' } }),
+      series: [
+        {
+          name: 'Breached', type: 'bar', stack: 'risk', barMaxWidth: 16,
+          itemStyle: { color: C.danger },
+          data: sorted.map(function (r) { return r.breached || 0; })
+        },
+        {
+          name: 'At-risk', type: 'bar', stack: 'risk', barMaxWidth: 16,
+          itemStyle: { borderRadius: [0, 6, 6, 0], color: C.warn },
+          label: {
+            show: true, position: 'right', color: C.textDim, fontSize: 11,
+            formatter: function (p) { return FMT.format(total(p.dataIndex)); }
+          },
+          data: sorted.map(function (r) { return r.atrisk || 0; })
+        }
+      ]
+    }));
+  }
+
   function zohoTrend(rows, id) {
     id = id || 'chartZohoTrend';
     if (!rows || !rows.length) return showEmpty(id);
@@ -675,6 +717,7 @@ var Charts = (function () {
     zohoStatus: zohoStatus,
     zohoCategories: zohoCategories,
     zohoOpenAge: zohoOpenAge,
+    slaRisk: slaRisk,
     zohoSegment: zohoSegment,
     FLEET_ORDER: FLEET_ORDER
   };

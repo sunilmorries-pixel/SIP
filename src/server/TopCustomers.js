@@ -1,41 +1,51 @@
 /**
  * TopCustomers.js — the curated "Top LE" account list + per-customer rollup.
  *
- * A customer here = a HUB. The list is a business-curated set (provided by the
- * team). It's embedded so the page needs no extra data source; if it starts
+ * A customer here = a business GROUP (a corporate account), which can span
+ * MULTIPLE hubs — e.g. "Metropolis" is 8 separate HubIDs. The list is a
+ * business-curated set (provided by the team, ranked by active-unit count).
+ * It's embedded so the page needs no extra data source; if it starts
  * changing often, move it to its own small BigQuery table (the app has no
  * Google Sheets integration left — see docs/SOURCES.md) and read it in
  * loadTopCustomers_().
+ *
+ * Replaced wholesale 2026-08-17 (per user) from the team's ranked group/HubID
+ * export — every group below carries the FULL HubID list from that export,
+ * not just one representative hub per group as the old one-row-per-hub list
+ * did. Six additional groups from that export (MH Stemi, Odisha Stemi, Bihar
+ * Stemi, KA Stemi, TSMISDC, Manipur Stemi — together ~2,900 of the ~4,350
+ * total active units, MH Stemi alone larger than every group below combined)
+ * were NOT carried over: the export gave no HubIDs for them, and this page's
+ * whole aggregation pipeline joins on HubID — there is nothing to attribute
+ * their centers/devices/tickets to without one. Add them once HubIDs are
+ * available. 'Indira IVF' is the one exception where the new export also had
+ * no HubID: kept its previously-known hub_id (36772) rather than dropping a
+ * ranked, named account for an incomplete paste.
  */
 
 var TOP_CUSTOMERS = [
-  { hub_id: 13246, name: 'VIJAYA DIAGNOSTIC CENTRE LTD, HYDERABAD', tier: 'Top LE' },
-  { hub_id: 40996, name: 'Metropolis Lab@Home (Hub) West', tier: 'Top LE' },
-  { hub_id: 2314,  name: 'Metropolis Healthcare Limited, Tamil Nadu', tier: 'Top LE' },
-  { hub_id: 10502, name: 'Aarthi Scans and Labs, Tamil Nadu', tier: 'Top LE' },
-  { hub_id: 50131, name: 'HEALTHIANS LABS (HUB)', tier: 'Top LE' },
-  { hub_id: 36772, name: 'INDIRA IVF HOSPITAL PVT LTD (HUB)', tier: 'Top LE' },
-  { hub_id: 2848,  name: 'Chandan Healthcare LTD, Lucknow', tier: 'Top LE' },
-  { hub_id: 43727, name: 'DDRC Agilus Pathlabs Ltd', tier: 'Top LE' },
-  { hub_id: 1837,  name: 'Hi-Tech Diagnostic Centre, TN', tier: 'Top LE' },
-  { hub_id: 46889, name: 'Redcliffe Labs - GTH', tier: 'Top LE' },
-  { hub_id: 23360, name: 'DIAGNOPEIN HEALTHCARE PRIVATE LIMITED', tier: 'Top LE' },
-  { hub_id: 995,   name: 'Sri Chandra Sekara Hospital, Hosur', tier: 'Top LE' },
-  { hub_id: 49494, name: 'Metropolis Lab@Home (Hub) North', tier: 'Top LE' },
-  { hub_id: 49118, name: 'Bridge Health (HUB)', tier: 'Top LE' },
-  { hub_id: 2453,  name: 'NEUBERG DIAGNOSTICS PVT LTD', tier: 'Top LE' },
-  { hub_id: 24777, name: 'Medall Healthcare Pvt Ltd Chennai 2', tier: 'Top LE' },
-  { hub_id: 48776, name: 'Prevento Health Tech Solution PVT LTD', tier: 'Top LE' },
-  { hub_id: 9572,  name: 'Suburban Diagnostics Pvt Ltd', tier: 'Top LE' },
-  { hub_id: 4192,  name: 'Apollo Hospital, Secunderabad', tier: 'Top LE' },
-  { hub_id: 38194, name: 'SPARSH HOSPITAL YESHWANTHPUR (HUB)', tier: 'Top LE' },
-  { hub_id: 1282,  name: 'Fortis Hospital, CG Road, Bengaluru', tier: 'Top LE' },
-  { hub_id: 10845, name: 'SRI KAUVERY MEDICAL CARE (INDIA) LIMITED', tier: 'Top LE' },
-  { hub_id: 2710,  name: 'Fortis Hospital, BG Road, Bengaluru', tier: 'Top LE' },
-  { hub_id: 48229, name: 'HealthOnUs (HUB)', tier: 'Top LE' },
-  { hub_id: 49793, name: 'Agilus Diagnostics Limited', tier: 'Top LE' },
-  { hub_id: 3027,  name: 'KMC Hospitals - Mangalore Pvt. Ltd', tier: 'Top LE' },
-  { hub_id: 12862, name: 'Balaji Medical Center Chennai', tier: 'Top LE' }
+  { group: 'Metropolis', tier: 'Top LE', hub_ids: [1837, 2133, 2314, 8262, 40240, 40996, 49494, 49495] },
+  { group: 'VIJAYA DIAGNOSTIC CENTRE', tier: 'Top LE', hub_ids: [13246] },
+  { group: 'Aarthi Scans', tier: 'Top LE', hub_ids: [1684, 10502, 17328, 40304] },
+  { group: 'HEALTHIANS LABS', tier: 'Top LE', hub_ids: [50131] },
+  { group: 'Chandan', tier: 'Top LE', hub_ids: [2848, 40947, 48772] },
+  { group: 'Indira IVF', tier: 'Top LE', hub_ids: [36772] },
+  { group: 'Manipal', tier: 'Top LE', hub_ids: [3027, 3499, 42717, 47153, 48199, 51265, 51643, 54533, 55775] },
+  { group: 'Fortis', tier: 'Top LE', hub_ids: [1282, 2710, 14949, 41195, 41880] },
+  { group: 'Apollo', tier: 'Top LE', hub_ids: [2667, 3102, 3253, 3959, 4008, 4192, 31154, 42251, 52230, 52705] },
+  { group: 'Sparsh', tier: 'Top LE', hub_ids: [38194, 40327, 48356, 51288, 52769] },
+  { group: 'Agilus', tier: 'Top LE', hub_ids: [43727, 49793] },
+  { group: 'BridgeHealth', tier: 'Top LE', hub_ids: [49118] },
+  { group: 'Kauvery', tier: 'Top LE', hub_ids: [1162, 10845, 43996] },
+  { group: 'MAX', tier: 'Top LE', hub_ids: [2529, 2701, 3103, 12243, 16088, 51600, 52256] },
+  { group: 'Dr.B.Lal Clinical Laboratory', tier: 'Top LE', hub_ids: [2546, 3558, 36979, 40540] },
+  { group: 'Reliance Jio', tier: 'Top LE', hub_ids: [54884] },
+  { group: 'NEUBERG DIAGNOSTICS PVT LTD', tier: 'Top LE', hub_ids: [2453, 53247] },
+  { group: 'Sri Chandra Sekara Hospital, Hosur', tier: 'Top LE', hub_ids: [995] },
+  { group: 'Anderson Diagnostics', tier: 'Top LE', hub_ids: [41419] },
+  { group: 'Suburban Diagnostics Pvt Ltd', tier: 'Top LE', hub_ids: [9572] },
+  { group: 'Matcare', tier: 'Top LE', hub_ids: [50590, 50722, 52270, 54300] },
+  { group: 'Jaslok', tier: 'Top LE', hub_ids: [48763] }
 ];
 
 /**
@@ -52,8 +62,11 @@ function apiGetTopCustomers() {
 
 /** Pure rollup used by apiGetTopCustomers and the Executive Overview. */
 function computeTopCustomers_() {
-      var meta = {};
-      TOP_CUSTOMERS.forEach(function (c) { meta[c.hub_id] = c; });
+      // hub_id -> owning group (a group can list several hub_ids).
+      var hubToGroup = {};
+      TOP_CUSTOMERS.forEach(function (c) {
+        c.hub_ids.forEach(function (hid) { hubToGroup[hid] = c; });
+      });
 
       var centers = getCenter360Rows_();
       var assets = getAssetIndex_();
@@ -63,27 +76,30 @@ function computeTopCustomers_() {
       var centerHub = {};
       centers.forEach(function (row) { centerHub[row.center_id] = row.hub_id; });
 
-      var assetByHub = {};
+      var assetByGroup = {};
       assets.forEach(function (a) {
         if (a.center_id === null) return;
         var hub = centerHub[a.center_id];
-        if (hub != null && meta[hub]) assetByHub[hub] = (assetByHub[hub] || 0) + 1;
+        var grp = hub != null ? hubToGroup[hub] : null;
+        if (grp) assetByGroup[grp.group] = (assetByGroup[grp.group] || 0) + 1;
       });
 
-      // Aggregate the top-customer hubs, and collect their located centers.
+      // Aggregate by GROUP (summed across every hub_id it lists), and collect
+      // their located centers.
       var agg = {};
       TOP_CUSTOMERS.forEach(function (c) {
-        agg[c.hub_id] = {
-          hub_id: c.hub_id, hub: c.name, tier: c.tier,
+        agg[c.group] = {
+          hub: c.group, hub_ids: c.hub_ids.slice(), tier: c.tier,
           centers: 0, devices: 0, online: 0, open_tickets: 0,
-          located: 0, assets: assetByHub[c.hub_id] || 0
+          located: 0, assets: assetByGroup[c.group] || 0
         };
       });
 
       var mapCenters = [];
       centers.forEach(function (row) {
-        var a = agg[row.hub_id];
-        if (!a) return;
+        var grp = hubToGroup[row.hub_id];
+        if (!grp) return;
+        var a = agg[grp.group];
         a.centers += 1;
         a.devices += row.devices || 0;
         a.online += row.online || 0;
@@ -145,7 +161,7 @@ function computeTopCustomers_() {
  * @return {{total_tickets:number, sla_breach:number, sla_within_pct:(number|null)}}
  */
 function topCustomerTicketStats_(filters) {
-  var ids = TOP_CUSTOMERS.map(function (c) { return c.hub_id; }).join(', ');
+  var ids = TOP_CUSTOMERS.reduce(function (acc, c) { return acc.concat(c.hub_ids); }, []).join(', ');
   var centerCond = centerFilterSubqueryCond_(filters || {});
   var sql =
     "WITH t AS (SELECT status, " + slaDaysCaseSql_("IFNULL(IssueCategory,'')") + " AS sla_days, " +

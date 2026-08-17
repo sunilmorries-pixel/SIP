@@ -474,7 +474,7 @@
       names.forEach(function (nm, i) {
         var centers = rnd(10, 160), devices = rnd(1, 155), online = rnd(0, devices),
             open_t = rnd(0, 6), assets = rnd(0, 120);
-        custs.push({ hub_id: 1000 + i, hub: nm, tier: 'Top LE', centers: centers, devices: devices,
+        custs.push({ hub_ids: [1000 + i], hub: nm, tier: 'Top LE', centers: centers, devices: devices,
           online: online, open_tickets: open_t, assets: assets, located: rnd(1, centers) });
         totals.centers += centers; totals.devices += devices; totals.online += online;
         totals.open_tickets += open_t; totals.assets += assets;
@@ -2398,7 +2398,9 @@
       $(ids.panel).hidden = false;
       if (ids.scrim) $(ids.scrim).hidden = false;
       $(ids.title).textContent = cust.hub;
-      $(ids.sub).textContent = 'Hub #' + cust.hub_id + ' · ' + (cust.tier || 'customer');
+      var hubIds = cust.hub_ids || [];
+      var hubLabel = hubIds.length === 1 ? 'Hub #' + hubIds[0] : hubIds.length + ' hubs';
+      $(ids.sub).textContent = hubLabel + ' · ' + (cust.tier || 'customer');
       $(ids.body).scrollTop = 0;
       var onlinePct = cust.devices ? Math.round((cust.online / cust.devices) * 100) : 0;
       var html =
@@ -2591,6 +2593,9 @@
     gsCall(ep('apiGetTopCustomers'), { filters: state.globalFilters })
       .then(function (payload) {
         state.topLoaded = true;
+        // hubCount is a plain derived field (not shipped by the server) so
+        // TC_COLUMNS' generic a[tcSort.key] sort works on it like any other column.
+        (payload.customers || []).forEach(function (c) { c.hubCount = (c.hub_ids || []).length; });
         state.topBundle = payload;
         renderTopCustomers(payload);
       })
@@ -2629,7 +2634,7 @@
     if (!q) return all;
     return all.filter(function (c) {
       return String(c.hub || '').toLowerCase().indexOf(q) !== -1 ||
-        String(c.hub_id != null ? c.hub_id : '').indexOf(q) !== -1;
+        (c.hub_ids || []).some(function (id) { return String(id).indexOf(q) !== -1; });
     });
   }
 
@@ -2645,7 +2650,7 @@
 
   var TC_COLUMNS = [
     { key: 'hub', label: 'Customer', sortable: true },
-    { key: 'hub_id', label: 'Hub ID', sortable: true, num: true },
+    { key: 'hubCount', label: 'Hubs', sortable: true, num: true },
     { key: 'centers', label: 'Centers', sortable: true, num: true },
     { key: 'devices', label: 'Devices', sortable: true, num: true },
     { key: 'online', label: 'Online', sortable: true, num: true },
@@ -2690,9 +2695,10 @@
     $('tcTable').querySelector('tbody').innerHTML = rows.map(function (c, i) {
       var onlinePct = c.devices ? Math.round((c.online / c.devices) * 100) : null;
       var tb = c.open_tickets > 3 ? 'danger' : (c.open_tickets > 0 ? 'warn' : 'ok');
-      return '<tr class="is-clickable" data-hub="' + escapeHtml(c.hub_id) + '" tabindex="0" role="button" aria-label="Open ' + escapeHtml(c.hub) + '">' +
+      var hubIds = c.hub_ids || [];
+      return '<tr class="is-clickable" data-idx="' + i + '" tabindex="0" role="button" aria-label="Open ' + escapeHtml(c.hub) + '">' +
         '<td><strong>' + escapeHtml(c.hub) + '</strong> <span class="badge badge-info">' + escapeHtml(c.tier) + '</span></td>' +
-        '<td class="num">' + escapeHtml(c.hub_id) + '</td>' +
+        '<td class="num" title="' + escapeHtml(hubIds.join(', ')) + '">' + FMT.format(hubIds.length) + '</td>' +
         '<td class="num">' + FMT.format(c.centers) + '</td>' +
         '<td class="num">' + FMT.format(c.devices) + '</td>' +
         '<td class="num">' + FMT.format(c.online) + (onlinePct != null ? ' <span class="card-sub">(' + onlinePct + '%)</span>' : '') + '</td>' +
@@ -2700,13 +2706,13 @@
         '<td class="num">' + FMT.format(c.assets) + '</td>' +
         '</tr>';
     }).join('');
-    var byHub = {}; rows.forEach(function (c) { byHub[c.hub_id] = c; });
     Array.prototype.forEach.call($('tcTable').querySelectorAll('tr.is-clickable'), function (tr) {
-      var hubId = parseInt(tr.getAttribute('data-hub'), 10);
+      var cust = rows[parseInt(tr.getAttribute('data-idx'), 10)];
       function go() {
+        var hubIds = cust.hub_ids || [];
         var centersOfHub = (state.topBundle && state.topBundle.mapCenters || [])
-          .filter(function (mc) { return mc[CI.hubId] === hubId; });
-        CenterDetail.openCustomer(byHub[hubId], centersOfHub);
+          .filter(function (mc) { return hubIds.indexOf(mc[CI.hubId]) !== -1; });
+        CenterDetail.openCustomer(cust, centersOfHub);
       }
       tr.addEventListener('click', go);
       tr.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });

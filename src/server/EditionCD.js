@@ -967,8 +967,11 @@ function apiGetCdmDataCD(options) {
 
 /** Top-customers rollup over the center_details center universe. */
 function computeTopCustomersCD_(filters) {
-  var meta = {};
-  TOP_CUSTOMERS.forEach(function (c) { meta[c.hub_id] = c; });
+  // hub_id -> owning group (a group can list several hub_ids).
+  var hubToGroup = {};
+  TOP_CUSTOMERS.forEach(function (c) {
+    c.hub_ids.forEach(function (hid) { hubToGroup[hid] = c; });
+  });
 
   var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters || {}); });
   var assets = getAssetIndex_();
@@ -977,23 +980,26 @@ function computeTopCustomersCD_(filters) {
   var centerHub = {};
   centers.forEach(function (row) { centerHub[row.center_id] = row.hub_id; });
 
-  var assetByHub = {};
+  var assetByGroup = {};
   assets.forEach(function (a) {
     if (a.center_id === null) return;
     var hub = centerHub[a.center_id];
-    if (hub != null && meta[hub]) assetByHub[hub] = (assetByHub[hub] || 0) + 1;
+    var grp = hub != null ? hubToGroup[hub] : null;
+    if (grp) assetByGroup[grp.group] = (assetByGroup[grp.group] || 0) + 1;
   });
 
+  // Aggregate by GROUP (summed across every hub_id it lists).
   var agg = {};
   TOP_CUSTOMERS.forEach(function (c) {
-    agg[c.hub_id] = { hub_id: c.hub_id, hub: c.name, tier: c.tier, centers: 0,
-      devices: 0, online: 0, open_tickets: 0, located: 0, assets: assetByHub[c.hub_id] || 0 };
+    agg[c.group] = { hub: c.group, hub_ids: c.hub_ids.slice(), tier: c.tier, centers: 0,
+      devices: 0, online: 0, open_tickets: 0, located: 0, assets: assetByGroup[c.group] || 0 };
   });
 
   var mapCenters = [];
   centers.forEach(function (row) {
-    var a = agg[row.hub_id];
-    if (!a) return;
+    var grp = hubToGroup[row.hub_id];
+    if (!grp) return;
+    var a = agg[grp.group];
     a.centers += 1; a.devices += row.devices || 0; a.online += row.online || 0;
     a.open_tickets += row.open_tickets || 0;
     var c = coordsForCD_(row, geoStore);

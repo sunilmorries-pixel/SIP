@@ -1,12 +1,17 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-14 · **Live version:** 5.33 · **Status:** ✅ **Production is deployed
-from `main`; git has 1 commit production hasn't picked up yet (see below).** Production
+**Last updated:** 2026-08-17 · **Live version:** 5.37 · **Status:** ✅ **Production deployed from
+`main` @ `7ae7549`, in sync — nothing outstanding.** Production
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always)
-serves Apps Script **@62 / v5.33**, built from git `main` @ **`15eca0b`**. `main`'s current tip is
-`7d98b69` (a local-tooling-only commit, see below — nothing to redeploy for it). No tag cut for
-v5.27–v5.33. v5.21–v5.25 and v5.27–v5.33 were deployed **without** tags; only `v5.16`–`v5.18`,
-`v5.20` and `v5.26` are tagged, so tags are not a reliable release index.
+serves Apps Script **@66 / v5.37**. No tag cut for v5.27–v5.37. v5.21–v5.25 and v5.27–v5.37 were
+deployed **without** tags; only `v5.16`–`v5.18`, `v5.20` and `v5.26` are tagged, so tags are not a
+reliable release index.
+
+**This handoff was stale for three deploys** (v5.35–v5.37) before this catch-up pass — it still
+said tip was `7d98b69` / live was v5.33 while `main` had moved 11 commits ahead from a concurrent
+session that didn't update this file. Don't trust the "Last updated" date alone; if `git log
+7d98b69..HEAD` (or whatever the last-cited commit was) returns anything, this doc is behind
+reality by at least that much.
 
 **`7d98b69` (2026-08-14, git only, not deployed):** local preview server switched from a
 hardcoded port 8765 to `autoPort` (`.claude/launch.json`) + reading `$env:PORT`
@@ -34,6 +39,12 @@ reverted by the other's save at least once. Consequences to know:
   messages, **not independently verified** — each entry says which.
 - `v5.19`, `v5.21`, `v5.22` and `v5.23` were deployed **without git tags**; only `v5.16`, `v5.17`,
   `v5.18` and `v5.20` are tagged. Don't assume tag coverage is complete.
+- **Recurred 2026-08-17** immediately before the v5.37/@66 deploy: `git status` returned a
+  different set of modified files on two checks a couple minutes apart (`Api.js` finished and
+  cleared, then `App.html`/`Index.html`/`Styles.html`/`Queries.js`/`Setup.js` showed up modified)
+  while this session sat idle. Polled `git status --porcelain` every 10s until it read identical
+  twice in a row before trusting the diff enough to commit — worth doing again rather than
+  assuming a snapshot mid-edit-burst is safe to commit.
 - **Before editing `src/client/App.html` / `Index.html` / `Styles.html`, re-read the file
   immediately before and after each edit** and grep for your own identifier to confirm the change
   survived. A successful Edit call is not proof the change is still on disk a minute later.
@@ -77,6 +88,65 @@ reverted by the other's save at least once. Consequences to know:
 > actual join-key question (does `servicewrk_Tickets.customer_id` / `tom_tickets.center_id`
 > resolve to `center_details.CenterID`?) is still unanswered** — `profileJoinKeys()` needs to be
 > run directly in the Apps Script editor and its log read by hand.
+
+### v5.37 / @66 (2026-08-17) — uptime hero ring + KPI deltas, SLA risk card, ticket age-bucket, dead-endpoint cleanup
+
+> Catch-up deploy bundling everything accumulated since v5.36/@65. Built from commit `7ae7549`.
+>
+> **Overview hero ring switched from avg device age to center uptime** (`70aa974`) against the
+> ≥99% North-Star (M-A1) — uptime is the metric the business is steered by, so it now gets the
+> most prominent slot; device age moved to a normal KPI tile (`exAvgAge`, re-labeled "Avg center
+> age" since `avgAgeDays` is center-grain deployment age, not the Asset page's device-grain age).
+>
+> **KPI prior-period delta chips** (`70aa974`) — Support's created_7d/closed_7d tiles now show a
+> ▲/▼ delta against the preceding 7-day window (`Queries.js` zohoKpis spec gained
+> `created_7d_prev`/`closed_7d_prev` — same scan, two more `COUNTIF`s, no extra query; deliberately
+> not added for stock metrics like `open_tickets`, which have no historical snapshot to diff
+> against). Direction and "goodness" are reported separately — more tickets created is bad, more
+> closed is good — so color is never the only signal; light-theme chip colors were darkened to
+> clear WCAG AA 4.5:1 at 10.5px (measured against the effective `#EEF3F8` tile background, not
+> white).
+>
+> **Support page: Open ticket age bucket** (`a116eb7`) replaces the Priority mix / Intake channels
+> tiles.
+>
+> **SLA risk card** (`ffd47c1`) — breached/at-risk chart + ticket worklist on Support/CS, sharing
+> the same breach/at-risk thresholds as the SLA KPI tiles so the two can't drift apart. `Setup.js`
+> gained a temp diagnostic, `diagSlaRiskCheck()` — Apps-Script-editor-only, not exposed to any
+> endpoint, marked in its own comment for deletion once the chart/KPI/worklist reconciliation is
+> confirmed against production `zoho_data`. **Not yet run as of this deploy** (same `clasp run`
+> limitation as the `dffa0fd` join-key check above) — still needs manual execution + log read in
+> the Apps Script editor, then deletion.
+>
+> **Cleanup** (`2871967`) — closed HANDOFF item 15 (2026-07-31 review). Deleted the confirmed-dead
+> non-CD endpoints: `apiGetCenters`/`apiGetMapData`/`apiGetCenterDetail` + their
+> `getCenter360Rows_`/`enrichCenterNames_` helpers (`Api.js`), the entire `ExecOverview.js` file,
+> and `apiGetTopCustomers`/`computeTopCustomers_` (`TopCustomers.js`). Verified via fresh grep that
+> `App.html`'s `ep()` routes every client call to the `*CD` suffix and no CD endpoint calls back
+> into these. Kept every helper the live CD path still uses (`respond_`, `apiGetDevices`,
+> `apiGetCdmDevices`, `apiHealthCheck`, the `asset*_`/`getAssetIndex_` helpers, `TOP_CUSTOMERS`/
+> `topCustomerTicketStats_`).
+>
+> Also two planning docs with no code, not yet acted on: `c0d8a7e` (Overview decomposition-tree
+> design spec) and `3d95e3e` (…implementation plan).
+
+### v5.36 / @65 (2026-08-17) — SLA catalog revision, Top Customers grouped by account
+
+> Commits `5f3f063` + `333ede5`, version bump `660c959`.
+>
+> **SLA catalog** revised from the CS team's "SLA sheet.xlsx" (column E, kept untracked at the repo
+> root — reference input already fully consumed into `SlaCatalog.js`, not meant to be committed) —
+> 61 categories' SLA days changed, one added (International Camp Request). Tech/Non-Tech
+> classification unchanged — verified it already agreed with the sheet's Type column for every row.
+>
+> **Top Customers** restructured to group multiple HubIDs under one named account (was one row per
+> HubID).
+
+### v5.35 / @64 (2026-08-14) — Tricog brand refresh
+
+> Commits `20d1bc0` + `8634606`, version bump `57fa0a2`. New Tricog brand logo; tagline now reads
+> "SIP - Service Insights Platform". Follow-up commit fixed CSS specificity bugs introduced by the
+> new tagline layout.
 
 ### v5.32 / @61 (2026-08-14) — rankBar chart axis-label fix
 

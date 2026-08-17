@@ -453,6 +453,24 @@ function buildDashboardQuerySpecs(hub, filters) {
         " COUNTIF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS open_tickets, " +
         " COUNTIF(created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 7 DAY)) AS created_7d, " +
         " COUNTIF(closed >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 7 DAY)) AS closed_7d, " +
+        // The 7-day window immediately BEFORE the two above, so the KPI tiles can
+        // show a prior-period delta ("340 created, ▲12% vs prior 7d"). Same scan,
+        // no extra query — just two more COUNTIFs over `t`.
+        //
+        // FLOW metrics only. created/closed are counts over a window, so the
+        // window can be shifted back and compared. open_tickets/total_tickets are
+        // STOCKS (a snapshot of now); there is no historical snapshot table in
+        // this schema, so they deliberately get no *_prev column — a delta for
+        // them would have to be invented. Don't add one here.
+        //
+        // When a date filter is active, supportDateCond clips BOTH windows
+        // identically, so the comparison stays like-for-like; if the filter
+        // excludes the prior window entirely it returns 0 and the client
+        // suppresses the delta rather than dividing by zero.
+        " COUNTIF(created >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 14 DAY)" +
+        "   AND created < DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 7 DAY)) AS created_7d_prev, " +
+        " COUNTIF(closed >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 14 DAY)" +
+        "   AND closed < DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 7 DAY)) AS closed_7d_prev, " +
         " ROUND(AVG(IF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + " AND created IS NOT NULL, " +
         "   DATETIME_DIFF(CURRENT_DATETIME(), created, HOUR) / 24.0, NULL)), 1) AS avg_open_age_days " +
         "FROM t"

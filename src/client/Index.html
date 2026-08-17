@@ -144,8 +144,12 @@
         <div class="ring" id="execRing" style="--pct:0">
           <div class="ring-inner">
             <span id="execRingPct" class="ring-pct">–</span>
-            <span id="execRingLabel" class="ring-label">avg device age</span>
-            <span id="execRingCap" class="ring-cap">of 5-yr life</span>
+            <span id="execRingLabel" class="ring-label">center uptime</span>
+            <span id="execRingCap" class="ring-cap">North-Star ≥ 99%</span>
+            <!-- renderExec injects the M-A1 uptime info-dot here; it must be a
+                 SIBLING of execRingLabel, whose textContent is rewritten on
+                 every render and would otherwise wipe a nested dot. -->
+            <span id="execRingInfo" class="ring-info"></span>
           </div>
         </div>
       </div>

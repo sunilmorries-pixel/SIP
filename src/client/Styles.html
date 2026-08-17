@@ -875,7 +875,36 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 .ring-pct { display: block; font-family: var(--font-head); font-size: 32px; font-weight: 900; color: var(--text-1); font-variant-numeric: tabular-nums; line-height: 1.05; }
 .ring-label { display: block; font-size: 10.5px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 3px; }
 .ring-cap { display: block; font-size: 10px; color: var(--text-3); margin-top: 1px; }
+.ring-info { display: block; margin-top: 4px; }
 @property --pct { syntax: '<number>'; inherits: false; initial-value: 0; }
+
+/* ── KPI prior-period delta chip ─────────────────────────────────
+   Colour is never the only signal: the ▲/▼ glyph carries direction and the
+   percentage carries magnitude, so the chip still reads correctly in
+   monochrome or with a colour-vision deficiency (WCAG "not by colour alone").
+   is-good/is-bad describe whether the movement is DESIRABLE, which is not the
+   same as its direction — more tickets closed is good, more created is bad. */
+.kpi-delta {
+  display: inline-block; margin-left: 4px;
+  font-size: 10.5px; font-weight: 700;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.kpi-delta.is-good { color: var(--ok); }
+.kpi-delta.is-bad  { color: var(--danger); }
+.kpi-delta.is-flat { color: var(--text-3); font-weight: 600; }
+/* Light theme only. Both semantic tokens miss the 4.5:1 WCAG AA floor at this
+   size (10.5px is normal text, not large — AA large starts at 18.66px bold), so
+   the chip carries its own darker pair. Ratios measured in-browser against the
+   EFFECTIVE background (#EEF3F8 — the page showing through the translucent
+   tile), not pure white; assuming white overstates each by ~0.5 and is what
+   made the red look passable at first:
+     --ok      #0E9F6E → 3.42:1  ✗   replaced by #0A7A55 → 4.79:1  ✓
+     --danger  #DC2626 → 4.33:1  ✗   replaced by #C81E1E → 5.14:1  ✓
+   Scoped to this chip rather than darkening the global tokens, which would
+   restyle every badge in the app. Dark theme needs no override (9.31:1 and
+   6.12:1 on the dark surface). */
+body[data-theme="light"] .kpi-delta.is-good { color: #0A7A55; }
+body[data-theme="light"] .kpi-delta.is-bad  { color: #C81E1E; }
 
 /* ── theme toggle (replaces the auto-refresh toggle) ────────────── */
 .theme-toggle {

@@ -478,7 +478,11 @@
       for (var em = 11; em >= 0; em--) { var ed = new Date(); ed.setMonth(ed.getMonth() - em); months2.push(ed.toISOString().slice(0, 7)); }
       return Promise.resolve({
         kpis: { total_devices: 11331, online_24h: 6120, live_1h: 2210, offline_7d: 3480, low_battery: 512, charging_now: 990, poor_signal: 731 },
-        zohoKpis: { open_tickets: 211, created_7d: 340, closed_7d: 361, total_tickets: 84545 },
+        // *_prev = the 7-day window before created_7d/closed_7d, mirroring the
+        // real zohoKpis spec. Values picked so BOTH deltas rise (▲) while
+        // meaning opposite things: created up is bad, closed up is good.
+        zohoKpis: { open_tickets: 211, created_7d: 340, created_7d_prev: 304,
+          closed_7d: 361, closed_7d_prev: 330, total_tickets: 84545 },
         slaKpis: { within_pct: 65.5, breached_open: 484, resolved_n: 77678 },
         fleetStatus: Charts.FLEET_ORDER.map(function (s) { return { status: s, cnt: rnd(300, 4000) }; }),
         zohoTrend: months2.map(function (mo) { return { month: mo, created: rnd(800, 2400), closed: rnd(800, 2400) }; }),
@@ -604,7 +608,8 @@
       geoCustomers: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
       deploymentAge: ['<1y', '1-2y', '2-3y', '3-5y', '5y+'].map(function (b) { return { band: b, devices: rnd(400, 3200) }; }),
       activeVsEnded: [{ status: 'SME', devices: 14316 }, { status: 'Government', devices: 4754 }, { status: 'LE', devices: 5107 }, { status: 'ECHO', devices: 788 }, { status: 'Project', devices: 65 }],
-      zohoKpis: [{ open_tickets: 211, created_7d: 340, closed_7d: 361, avg_open_age_days: 6.2, total_tickets: 84545 }],
+      zohoKpis: [{ open_tickets: 211, created_7d: 340, created_7d_prev: 304,
+        closed_7d: 361, closed_7d_prev: 330, avg_open_age_days: 6.2, total_tickets: 84545 }],
       slaKpis: [{ resolved_n: 77678, within_pct: 65.5, within_tech: 51.0, within_nontech: 74.6, breached_open: 484, atrisk_open: 25, avg_res_days: 16.7 }],
       slaByType: [
         { category: 'Mac 600 To V-Cardia(Swapping)', sla_days: 5, is_tech: true, tickets: 85, resolved_n: 76, breach_pct: 88.2, avg_res_days: 44.1 },
@@ -726,7 +731,14 @@
 
   function buildKpiSkeletons() {
     $('execKpiGrid').innerHTML =
-      kpiTile('exUptime', 'online', 'var(--ok)', 'Center uptime', 'North-Star ≥ 99%') +
+      // Center uptime moved to the hero ring (it is the North-Star, so it gets
+      // the most prominent slot); this tile now carries average device age,
+      // which the ring used to show — a slow-moving structural number that does
+      // not warrant hero placement.
+      // "Avg CENTER age", not device age — this tile is fed by avgAgeDays, which
+      // is center_details.deploymentdate at center grain. The Asset page owns
+      // the device-age metric; see renderExec for the full note.
+      kpiTile('exAvgAge', 'clock', 'var(--info)', 'Avg center age', 'today − deployment date') +
       kpiTile('exActive', 'fleet', 'var(--secondary)', 'Total devices', 'Connector + ECG') +
       kpiTile('exCenters', 'building', 'var(--info)', 'Centers', 'with devices') +
       kpiTile('exTickets', 'inbox', 'var(--accent)', 'Open tickets', 'active backlog') +
@@ -779,12 +791,52 @@
       kpiTile('tcSlaBreach', 'clock', 'var(--danger)', 'SLA breach', 'top accounts');
   }
 
-  function setKpi(id, value, subText) {
+  /**
+   * Prior-period delta chip for a FLOW metric — a count over a window that can
+   * be shifted back and compared (created/closed per 7d). NEVER call this for a
+   * STOCK (open backlog, device/center counts): those are snapshots of now, and
+   * this schema keeps no historical snapshot, so a "change" figure for them
+   * would be fabricated. See the zohoKpis spec in Queries.js.
+   *
+   * Direction is reported separately from goodness so colour is never the only
+   * signal: the arrow states which way the number moved, the class states
+   * whether that is good. `invert` marks metrics where rising is bad (tickets
+   * created), as opposed to good (tickets closed).
+   *
+   * @param {?number} curr this window
+   * @param {?number} prev the window immediately before
+   * @param {{invert:(boolean|undefined), label:(string|undefined)}=} opts
+   * @return {string} HTML, or '' when there is no usable baseline
+   */
+  function deltaChip(curr, prev, opts) {
+    var o = opts || {};
+    var label = o.label || 'vs prior 7d';
+    if (curr == null || prev == null) return '';
+    // No baseline to divide by — say so rather than rendering a fake +100%.
+    if (!prev) return '<span class="kpi-delta is-flat">no prior ' + escapeHtml(label.replace(/^vs /, '')) + '</span>';
+    var pct = Math.round(((curr - prev) / prev) * 1000) / 10;
+    if (pct === 0) return '<span class="kpi-delta is-flat">± 0% ' + escapeHtml(label) + '</span>';
+    var rising = pct > 0;
+    var good = o.invert ? !rising : rising;
+    return '<span class="kpi-delta ' + (good ? 'is-good' : 'is-bad') + '">' +
+      (rising ? '▲' : '▼') + ' ' + Math.abs(pct) + '% ' + escapeHtml(label) + '</span>';
+  }
+
+  /**
+   * @param {string} id
+   * @param {?number} value
+   * @param {string=} subText
+   * @param {string=} subHtml pre-built markup (e.g. deltaChip) rendered INSTEAD
+   *   of subText. Only ever pass generated markup — this is the one innerHTML
+   *   path on a KPI tile; server strings must go through subText/textContent.
+   */
+  function setKpi(id, value, subText, subHtml) {
     var tile = $(id);
     if (!tile) return;
     tile.classList.remove('is-loading');
     countUp(tile.querySelector('.kpi-value'), value == null ? 0 : value);
-    if (subText) tile.querySelector('.kpi-sub').textContent = subText;
+    if (subHtml) tile.querySelector('.kpi-sub').innerHTML = subHtml;
+    else if (subText) tile.querySelector('.kpi-sub').textContent = subText;
   }
 
   /** Sets a KPI to a string, count-up animating a leading number + suffix (e.g. "98.9%"). */
@@ -900,8 +952,15 @@
     /* Support KPIs (all Zoho tickets) */
     var zoho = (data.zohoKpis && data.zohoKpis[0]) || {};
     setKpi('kpiZOpen', zoho.open_tickets, 'active backlog');
-    setKpi('kpiZIn', zoho.created_7d, 'new this week');
-    setKpi('kpiZOut', zoho.closed_7d, 'resolved this week');
+    // Flow metrics — comparable against the preceding 7 days. More tickets
+    // created is bad (invert), more closed is good. The old subs ("new this
+    // week" / "resolved this week") are dropped rather than passed and
+    // overridden: they only restated the "Created · 7d" / "Closed · 7d" tile
+    // labels, so the delta is strictly more informative in the same space.
+    setKpi('kpiZIn', zoho.created_7d, null,
+      deltaChip(zoho.created_7d, zoho.created_7d_prev, { invert: true }));
+    setKpi('kpiZOut', zoho.closed_7d, null,
+      deltaChip(zoho.closed_7d, zoho.closed_7d_prev));
     setKpi('kpiZAge', zoho.avg_open_age_days, 'days per open ticket');
 
     // Service KPIs: awaiting its own data source (2026-08-12), no longer
@@ -1822,7 +1881,7 @@
     return months >= 12 ? (months / 12).toFixed(1) + ' years' : Math.round(months) + ' months';
   }
 
-  // Compact center array indices (must match Api.js apiGetMapData).
+  // Compact center array indices (must match EditionCD.js apiGetMapDataCD).
   var CI = { id: 0, name: 1, lat: 2, lng: 3, devices: 4, online: 5, tickets: 6, assets: 7, hub: 8, hubId: 9, segment: 10, state: 11 };
   // Compact asset array indices.
   var AI = { center: 0, type: 1, cat: 2, age: 3, serial: 4 };
@@ -2683,31 +2742,62 @@
     var k = d.kpis || {}, z = d.zohoKpis || {}, roll = d.rollup || {}, tt = d.topTotals || {};
 
     /* KPI strip */
-    uptimeKpi('exUptime', d.uptimeFleet || null);
+    // avgAgeDays is CENTER age, NOT device age. apiGetExecOverviewCD's spec is
+    // keyed 'deviceAge' but averages DATE_DIFF(today, deploymentdate) at center
+    // grain — see its own "Center age = …" comment (EditionCD.js:1083). The
+    // Asset page's kpiAvgAge is the real device age (today − Jira Created) and
+    // reads ~3.9y against this ~2.3y, so calling both "Avg device age" put two
+    // different metrics under one label on two pages. The 5-yr expected-life
+    // framing belongs to the device metric too, so it is not repeated here.
+    var ageYears = d.avgAgeDays != null ? d.avgAgeDays / 365 : null;
+    setKpiText('exAvgAge', ageYears != null ? ageYears.toFixed(1) + 'y' : '—',
+      ageYears != null ? 'since first deployment' : 'no deployment dates');
     var fleet = d.fleet || {};
     setKpi('exActive', fleet.total != null ? fleet.total : k.total_devices);
     setKpi('exCenters', roll.centers, FMT.format(roll.attention_centers || 0) + ' need attention');
-    setKpi('exTickets', z.open_tickets, FMT.format(z.created_7d || 0) + ' new this week');
+    // open_tickets is a STOCK, so its sub-line carries the created-7d FLOW and
+    // that flow's own prior-period delta — not a delta on the backlog itself.
+    setKpi('exTickets', z.open_tickets, null,
+      FMT.format(z.created_7d || 0) + ' new this week ' +
+      deltaChip(z.created_7d, z.created_7d_prev, { invert: true }));
     setKpi('exTopLe', tt.devices, tt.customers + ' Top LE accounts');
     var sla = d.slaKpis || {};
-    setKpi('exTicketCount', z.total_tickets, FMT.format(z.open_tickets || 0) + ' currently open');
+    // Was "N currently open" — the exact number exTickets already shows as its
+    // own value, so the strip printed it twice. Carries the closed-7d flow
+    // instead, which pairs with exTickets' created-7d for an in/out read.
+    setKpi('exTicketCount', z.total_tickets, null,
+      FMT.format(z.closed_7d || 0) + ' closed this week ' +
+      deltaChip(z.closed_7d, z.closed_7d_prev));
     setKpi('exSlaBreach', sla.breached_open, (sla.within_pct != null ? sla.within_pct + '% within SLA' : 'open tickets past target'));
 
-    /* Fleet-age ring: fills toward a 5-year expected device lifecycle. */
-    var LIFECYCLE_YEARS = 5;
-    var ageYears = d.avgAgeDays != null ? d.avgAgeDays / 365 : null;
-    var agePct = ageYears != null ? Math.min(100, Math.round((ageYears / LIFECYCLE_YEARS) * 100)) : 0;
-    var ageColor = ageYears == null ? 'var(--muted)'
-      : (ageYears >= 4 ? 'var(--danger)' : (ageYears >= 2.5 ? 'var(--warn)' : 'var(--ok)'));
+    /* Hero ring: center uptime against the ≥99% North-Star (M-A1). Uptime, not
+       device age — this is the metric the business is steered by, so it gets the
+       most prominent slot in the app; device age moved to a normal tile above.
+       --pct is a registered <number> consumed as calc(--pct * 1%), so the
+       uptime percentage feeds it directly with no rescaling. */
+    var NORTH_STAR_UPTIME = 99;
+    var up = d.uptimeFleet || null;
+    var upPct = up && up.avg_uptime != null ? up.avg_uptime : null;
+    var upColor = upPct == null ? 'var(--muted)'
+      : (upPct >= NORTH_STAR_UPTIME ? 'var(--ok)' : (upPct >= 95 ? 'var(--warn)' : 'var(--danger)'));
     var ring = $('execRing');
     if (ring) {
-      ring.style.setProperty('--ring-color', ageColor);
-      $('execRingPct').textContent = ageYears != null ? ageYears.toFixed(1) + 'y' : '–';
-      $('execRingLabel').textContent = 'avg device age';
-      $('execRingCap').textContent = 'of ' + LIFECYCLE_YEARS + '-yr life';
-      ring.style.setProperty('--pct', REDUCED_MOTION ? agePct : 0);
+      ring.style.setProperty('--ring-color', upColor);
+      $('execRingPct').textContent = upPct != null ? upPct.toFixed(1) + '%' : '–';
+      $('execRingLabel').textContent = 'center uptime';
+      $('execRingCap').textContent = upPct == null ? 'awaiting uptime data'
+        : (upPct >= NORTH_STAR_UPTIME
+            ? 'at/above ' + NORTH_STAR_UPTIME + '% North-Star'
+            : (Math.round((NORTH_STAR_UPTIME - upPct) * 10) / 10) + 'pp below North-Star');
+      // The ring replaces the old exUptime tile, which carried the uptime
+      // info-dot. Re-inject it here so the M-A1 formula/source stays reachable
+      // from the Overview (setupMetricInfo delegates on document, so a dot added
+      // after boot still works).
+      var ringInfo = $('execRingInfo');
+      if (ringInfo && !ringInfo.firstChild) ringInfo.innerHTML = infoDotHtml('uptime');
+      ring.style.setProperty('--pct', REDUCED_MOTION ? (upPct || 0) : 0);
       if (!REDUCED_MOTION) requestAnimationFrame(function () {
-        requestAnimationFrame(function () { ring.style.setProperty('--pct', agePct); });
+        requestAnimationFrame(function () { ring.style.setProperty('--pct', upPct || 0); });
       });
     }
 
@@ -3356,7 +3446,13 @@
 
   // KPI tile id → metric key
   var KPI_METRIC = {
-    exUptime: 'uptime', kpiUptime: 'uptime',
+    // exUptime is gone — uptime now lives in the hero ring, which injects its
+    // own 'uptime' dot in renderExec. exAvgAge maps to deployAge (M-A4≈,
+    // "today − deploymentdate, per center"), NOT assetAge: the tile is fed by
+    // avgAgeDays, which is center-grain deployment age. assetAge's formula
+    // ("today − Created, per device") describes the Asset page's kpiAvgAge and
+    // would have cited the wrong source in the popover.
+    exAvgAge: 'deployAge', kpiUptime: 'uptime',
     exActive: 'devicesCount', kpiTotal: 'devicesCount', mapDevices: 'devicesCount', tcDevices: 'devicesCount',
     exCenters: 'centersCount', kpiCenters: 'customersCount', mapCenters: 'centersCount', tcCenters: 'centersCount',
     exTickets: 'openTickets', kpiZOpen: 'openTickets', mapTickets: 'openTickets',

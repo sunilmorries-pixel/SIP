@@ -115,6 +115,48 @@ function diagnostics() {
 }
 
 /**
+ * TEMP diagnostic — delete after use. Proves the SLA-risk SQL runs against
+ * PRODUCTION zoho_data (the local harness can only reach the sandbox, whose
+ * CreatedAt is STRING where prod is DATETIME — see the Queries.js header), and
+ * that the chart, the KPI card and the worklist all agree on the same tickets.
+ */
+function diagSlaRiskCheck() {
+  var specs = buildDashboardQuerySpecsCD('', {});
+  function specFor(key) {
+    return specs.filter(function (s) { return s.key === key; })[0];
+  }
+
+  var chartSpec = specFor('slaRisk');
+  var chart = runQuery(chartSpec.sql, chartSpec.params);
+  Logger.log('slaRisk chart: ' + chart.length + ' issue types · ' + JSON.stringify(chart.slice(0, 5)));
+
+  var kpiSpec = specFor('slaKpis');
+  var kpi = runQuery(kpiSpec.sql, kpiSpec.params)[0] || {};
+  Logger.log('slaKpis: breached_open=' + kpi.breached_open + ' atrisk_open=' + kpi.atrisk_open);
+
+  var page = apiGetSlaRiskTicketsCD({ page: 0, pageSize: 5 });
+  if (!page.ok) {
+    Logger.log('worklist FAILED: ' + JSON.stringify(page.error));
+    return;
+  }
+  Logger.log('worklist: totalRows=' + page.data.totalRows +
+    ' · sample=' + JSON.stringify(page.data.rows[0] || null));
+
+  // The whole point of the shared thresholds: these two must be equal.
+  var expected = (kpi.breached_open || 0) + (kpi.atrisk_open || 0);
+  Logger.log('RECONCILE worklist ' + page.data.totalRows + ' vs slaKpis ' + expected +
+    ' -> ' + (page.data.totalRows === expected ? 'MATCH' : 'MISMATCH'));
+
+  // Band narrowing should split the same universe, not a different one.
+  var b = apiGetSlaRiskTicketsCD({ page: 0, pageSize: 1, risk: 'breached' });
+  var a = apiGetSlaRiskTicketsCD({ page: 0, pageSize: 1, risk: 'atrisk' });
+  Logger.log('bands: breached=' + (b.ok ? b.data.totalRows : 'FAILED') +
+    ' atrisk=' + (a.ok ? a.data.totalRows : 'FAILED') +
+    ' -> ' + ((b.ok && a.ok && (b.data.totalRows + a.data.totalRows) === page.data.totalRows)
+      ? 'SUM MATCHES' : 'SUM MISMATCH'));
+}
+
+/**
  * Current cache epoch — bumped by clearDashboardCache(). Every filter-varying
  * cache key folds this in, so bumping it invalidates every existing filtered
  * variant at once without needing to enumerate what combinations were ever

@@ -45,9 +45,8 @@ demo-sip/
 │   │   ├── SlaCatalog.js     # SLA catalog + Tech/Non-Tech classification
 │   │   ├── Numbers.js         # Numbers page + Jira device stats (live jira_data BQ table, exclude-list device-type filter)
 │   │   ├── RawData.js        # Raw Data page: all 4 BQ sources, paginated, CSV export
-│   │   ├── Api.js            # legacy endpoints (retained; CD versions are live)
-│   │   ├── TopCustomers.js   # curated 27 "Top LE" hubs
-│   │   ├── ExecOverview.js   # legacy exec endpoint
+│   │   ├── Api.js            # apiGetDevices/apiGetCdmDevices/apiHealthCheck + shared asset-index helpers
+│   │   ├── TopCustomers.js   # curated 27 "Top LE" hubs + shared SLA-stats helper
 │   │   ├── Geo.js            # progressive geocoder
 │   │   ├── Join.js           # Apps Script hash-join utils
 │   │   ├── WebApp.js         # doGet router + HTML includes

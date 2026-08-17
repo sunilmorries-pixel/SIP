@@ -55,7 +55,6 @@ contents 1:1 (clasp Path A does this automatically — prefer it). Current file 
 | `RawData` (script) | `src/server/RawData.js` — **Raw Data page server layer (v5.2)** |
 | `Api` (script) | `src/server/Api.js` |
 | `TopCustomers` (script) | `src/server/TopCustomers.js` |
-| `ExecOverview` (script) | `src/server/ExecOverview.js` |
 | `Geo` (script) | `src/server/Geo.js` |
 | `Join` (script) | `src/server/Join.js` |
 | `WebApp` (script) | `src/server/WebApp.js` |

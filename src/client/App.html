@@ -52,7 +52,7 @@
     centerRows: [], centerTotal: 0,
     // Service page (ServiceWRK). Fetches its own payload rather than sharing the
     // Zoho dashboard one — different table, different filter coverage.
-    overviewFlowLoaded: false, overviewFlowFilters: null,
+    overviewFlowLoaded: false, overviewFlowFilters: null, overviewFlowData: null,
     serviceLoaded: false, serviceFilters: null,
     service: { sortBy: 'created_on', sortDir: 'desc', page: 0, pageSize: 15 },
     serviceRows: [], serviceTotal: 0,
@@ -1440,6 +1440,7 @@
         if (requestId !== overviewFlowRequestId) return;
         state.overviewFlowLoaded = true;
         state.overviewFlowFilters = sentFilters;
+        state.overviewFlowData = payload;
         renderOverviewFlow(payload);
       })
       .catch(function (err) {
@@ -1464,6 +1465,20 @@
   function handleTreeNodeClick_(nodeData) {
     if (nodeData.clearDims) {
       nodeData.clearDims.forEach(function (dim) { state.globalFilters[dim] = []; });
+      commitGlobalFilters_();
+      return;
+    }
+    // resetSet (e.g. the Devices root) and filterSet (e.g. a segment leaf,
+    // which must ADD to its parent country rather than replace it) both
+    // assign one or more filter dimensions verbatim from the node payload —
+    // same mechanics, different intent, so they share one apply loop.
+    if (nodeData.resetSet) {
+      Object.keys(nodeData.resetSet).forEach(function (dim) { state.globalFilters[dim] = nodeData.resetSet[dim]; });
+      commitGlobalFilters_();
+      return;
+    }
+    if (nodeData.filterSet) {
+      Object.keys(nodeData.filterSet).forEach(function (dim) { state.globalFilters[dim] = nodeData.filterSet[dim]; });
       commitGlobalFilters_();
       return;
     }
@@ -2563,7 +2578,7 @@
     if (persist) localStorage.setItem('sip.theme', state.theme);
     // ECharts colors are baked at build time → rebuild from cached data.
     if (state.lastDashboard) renderDashboard(state.lastDashboard);
-    if (state.execLoaded) renderExec(state.execData);
+    if (state.overviewFlowLoaded) renderOverviewFlow(state.overviewFlowData);
     mainMap.setTheme(state.theme);
     tcMap.setTheme(state.theme);
     if (state.mapLoaded) applyMapFilters();

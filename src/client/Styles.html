@@ -581,8 +581,10 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 .chart { width: 100%; height: 280px; }
 .chart-tall { height: 320px; }
 /* Overview's flow diagrams (Sankey) — taller than a bar/donut chart since a
-   branch can carry many leaf nodes stacked vertically within its column. */
-.chart-flow { height: 420px; }
+   branch can carry many leaf nodes stacked vertically within its column;
+   the Customers flow in particular can stack ~25-30 leaf nodes across 6
+   countries when segments are heavily skewed toward one of them. */
+.chart-flow { height: 560px; }
 .chart.is-loading {
   border-radius: var(--radius-sm);
   background: linear-gradient(100deg,

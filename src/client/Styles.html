@@ -551,15 +551,38 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 .card-title { font-family: var(--font-head); font-size: 16px; font-weight: 600; letter-spacing: 0.01em; }
 .card-sub { font-size: 13px; color: var(--text-3); margin-top: 2px; }
 
+/* ── Overview flow cards — a KPI total that expands into a Sankey flow ── */
+.flow-card { padding: 0; }
+.flow-summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center;
+  justify-content: space-between; gap: 12px; padding: var(--pad);
+}
+.flow-summary::-webkit-details-marker { display: none; }
+.flow-summary-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.flow-summary-text .card-title,
+.flow-summary-text .card-sub { display: block; }
+.flow-summary-text .card-sub { margin-top: 0; }
+.flow-summary::after {
+  content: ''; flex: none; width: 9px; height: 9px; margin-left: 4px;
+  border-right: 2px solid var(--text-3); border-bottom: 2px solid var(--text-3);
+  transform: rotate(45deg); transition: transform var(--dur-fast);
+}
+.flow-card details[open] .flow-summary::after { transform: rotate(225deg); }
+.flow-number {
+  font-family: var(--font-head); font-size: 32px; font-weight: 700;
+  color: var(--secondary); font-variant-numeric: tabular-nums; flex: none;
+}
+.chart-flow { padding: 0 var(--pad) var(--pad); animation: rise 320ms var(--ease-out) both; }
+
 /* NOTE: mobile/tablet view intentionally removed for now — desktop only.
    When we add the mobile view, reintroduce breakpoint overrides here. */
 
 /* ── charts + skeletons ─────────────────────────────────────────── */
 .chart { width: 100%; height: 280px; }
 .chart-tall { height: 320px; }
-/* Decomposition trees need more vertical room than a bar/donut chart — two
-   levels of boxes plus label text, sized larger for readability. */
-.chart-tree { height: 520px; }
+/* Overview's flow diagrams (Sankey) — taller than a bar/donut chart since a
+   branch can carry many leaf nodes stacked vertically within its column. */
+.chart-flow { height: 420px; }
 .chart.is-loading {
   border-radius: var(--radius-sm);
   background: linear-gradient(100deg,

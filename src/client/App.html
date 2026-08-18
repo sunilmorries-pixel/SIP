@@ -1602,10 +1602,45 @@
     }
   }
 
+  /**
+   * Landing shows only each tree's root total (2026-08-19 redesign); the
+   * flow itself (Charts.decompFlow, a Sankey graph) renders lazily the
+   * first time its card is expanded, not eagerly for all three on load.
+   */
+  var OVERVIEW_FLOW_CARDS = [
+    { details: 'flowDetailsCustomers', chart: 'flowCustomers', total: 'flowTotalCustomers', key: 'customers' },
+    { details: 'flowDetailsDevices', chart: 'flowDevices', total: 'flowTotalDevices', key: 'devices' },
+    { details: 'flowDetailsTickets', chart: 'flowTickets', total: 'flowTotalTickets', key: 'tickets' }
+  ];
+
+  function renderOverviewFlowCard_(card) {
+    var payload = state.overviewFlowData;
+    if (!payload) return;
+    Charts.decompFlow(card.chart, payload[card.key], { onNodeClick: handleTreeNodeClick_ });
+  }
+
+  // Wired once: an open card's flow re-renders whenever fresh data arrives
+  // (see renderOverviewFlow); a closed card renders the first time a user
+  // opens it, always against state.overviewFlowData at that moment (never
+  // stale, since renderOverviewFlow above always updates it first).
+  var overviewFlowTogglesWired_ = false;
+  function setupOverviewFlowToggles_() {
+    if (overviewFlowTogglesWired_) return;
+    overviewFlowTogglesWired_ = true;
+    OVERVIEW_FLOW_CARDS.forEach(function (card) {
+      $(card.details).addEventListener('toggle', function () {
+        if (this.open) renderOverviewFlowCard_(card);
+      });
+    });
+  }
+
   function renderOverviewFlow(payload) {
-    Charts.decompTree('treeCustomers', payload.customers, { onNodeClick: handleTreeNodeClick_ });
-    Charts.decompTree('treeDevices', payload.devices, { onNodeClick: handleTreeNodeClick_ });
-    Charts.decompTree('treeTickets', payload.tickets, { onNodeClick: handleTreeNodeClick_ });
+    setupOverviewFlowToggles_();
+    OVERVIEW_FLOW_CARDS.forEach(function (card) {
+      var node = payload[card.key];
+      countUp($(card.total), node ? node.value : 0);
+      if ($(card.details).open) renderOverviewFlowCard_(card);
+    });
   }
 
   /* ── Service page (ServiceWRK) ─────────────────────────────────

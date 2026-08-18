@@ -704,79 +704,63 @@ var Charts = (function () {
     }));
   }
 
-  /* ── Decomposition trees (Overview) ──────────────────────────── */
+  /* ── Decomposition flow (Overview) — Sankey ──────────────────── */
 
-  /**
-   * Renders a top-down decomposition tree. `treeNode` is the exact
-   * {name, value, children, stats?, filterDim?, filterValue?, clearDims?,
-   * navTab?, navDeviceType?} shape OverviewFlow.js's tree builders return —
-   * the metadata fields ride along on ECharts' native node data untouched,
-   * so the click handler reads them straight off `params.data`.
-   */
   // Depth-based node color: root gets the app's own "hero metric" color,
   // branches get its existing "secondary series" color, leaves get its
   // existing "de-emphasized" color — the same three tokens already carry
   // those meanings elsewhere (kpiTotal/assetByType default to C.primary,
   // firmware/zohoCategories use C.info, the muted status/segment slices use
   // C.muted), so the hierarchy reads as an extension of the theme rather
-  // than a new palette. Clones rather than mutating the server payload.
+  // than a new palette.
   function decompNodeColor_(depth) {
     return depth === 0 ? C.primary : (depth === 1 ? C.info : C.muted);
   }
 
   /**
-   * Hard-wraps a node name onto multiple lines so it can never run past the
-   * box width into a neighbor's label. Some names are raw data values (e.g.
-   * ServiceWRK's closure_type, unprettified SCREAMING_SNAKE_CASE) with no
-   * whitespace to break at — ECharts rich-text `overflow`/`width` wrapping
-   * did not engage for tree-series node labels in testing, so this wraps by
-   * literal '\n' insertion instead of relying on that. Breaks preferentially
-   * at existing separators (space/underscore/hyphen); falls back to a hard
-   * character split for a single run longer than maxLen.
+   * Flattens the {name, value, children, stats?, filterDim?, filterValue?,
+   * clearDims?, resetSet?, filterSet?, navTab?, navDeviceType?} tree shape
+   * OverviewFlow.js's builders return into ECharts sankey's {data, links}
+   * shape. Sankey identifies nodes by a unique `name` string, but sibling
+   * leaf names collide across branches (e.g. "SME" appears under several
+   * countries) — a tree layout tolerates that (position implies identity),
+   * a sankey graph does not, so each node's internal key is the full path
+   * ("India › SME") with a `label.formatter` override displaying just the
+   * original name. Each data item carries the original tree node as `raw`
+   * so click handling reads the same fields the old tree's node click did.
    */
-  function decompWrapName_(name, maxLen) {
-    maxLen = maxLen || 10;
-    var text = String(name == null ? '' : name);
-    if (text.length <= maxLen) return text;
-    var parts = text.split(/([ _-])/); // split on separators, keep them as their own parts
-    var lines = [];
-    var cur = '';
-    parts.forEach(function (part) {
-      if (!part) return;
-      if ((cur + part).length <= maxLen) {
-        cur += part;
-        return;
-      }
-      if (cur.trim()) lines.push(cur.trim());
-      cur = part;
-      while (cur.length > maxLen) {
-        lines.push(cur.slice(0, maxLen));
-        cur = cur.slice(maxLen);
-      }
-    });
-    if (cur.trim()) lines.push(cur.trim());
-    return lines.join('\n');
-  }
-  function decompStyleTree_(node, depth) {
-    var styled = Object.assign({}, node, {
-      // __depth drives symbolSize below too — deriving size from "has
-      // children" instead breaks when a depth-1 node happens to be a leaf
-      // (e.g. an inert "Others" bucket next to real branches), sizing it
-      // smaller than same-row siblings and overlapping them, since ECharts'
-      // tree layout assumes uniform slot widths per sibling row.
-      __depth: depth,
-      itemStyle: { color: decompNodeColor_(depth), borderColor: C.axis, borderWidth: 2 }
-    });
-    if (node.children && node.children.length) {
-      styled.children = node.children.map(function (c) { return decompStyleTree_(c, depth + 1); });
+  function decompSankeyData_(root) {
+    var data = [], links = [];
+    function walk(node, path, depth) {
+      var key = path ? path + ' › ' + node.name : node.name;
+      data.push({
+        name: key, raw: node,
+        itemStyle: { color: decompNodeColor_(depth) },
+        label: { formatter: function () { return node.name; } }
+      });
+      (node.children || []).forEach(function (child) {
+        links.push({ source: key, target: key + ' › ' + child.name, value: child.value });
+        walk(child, key, depth + 1);
+      });
     }
-    return styled;
+    walk(root, '', 0);
+    return { data: data, links: links };
   }
 
-  function decompTree(id, treeNode, opts) {
+  /**
+   * Renders a decomposition flow. `treeNode` is the exact tree shape
+   * decompSankeyData_ documents above. Root, branch, and leaf all render as
+   * sankey nodes in one left-to-right graph — only each node's HEIGHT (not
+   * a horizontal slice of the canvas) varies by value, so a thin sibling
+   * next to a wide subtree (e.g. an inert "Others" bucket beside India's 7
+   * segments) just stacks with a small fixed gap instead of being squeezed
+   * into overlap — the tree layout's structural alignment bug does not
+   * exist for this series type.
+   */
+  function decompFlow(id, treeNode, opts) {
     opts = opts || {};
     if (!treeNode || !treeNode.children || !treeNode.children.length) return showEmpty(id);
-    var styledRoot = decompStyleTree_(treeNode, 0);
+    var flow = decompSankeyData_(treeNode);
     render(id, base({
       tooltip: Object.assign({
         backgroundColor: C.tooltipBg, borderColor: C.axis,
@@ -784,7 +768,12 @@ var Charts = (function () {
       }, {
         trigger: 'item', triggerOn: 'mousemove',
         formatter: function (info) {
-          var d = info.data;
+          if (info.dataType === 'edge') {
+            var sName = String(info.data.source).split(' › ').pop();
+            var tName = String(info.data.target).split(' › ').pop();
+            return sName + ' → ' + tName + ': ' + FMT.format(info.data.value);
+          }
+          var d = info.data.raw;
           var lines = ['<strong>' + d.name + '</strong>: ' + FMT.format(d.value)];
           if (d.stats) {
             if (d.stats.devices != null) lines.push(FMT.format(d.stats.devices) + ' devices');
@@ -796,65 +785,34 @@ var Charts = (function () {
         }
       }),
       series: [{
-        type: 'tree', data: [styledRoot],
-        orient: 'TB', layout: 'orthogonal',
-        // ECharts sizes each branch's horizontal share by its OWN subtree's
-        // leaf count (Reingold-Tilford-style), so a thin sibling (e.g. an
-        // inert "Others" bucket) next to a wide one (e.g. India's 7
-        // segments) can get squeezed into less than one node-width — a
-        // PRE-EXISTING issue confirmed present even at the original 70px
-        // node width and 8%/8% margins. Narrower side margins give the
-        // layout more absolute room to spread every sibling into.
-        top: '4%', bottom: '4%', left: '2%', right: '2%',
-        symbol: 'roundRect',
-        // Root a bit larger for emphasis; everything else keeps the
-        // ORIGINAL 70px width exactly — a live production check showed
-        // even a 4px width bump was enough to overlap a thin sibling (e.g.
-        // "Others") next to a wide subtree ("India" with 7 segments), so
-        // width has no safety margin to spend here at all. Height is free
-        // to grow (top-down tree — doesn't affect horizontal layout) and
-        // carries the two-line rich-text label; color (decompNodeColor_)
-        // and bigger/bolder text carry the rest of the readability gain.
-        symbolSize: function (value, params) {
-          return params.data.__depth === 0 ? [88, 52] : [70, 48];
-        },
-        lineStyle: { color: C.axis, curveness: 0.3, width: 1.5 },
+        type: 'sankey', data: flow.data, links: flow.links,
+        orient: 'horizontal', nodeAlign: 'left',
+        nodeWidth: 14, nodeGap: 8,
+        top: 8, bottom: 8, left: 8, right: 110,
+        emphasis: { focus: 'adjacency' },
+        lineStyle: { color: 'source', opacity: 0.3, curveness: 0.5 },
+        itemStyle: { borderColor: C.axis, borderWidth: 1 },
         label: {
-          position: 'inside', fontFamily: "'Fira Sans', sans-serif",
-          formatter: function (info) {
-            return '{name|' + decompWrapName_(info.data.name) + '}\n{val|' + FMT.format(info.data.value) + '}';
-          },
-          rich: {
-            name: {
-              fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 15,
-              align: 'center'
-            },
-            val: {
-              fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.82)',
-              lineHeight: 14, align: 'center'
-            }
-          }
-        },
-        leaves: { label: { position: 'inside' } },
-        expandAndCollapse: true,
-        initialTreeDepth: -1,
-        animationDuration: 400
+          color: C.text, fontFamily: "'Fira Sans', sans-serif",
+          fontSize: 12, fontWeight: 500
+        }
       }]
     }));
     if (opts.onNodeClick) {
       onClick(id, function (params) {
-        if (params.data) {
+        if (params.dataType === 'node' && params.data && params.data.raw) {
           // Explicitly tear down the tooltip on THIS instance before the click
           // handler (which mutates global filters and re-renders via
-          // renderOverviewFlow → Charts.decompTree → render()/apply_()) swaps
+          // renderOverviewFlow → Charts.decompFlow → render()/apply_()) swaps
           // the option out from under it — otherwise ECharts can still be
           // mid-flight showing/moving the old tooltip when apply_() replaces
           // the option, and throws trying to update a tooltip DOM node that no
           // longer matches (TypeError: Cannot set properties of null (setting
           // 'innerHTML'), confirmed reproducible via hover-then-click in the
-          // local preview).
+          // local preview of the previous tree renderer — same shared onClick
+          // path, so the same fix applies here).
           if (instances[id]) instances[id].dispatchAction({ type: 'hideTip' });
-          opts.onNodeClick(params.data);
+          opts.onNodeClick(params.data.raw);
         }
       });
     }
@@ -864,7 +822,7 @@ var Charts = (function () {
     setLoading: setLoading,
     flushVisible: flushVisible,
     showEmpty: showEmpty,
-    decompTree: decompTree,
+    decompFlow: decompFlow,
     svcTatBands: svcTatBands,
     svcResolution: svcResolution,
     // Exported for the TOM monthly-volume chart; previously only used

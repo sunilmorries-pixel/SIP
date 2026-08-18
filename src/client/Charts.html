@@ -806,17 +806,16 @@ var Charts = (function () {
         // for this reason — see decompTree's design note above.
         top: '4%', bottom: '4%', left: '8%', right: '8%',
         symbol: 'roundRect',
-        // Root a bit larger for emphasis; everything else barely changed
-        // from the original 70x30 — that size is the one already proven
-        // not to squeeze a thin sibling next to a wide subtree, so most of
-        // the readability gain here comes from color (decompNodeColor_)
-        // and the bigger/bolder label text below, not from box size.
-        // Height (not width) is free to grow more — this is a top-down
-        // (TB) tree, so taller boxes don't affect the horizontal sibling
-        // squeeze above, and the two-line rich-text label below needs more
-        // vertical room than the original's single line did.
+        // Root a bit larger for emphasis; everything else keeps the
+        // ORIGINAL 70px width exactly — a live production check showed
+        // even a 4px width bump was enough to overlap a thin sibling (e.g.
+        // "Others") next to a wide subtree ("India" with 7 segments), so
+        // width has no safety margin to spend here at all. Height is free
+        // to grow (top-down tree — doesn't affect horizontal layout) and
+        // carries the two-line rich-text label; color (decompNodeColor_)
+        // and bigger/bolder text carry the rest of the readability gain.
         symbolSize: function (value, params) {
-          return params.data.__depth === 0 ? [88, 52] : [74, 48];
+          return params.data.__depth === 0 ? [88, 52] : [70, 48];
         },
         lineStyle: { color: C.axis, curveness: 0.3, width: 1.5 },
         label: {

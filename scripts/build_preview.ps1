@@ -21,13 +21,13 @@ $html = $index.
   Replace("<?!= include('Charts') ?>", $charts).
   Replace("<?!= include('MapView') ?>", $mapv).
   Replace("<?!= include('App') ?>", $app).
-  Replace('<?= appName ?>', 'SIP Insights').
+  Replace('<?= appName ?>', 'SIP').
   Replace('<?= appVersion ?>', 'preview').
   Replace('<?= appDeployedAt ?>', 'local build')
 
 $html = '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
         '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-        '<title>SIP Insights preview</title></head><body>' + $html + '</body></html>'
+        '<title>SIP preview</title></head><body>' + $html + '</body></html>'
 
 [IO.File]::WriteAllText($out, $html, (New-Object Text.UTF8Encoding $false))
 Write-Host "Built $out"

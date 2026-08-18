@@ -101,13 +101,24 @@ describe('Overview decomposition tree helpers (OverviewFlow.js)', function () {
       expect(sme.value).toBe(2);
     });
 
-    test('each node carries filterDim/filterValue for click-to-filter', function () {
+    test('country node carries filterDim/filterValue for click-to-filter', function () {
       const india = tree.children.filter(function (c) { return c.name === 'India'; })[0];
       expect(india.filterDim).toBe('countries');
       expect(india.filterValue).toBe('India');
+    });
+
+    test('segment leaf carries a compound filterSet (country + segment), not a bare filterDim', function () {
+      // Spec §6: clicking a segment leaf ADDS to the parent country filter
+      // rather than replacing it — a bare filterDim:'segments' would filter
+      // to that segment worldwide, not just within the clicked country.
+      const india = tree.children.filter(function (c) { return c.name === 'India'; })[0];
       const sme = india.children.filter(function (c) { return c.name === 'SME'; })[0];
-      expect(sme.filterDim).toBe('segments');
-      expect(sme.filterValue).toBe('SME');
+      expect(sme.filterDim).toBeUndefined();
+      expect(sme.filterSet).toEqual({ countries: ['India'], segments: ['SME'] });
+
+      const nepal = tree.children.filter(function (c) { return c.name === 'Nepal'; })[0];
+      const government = nepal.children.filter(function (c) { return c.name === 'Government'; })[0];
+      expect(government.filterSet).toEqual({ countries: ['Nepal'], segments: ['Government'] });
     });
 
     test('root carries clearDims to reset both filter dimensions', function () {
@@ -141,6 +152,14 @@ describe('Overview decomposition tree helpers (OverviewFlow.js)', function () {
     test('root total equals the device count', function () {
       expect(tree.name).toBe('Total devices');
       expect(tree.value).toBe(4);
+    });
+
+    test('root carries a resetSet back to the default device-type include-list', function () {
+      // Not clearDims -> [] here: an empty deviceTypes list means "no
+      // include-list filter", which would admit the housekeeping issue types
+      // CONFIG.JIRA_DEVICE_TYPE_DEFAULT deliberately excludes.
+      const fakeSandbox = loadGas(['Config.js', 'SlaCatalog.js', 'Queries.js', 'OverviewFlow.js']);
+      expect(tree.resetSet).toEqual({ deviceTypes: fakeSandbox.CONFIG.JIRA_DEVICE_TYPE_DEFAULT });
     });
 
     test('level 1 splits by type, level 2 by age band', function () {
@@ -182,6 +201,13 @@ describe('Overview decomposition tree helpers (OverviewFlow.js)', function () {
       expect(zoho.sql).toContain('QUALIFY ROW_NUMBER()'); // via zohoDedupSql_
       expect(zoho.sql).toContain('total');
       expect(zoho.sql).toContain('open');
+    });
+
+    test('zoho spec honours the global date range, like its ServiceWRK/TOM siblings', function () {
+      const zoho = sandbox2.buildTicketsQuerySpecs({ dateFrom: '2026-01-01', dateTo: '2026-06-30' })
+        .filter(function (s) { return s.key === 'zoho'; })[0];
+      expect(zoho.sql).toContain("DATE(CreatedAt) >= '2026-01-01'");
+      expect(zoho.sql).toContain("DATE(CreatedAt) <= '2026-06-30'");
     });
 
     test('servicewrk spec reuses swTable_/swFilterCond_ and groups by closure_type', function () {
@@ -234,15 +260,24 @@ describe('Overview decomposition tree helpers (OverviewFlow.js)', function () {
     });
 
     test('every source and outcome node carries navTab to its own page', function () {
+      // Spec §6: "Tickets tree, any node -> switches to that source's own
+      // page" — the outcome leaves (Open/Closed, closure_type, Resolved/
+      // Unresolved/Visit needed) must carry the SAME navTab as their parent
+      // source, not just the three top-level source nodes.
       const tree = sandbox3.nestTicketsTree_({
         zoho: { total: 10, open: 3 }, servicewrk: [{ label: 'CENTER_VISIT', cnt: 5 }], tom: { resolved: 1, unresolved: 1, other: 1 }
       });
       const zoho = tree.children.filter(function (c) { return c.name === 'Zoho'; })[0];
       expect(zoho.navTab).toBe('tab-support');
+      zoho.children.forEach(function (c) { expect(c.navTab).toBe('tab-support'); });
+
       const sw = tree.children.filter(function (c) { return c.name === 'ServiceWRK'; })[0];
       expect(sw.navTab).toBe('tab-service');
+      sw.children.forEach(function (c) { expect(c.navTab).toBe('tab-service'); });
+
       const tom = tree.children.filter(function (c) { return c.name === 'TOM'; })[0];
       expect(tom.navTab).toBe('tab-tom');
+      tom.children.forEach(function (c) { expect(c.navTab).toBe('tab-tom'); });
     });
   });
 });

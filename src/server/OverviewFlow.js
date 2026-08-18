@@ -124,7 +124,11 @@ function buildCustomersTree_(filters) {
       node.children = Object.keys(bySegment).map(function (s) {
         return {
           name: s, value: bySegment[s].length, stats: centerRowStats_(bySegment[s]),
-          filterDim: 'segments', filterValue: s
+          // Compound payload, not filterDim:'segments' alone — the trees ship
+          // fully expanded, so a user can click "SME" under Nepal directly
+          // without first clicking Nepal. filterSet ADDS the parent country
+          // to the segment filter instead of replacing it (spec §6).
+          filterSet: { countries: [entry.key], segments: [s] }
         };
       }).sort(function (a, b) { return b.value - a.value; });
     }
@@ -168,7 +172,15 @@ function buildDevicesTree_(filters) {
     };
   }).sort(function (a, b) { return b.value - a.value; });
 
-  return { name: 'Total devices', value: devices.length, children: children };
+  return {
+    name: 'Total devices', value: devices.length,
+    // Not clearDims:['deviceTypes'] -> [] — an empty deviceTypes list means
+    // "no include-list filter", which would admit the housekeeping issue
+    // types CONFIG.JIRA_DEVICE_TYPE_DEFAULT deliberately excludes. resetSet
+    // restores the literal default array instead.
+    resetSet: { deviceTypes: CONFIG.JIRA_DEVICE_TYPE_DEFAULT },
+    children: children
+  };
 }
 
 /* ═══════════════ Tickets tree ═══════════════ */
@@ -187,7 +199,8 @@ function buildTicketsQuerySpecs(filters) {
       key: 'zoho', maxRows: 1,
       sql: 'SELECT COUNT(*) AS total, ' +
         ' COUNTIF(status NOT IN ' + CONFIG.ZOHO_TERMINAL_STATUSES + ') AS open ' +
-        'FROM ' + zohoDedupSql_() + ' WHERE TRUE' + centerFilterSubqueryCond_(f)
+        'FROM ' + zohoDedupSql_() + ' WHERE TRUE' + centerFilterSubqueryCond_(f) +
+        dateRangeCond_('CreatedAt', f.dateFrom, f.dateTo)
     },
     {
       key: 'servicewrk', maxRows: 10,
@@ -217,24 +230,27 @@ function nestTicketsTree_(r) {
   var swTotal = (r.servicewrk || []).reduce(function (s, x) { return s + (x.cnt || 0); }, 0);
   var tomTotal = (r.tom.resolved || 0) + (r.tom.unresolved || 0) + (r.tom.other || 0);
 
+  // Every node on this tree — source and outcome leaf alike — carries the
+  // parent source's navTab: spec §6 says "Tickets tree, any node -> switches
+  // to that source's own page", not just the three top-level source nodes.
   var children = [
     {
       name: 'Zoho', value: zohoTotal, navTab: 'tab-support',
       children: [
-        { name: 'Open', value: zohoOpen },
-        { name: 'Closed', value: zohoTotal - zohoOpen }
+        { name: 'Open', value: zohoOpen, navTab: 'tab-support' },
+        { name: 'Closed', value: zohoTotal - zohoOpen, navTab: 'tab-support' }
       ]
     },
     {
       name: 'ServiceWRK', value: swTotal, navTab: 'tab-service',
-      children: (r.servicewrk || []).map(function (x) { return { name: x.label, value: x.cnt }; })
+      children: (r.servicewrk || []).map(function (x) { return { name: x.label, value: x.cnt, navTab: 'tab-service' }; })
     },
     {
       name: 'TOM', value: tomTotal, navTab: 'tab-tom',
       children: [
-        { name: 'Resolved', value: r.tom.resolved || 0 },
-        { name: 'Unresolved', value: r.tom.unresolved || 0 },
-        { name: 'Visit needed', value: r.tom.other || 0 }
+        { name: 'Resolved', value: r.tom.resolved || 0, navTab: 'tab-tom' },
+        { name: 'Unresolved', value: r.tom.unresolved || 0, navTab: 'tab-tom' },
+        { name: 'Visit needed', value: r.tom.other || 0, navTab: 'tab-tom' }
       ]
     }
   ];

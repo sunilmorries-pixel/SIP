@@ -89,6 +89,16 @@ function diagnostics() {
       sk.breached_open + ' open breached, ' + sk.atrisk_open + ' at-risk');
   }
 
+  // warmDefaultFilters_() — not {} — so a hand-verification of devices.value
+  // against the Asset tab's devicesCount KPI compares the same filter set
+  // (the client's real default includes a device-type include-list; {}
+  // would silently admit types the default excludes).
+  var flow = apiGetOverviewFlowCD({ filters: warmDefaultFilters_() });
+  Logger.log(flow.ok
+    ? 'overview flow: ' + flow.data.customers.value + ' customers, ' +
+      flow.data.devices.value + ' devices, ' + flow.data.tickets.value + ' tracked records'
+    : 'overview flow FAILED: ' + JSON.stringify(flow.error));
+
   var raw = apiGetCenterDetailsRaw({ page: 0, pageSize: 5 });
   Logger.log(raw.ok
     ? 'center_details raw table: ' + raw.data.totalRows + ' rows (full universe, no baseline filter)'

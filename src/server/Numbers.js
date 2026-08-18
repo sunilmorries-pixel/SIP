@@ -87,6 +87,52 @@ function readJiraData_() {
 }
 
 /**
+ * Tracked, deduped, filter-passing Jira devices — the shared core of
+ * jiraDeviceStats_ (status/age breakdown) and the Overview Devices tree
+ * (type/age breakdown). Extracted so there is exactly ONE implementation of
+ * this filter chain, not two independently-maintained copies that could
+ * silently drift (the SQL-vs-JS filter-path-disagreement bug class this repo
+ * has been bitten by before).
+ * @param {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,
+ *          countries:Array,deviceTypes:Array,deviceStatusExclude:Array}=} filters
+ * @param {{map:Object, source:string}=} dcm optional pre-computed deviceCenterMap_;
+ *        if not provided, computed locally to avoid redundant calls when passed by caller.
+ * @return {Array<{issue_key:string, type:string, status:string, cid:number, age:(number|null)}>}
+ */
+function filteredJiraDevices_(filters, dcm) {
+  filters = filters || {};
+  dcm = dcm || deviceCenterMap_();
+  var jiraRows = readJiraData_().filter(function (row) { return isTrackedJiraDeviceType_(row.issuetype_name); });
+  var typeFilter = filters.deviceTypes || [];
+  var statusExclude = filters.deviceStatusExclude || [];
+  if (typeFilter.length) jiraRows = jiraRows.filter(function (row) { return typeFilter.indexOf(row.issuetype_name) !== -1; });
+  if (statusExclude.length) jiraRows = jiraRows.filter(function (row) { return statusExclude.indexOf(row.status_name) === -1; });
+  var dev2ctr = dcm.map;
+  var SERIAL_RE = /([A-Za-z0-9]{2}-[A-Za-z0-9]{6,})/;
+  var byIssue = {};
+  jiraRows.forEach(function (row) {
+    var ik = String(row.issue_key || row.summary || '');
+    if (!ik || byIssue[ik]) return;
+    var m = SERIAL_RE.exec(String(row.summary || '').toUpperCase());
+    var cid = m ? dev2ctr[m[1]] : undefined;
+    byIssue[ik] = {
+      issue_key: ik, type: String(row.issuetype_name || 'Other'),
+      status: String(row.status_name || '').trim(),
+      cid: (cid == null ? NaN : cid), age: assetAgeDays_(row.ticket_created)
+    };
+  });
+  var hasCenterFilter = (filters.segments || []).length || (filters.statuses || []).length ||
+    (filters.states || []).length || (filters.hubs || []).length ||
+    (filters.cities || []).length || (filters.countries || []).length;
+  var out = Object.keys(byIssue).map(function (k) { return byIssue[k]; });
+  if (hasCenterFilter) {
+    var cfMap = centerFilterMap_();
+    out = out.filter(function (o) { return isFinite(o.cid) && centerPassesFilters_(cfMap[o.cid] || {}, filters); });
+  }
+  return out;
+}
+
+/**
  * Fleet/device stats shared by the Numbers page, Asset "Total fleet" and
  * Overview "Devices" KPI. Devices = Jira issues (dedup by Key). A device's
  * serial resolves to a center via deviceCenterMap_ for global-filter matching
@@ -98,52 +144,14 @@ function readJiraData_() {
  */
 function jiraDeviceStats_(filters) {
   filters = filters || {};
-  return withCache('jiradev_v9_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v9: country filter sources from hub_country
-    var jiraRows = readJiraData_().filter(function (row) { return isTrackedJiraDeviceType_(row.issuetype_name); });
-    // Device Type (issuetype_name, INCLUDE list) / Device Status in Jira
-    // (status_name, EXCLUDE list) — per user, 2026-08-13. Applies everywhere
-    // this function is called (Overview/Numbers/Asset).
-    var typeFilter = filters.deviceTypes || [];
-    var statusExclude = filters.deviceStatusExclude || [];
-    if (typeFilter.length) jiraRows = jiraRows.filter(function (row) { return typeFilter.indexOf(row.issuetype_name) !== -1; });
-    if (statusExclude.length) jiraRows = jiraRows.filter(function (row) { return statusExclude.indexOf(row.status_name) === -1; });
-    // The Jira "Customer ID" column is IGNORED — a device's center comes from
-    // its serial (parsed from Summary) via deviceCenterMap_.
+  return withCache('jiradev_v9_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
     var dcm = deviceCenterMap_();
-    var dev2ctr = dcm.map;
-    var SERIAL_RE = /([A-Za-z0-9]{2}-[A-Za-z0-9]{6,})/;
-    var byIssue = {};
-    jiraRows.forEach(function (row) {
-      var ik = String(row.issue_key || row.summary || '');
-      if (!ik) return;
-      if (!byIssue[ik]) {
-        var m = SERIAL_RE.exec(String(row.summary || '').toUpperCase());
-        var cid = m ? dev2ctr[m[1]] : undefined;
-        // Device age = today − Created (assetAgeDays_ in Api.js).
-        byIssue[ik] = { status: String(row.status_name || '').trim(),
-          cid: (cid == null ? NaN : cid), age: assetAgeDays_(row.ticket_created) };
-      }
-    });
-    // Global filter: keep only devices mapped to a center passing the
-    // filter set (center lookup via the cached Center-360 rows). Unmapped
-    // devices drop out whenever ANY of Segment/Status/State/Hub/City/Country
-    // is active — by design, matching the existing v5.8 segment-only behavior.
-    var hasCenterFilter = (filters.segments || []).length || (filters.statuses || []).length ||
-      (filters.states || []).length || (filters.hubs || []).length ||
-      (filters.cities || []).length || (filters.countries || []).length;
-    if (hasCenterFilter) {
-      var cfMap = centerFilterMap_();
-      Object.keys(byIssue).forEach(function (ik) {
-        var o = byIssue[ik];
-        if (!isFinite(o.cid) || !centerPassesFilters_(cfMap[o.cid] || {}, filters)) delete byIssue[ik];
-      });
-    }
+    var devices = filteredJiraDevices_(filters, dcm);
     var dTotal = 0, dStatus = {};
     var ageSum = 0, ageN = 0;
-    // Age bands (days): <1y / 1-2y / 2-3y / 3-5y / 5y+ (5-yr expected device life).
     var ageBands = { '<1y': 0, '1-2y': 0, '2-3y': 0, '3-5y': 0, '5y+': 0 };
-    Object.keys(byIssue).forEach(function (ik) {
-      var o = byIssue[ik]; dTotal++;
+    devices.forEach(function (o) {
+      dTotal++;
       var st = o.status || '(blank)';
       dStatus[st] = (dStatus[st] || 0) + 1;
       if (o.age != null) {
@@ -160,7 +168,7 @@ function jiraDeviceStats_(filters) {
         .sort(function (a, b) { return b.n - a.n; }),
       avg_age_days: ageN ? Math.round(ageSum / ageN) : null,
       aged_devices: ageN,
-      past_life: ageBands['5y+'],          // devices older than the 5-yr expected life
+      past_life: ageBands['5y+'],
       age_bands: Object.keys(ageBands).map(function (k) { return { k: k, n: ageBands[k] }; }),
       source: 'jira_data', center_source: dcm.source
     };

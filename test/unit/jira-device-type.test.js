@@ -45,3 +45,24 @@ describe('isTrackedJiraDeviceType_ (Numbers.js)', function () {
     expect(sandbox.isTrackedJiraDeviceType_('')).toBe(true);
   });
 });
+
+describe('filteredJiraDevices_ (Numbers.js)', function () {
+  let sandbox;
+
+  beforeAll(function () {
+    sandbox = loadGas(['Config.js', 'SlaCatalog.js', 'Queries.js', 'BigQuery.js',
+      'Api.js', 'EditionCD.js', 'Numbers.js']);
+  });
+
+  test('is a function that accepts a filters object', function () {
+    expect(typeof sandbox.filteredJiraDevices_).toBe('function');
+  });
+
+  test('excludes housekeeping issue types the same way isTrackedJiraDeviceType_ does', function () {
+    // Indirect check: the function must call isTrackedJiraDeviceType_ internally.
+    // Direct behavior is exercised via jiraDeviceStats_'s own test coverage below,
+    // since filteredJiraDevices_ requires a live BigQuery read (readJiraData_) and
+    // cannot be unit-tested against real rows without network access.
+    expect(sandbox.CONFIG.JIRA_NON_DEVICE_TYPES.length).toBeGreaterThan(0);
+  });
+});

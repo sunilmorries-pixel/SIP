@@ -137,92 +137,39 @@
 
 <main class="page" role="main">
 
-  <!-- ══════════════ VIEW 0 · EXECUTIVE OVERVIEW (landing) ══════════════ -->
+  <!-- ══════════════ VIEW 0 · OVERVIEW (landing) ══════════════
+       Three decomposition trees, replacing the old exec-summary layout
+       entirely (device-age ring, KPI grid, 6 chart/table cards — all
+       removed, per the 2026-08-17 design spec). Overview no longer shares
+       apiGetDashboardCD with Asset/Customers/Support/Service — it has its
+       own endpoint, apiGetOverviewFlowCD. -->
   <section id="panel-overview" class="panel is-active" role="tabpanel" aria-labelledby="tab-overview">
-    <div class="exec-hero card">
-      <div class="exec-hero-ring">
-        <div class="ring" id="execRing" style="--pct:0">
-          <div class="ring-inner">
-            <span id="execRingPct" class="ring-pct">–</span>
-            <span id="execRingLabel" class="ring-label">center uptime</span>
-            <span id="execRingCap" class="ring-cap">North-Star ≥ 99%</span>
-            <!-- renderExec injects the M-A1 uptime info-dot here; it must be a
-                 SIBLING of execRingLabel, whose textContent is rewritten on
-                 every render and would otherwise wipe a nested dot. -->
-            <span id="execRingInfo" class="ring-info"></span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="execKpiGrid" class="kpi-grid"></div>
-
     <div class="card-grid">
-      <article class="card span-4">
+      <article class="card span-12">
         <header class="card-head">
-          <h2 class="card-title">Device status (Jira)</h2>
-          <p class="card-sub">Jira devices by lifecycle status</p>
+          <h2 class="card-title">Customers</h2>
+          <p class="card-sub">Total customers, by country (top 5 + others), then by segment · click a node to filter, hover for more</p>
         </header>
-        <div id="execFleet" class="chart chart-tall" role="img" aria-label="Donut of Jira devices by lifecycle status"></div>
+        <div id="treeCustomers" class="chart chart-tree" role="img"
+             aria-label="Decomposition tree of customers by country and segment"></div>
       </article>
 
-      <article class="card span-8">
+      <article class="card span-12">
         <header class="card-head">
-          <h2 class="card-title">Support ticket flow</h2>
-          <p class="card-sub">Zoho tickets created vs closed, last 12 months</p>
+          <h2 class="card-title">Devices</h2>
+          <p class="card-sub">Total devices, by type, then by age band · click a device type to filter, click an age band to jump to Asset</p>
         </header>
-        <div id="execTrend" class="chart chart-tall" role="img" aria-label="Ticket created vs closed trend"></div>
+        <div id="treeDevices" class="chart chart-tree" role="img"
+             aria-label="Decomposition tree of devices by type and age band"></div>
       </article>
 
-      <article class="card span-7">
+      <article class="card span-12">
         <header class="card-head">
-          <h2 class="card-title">Centers needing attention</h2>
-          <p class="card-sub">Most open support tickets · click through on the Map</p>
+          <h2 class="card-title">Tickets</h2>
+          <p class="card-sub">Tracked records across Zoho, ServiceWRK and TOM · click any node to open that source's page</p>
         </header>
-        <div class="table-scroll">
-          <table class="data-table" id="execCentersTable">
-            <caption class="sr-only">Centers with the most open tickets</caption>
-            <thead><tr>
-              <th scope="col">Center</th><th scope="col">State</th>
-              <th scope="col" class="num">Devices</th><th scope="col" class="num">Online</th>
-              <th scope="col" class="num">Open tickets</th>
-            </tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </article>
-
-      <article class="card span-5">
-        <header class="card-head">
-          <h2 class="card-title">Reliability watchlist</h2>
-          <p class="card-sub">Lowest machine uptime (M-A1)</p>
-        </header>
-        <div class="table-scroll">
-          <table class="data-table" id="execRelTable">
-            <caption class="sr-only">Centers with lowest machine uptime</caption>
-            <thead><tr>
-              <th scope="col">Center</th><th scope="col" class="num">Uptime %</th>
-              <th scope="col" class="num">Downtime %</th>
-            </tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </article>
-
-      <article class="card span-8">
-        <header class="card-head">
-          <h2 class="card-title">Top LE customers</h2>
-          <p class="card-sub">Devices by account · full view on the Top Customers tab</p>
-        </header>
-        <div id="execTopCust" class="chart chart-tall" role="img" aria-label="Devices per top customer"></div>
-      </article>
-
-      <article class="card span-4">
-        <header class="card-head">
-          <h2 class="card-title">Where centers are</h2>
-          <p class="card-sub">Top states by active centers</p>
-        </header>
-        <div id="execGeo" class="chart chart-tall" role="img" aria-label="Bar chart of centers per state"></div>
+        <div id="treeTickets" class="chart chart-tree" role="img"
+             aria-label="Decomposition tree of tracked tickets by source and outcome"></div>
       </article>
     </div>
   </section>
@@ -1192,7 +1139,7 @@
         <label>From <input id="filterDateFrom" class="input" type="date"></label>
         <label>To <input id="filterDateTo" class="input" type="date"></label>
       </div>
-      <p class="filter-note">Customers/Map/Numbers: deployment date · Support: ticket created date · Asset: Jira created date · Top Customers/Overview: Segment/Status/State/Hub only, no date · Raw Data: date range applies to Zoho Tickets (created) and Jira Devices (created) only, per-source (see the Raw Data page for details).</p>
+      <p class="filter-note">Customers/Map/Numbers: deployment date · Support: ticket created date · Asset: Jira created date · Top Customers: Segment/Status/State/Hub only, no date · Overview: Customers tree honours every dimension above plus the date range (deployment date); Devices tree honours device-type/status; Tickets tree's Zoho/ServiceWRK/TOM branches each honour their own created/received date · Raw Data: date range applies to Zoho Tickets (created) and Jira Devices (created) only, per-source (see the Raw Data page for details).</p>
       <p class="filter-note"><strong>Service</strong> reads ServiceWRK, which carries its own Segment/State/City but no Hub, Centre, Status or Device dimension — those four are ignored there. <strong>TOM</strong> carries only Centre, so every other dimension is ignored on that page. Both use their own created/received date for the range.</p>
     </section>
   </div>

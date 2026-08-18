@@ -798,13 +798,14 @@ var Charts = (function () {
       series: [{
         type: 'tree', data: [styledRoot],
         orient: 'TB', layout: 'orthogonal',
-        // Same margins as the original, proven-safe layout — ECharts sizes
-        // each branch's horizontal share by its OWN subtree's leaf count
-        // (Reingold-Tilford-style), so a thin sibling (few/no children)
-        // next to a wide one (e.g. India's 6 segments) gets squeezed
-        // regardless of matching symbol sizes. Kept the size bump modest
-        // for this reason — see decompTree's design note above.
-        top: '4%', bottom: '4%', left: '8%', right: '8%',
+        // ECharts sizes each branch's horizontal share by its OWN subtree's
+        // leaf count (Reingold-Tilford-style), so a thin sibling (e.g. an
+        // inert "Others" bucket) next to a wide one (e.g. India's 7
+        // segments) can get squeezed into less than one node-width — a
+        // PRE-EXISTING issue confirmed present even at the original 70px
+        // node width and 8%/8% margins. Narrower side margins give the
+        // layout more absolute room to spread every sibling into.
+        top: '4%', bottom: '4%', left: '2%', right: '2%',
         symbol: 'roundRect',
         // Root a bit larger for emphasis; everything else keeps the
         // ORIGINAL 70px width exactly — a live production check showed

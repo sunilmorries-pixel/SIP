@@ -713,11 +713,35 @@ var Charts = (function () {
    * the metadata fields ride along on ECharts' native node data untouched,
    * so the click handler reads them straight off `params.data`.
    */
+  // Depth-based node color: root gets the app's own "hero metric" color,
+  // branches get its existing "secondary series" color, leaves get its
+  // existing "de-emphasized" color — the same three tokens already carry
+  // those meanings elsewhere (kpiTotal/assetByType default to C.primary,
+  // firmware/zohoCategories use C.info, the muted status/segment slices use
+  // C.muted), so the hierarchy reads as an extension of the theme rather
+  // than a new palette. Clones rather than mutating the server payload.
+  function decompNodeColor_(depth) {
+    return depth === 0 ? C.primary : (depth === 1 ? C.info : C.muted);
+  }
+  function decompStyleTree_(node, depth) {
+    var styled = Object.assign({}, node, {
+      itemStyle: { color: decompNodeColor_(depth), borderColor: C.axis, borderWidth: 2 }
+    });
+    if (node.children && node.children.length) {
+      styled.children = node.children.map(function (c) { return decompStyleTree_(c, depth + 1); });
+    }
+    return styled;
+  }
+
   function decompTree(id, treeNode, opts) {
     opts = opts || {};
     if (!treeNode || !treeNode.children || !treeNode.children.length) return showEmpty(id);
+    var styledRoot = decompStyleTree_(treeNode, 0);
     render(id, base({
-      tooltip: {
+      tooltip: Object.assign({
+        backgroundColor: C.tooltipBg, borderColor: C.axis,
+        textStyle: { color: C.tooltipText, fontSize: 13 }, confine: true
+      }, {
         trigger: 'item', triggerOn: 'mousemove',
         formatter: function (info) {
           var d = info.data;
@@ -730,18 +754,29 @@ var Charts = (function () {
           }
           return lines.join('<br/>');
         }
-      },
+      }),
       series: [{
-        type: 'tree', data: [treeNode],
+        type: 'tree', data: [styledRoot],
         orient: 'TB', layout: 'orthogonal',
-        top: '4%', bottom: '4%', left: '8%', right: '8%',
-        symbol: 'roundRect', symbolSize: [70, 30],
-        itemStyle: { color: C.primary, borderColor: C.axis },
-        lineStyle: { color: C.axis, curveness: 0.3 },
+        top: '6%', bottom: '6%', left: '9%', right: '9%',
+        symbol: 'roundRect',
+        // Bigger at the root, tapering toward the leaves — the size step
+        // itself communicates depth, on top of the color step above.
+        symbolSize: function (value, params) {
+          var d = params.data;
+          if (d === styledRoot) return [138, 48];
+          return (d.children && d.children.length) ? [108, 40] : [92, 34];
+        },
+        lineStyle: { color: C.axis, curveness: 0.3, width: 1.5 },
         label: {
-          position: 'inside', color: '#fff', fontSize: 11, fontWeight: 700,
-          formatter: function (info) { return info.data.name + '\n' + FMT.format(info.data.value); },
-          lineHeight: 14
+          position: 'inside', fontFamily: "'Fira Sans', sans-serif",
+          formatter: function (info) {
+            return '{name|' + info.data.name + '}\n{val|' + FMT.format(info.data.value) + '}';
+          },
+          rich: {
+            name: { fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 16, align: 'center' },
+            val: { fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.82)', lineHeight: 15, align: 'center' }
+          }
         },
         leaves: { label: { position: 'inside' } },
         expandAndCollapse: true,

@@ -89,6 +89,12 @@ function diagnostics() {
       sk.breached_open + ' open breached, ' + sk.atrisk_open + ' at-risk');
   }
 
+  var flow = apiGetOverviewFlowCD({ filters: {} });
+  Logger.log(flow.ok
+    ? 'overview flow: ' + flow.data.customers.value + ' customers, ' +
+      flow.data.devices.value + ' devices, ' + flow.data.tickets.value + ' tracked records'
+    : 'overview flow FAILED: ' + JSON.stringify(flow.error));
+
   var raw = apiGetCenterDetailsRaw({ page: 0, pageSize: 5 });
   Logger.log(raw.ok
     ? 'center_details raw table: ' + raw.data.totalRows + ' rows (full universe, no baseline filter)'

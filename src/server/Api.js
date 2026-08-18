@@ -102,7 +102,7 @@ function apiGetCdmDevices(options) {
 /** Whitelisted sort columns for the joined Center-360 rows. */
 var CENTER_SORT_KEYS = {
   center: 'center', state: 'state', devices: 'devices',
-  open_tickets: 'open_tickets',
+  open_tickets: 'open_tickets', swapped: 'swapped',
   lifecycle_years: 'lifecycle_years', downtime_days: 'downtime_days',
   uptime_pct: 'uptime_pct', tickets_total: 'tickets_total', jira_devices: 'jira_devices',
   mtbf_hrs: 'mtbf_hrs', failures: 'failures'

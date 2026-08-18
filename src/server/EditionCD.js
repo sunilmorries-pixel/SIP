@@ -430,7 +430,7 @@ function centerBaseSpecCD_() {
  * @param {boolean=} bypassCache force a rebuild (used by the warm trigger)
  */
 function getCenter360RowsCD_(bypassCache) {
-  var ckey = 'ctr360cd_v11'; // v11: country sources from hub_country, not Spoke_Country
+  var ckey = 'ctr360cd_v12'; // v12: centerTickets carries swapped (Customer 360 "Swapped" column)
   if (bypassCache !== true) {
     var cached = cacheGetLarge(ckey);
     if (cached) return cached;
@@ -465,6 +465,7 @@ function getCenter360RowsCD_(bypassCache) {
     select: function (row, tickets) {
       row.open_tickets = tickets ? tickets.open_tickets : 0;
       row.tickets_total = tickets ? tickets.tickets_total : 0;
+      row.swapped = tickets ? tickets.swapped : 0;
       // segment already set from center_details (centerBase) — a center's own
       // attribute, so centers with no tickets still carry their segment.
       return row;

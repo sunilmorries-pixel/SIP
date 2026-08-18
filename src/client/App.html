@@ -329,7 +329,7 @@
           devices: n, jira_devices: rnd(0, n + 3),
           lifecycle_years: (rnd(3, 90) / 10), downtime_days: (rnd(0, 200) / 10),
           uptime_pct: up, tickets_total: rnd(0, 40),
-          open_tickets: rnd(0, 6),
+          open_tickets: rnd(0, 6), swapped: rnd(0, 3),
           mtbf_hrs: fails >= 2 ? rnd(120, 4000) : null, failures: fails
         });
       }
@@ -1745,13 +1745,13 @@
     { key: 'hub_id', label: 'Hub ID', sortable: false, num: true },
     { key: 'city', label: 'City', sortable: false },
     { key: 'state', label: 'State', sortable: true },
-    { key: 'devices', label: 'Devices', sortable: true, num: true },
     { key: 'jira_devices', label: 'Jira devices', sortable: true, num: true },
     { key: 'lifecycle_years', label: 'Lifecycle', sortable: true, num: true },
     { key: 'downtime_days', label: 'Downtime', sortable: true, num: true },
     { key: 'uptime_pct', label: 'Uptime', sortable: true, num: true },
     { key: 'tickets_total', label: 'Tickets', sortable: true, num: true },
     { key: 'open_tickets', label: 'Open tickets', sortable: true, num: true },
+    { key: 'swapped', label: 'Swapped', sortable: true, num: true },
     { key: 'mtbf_hrs', label: 'MTBF (days)', sortable: true, num: true },
     { key: 'failures', label: 'Failures', sortable: true, num: true }
   ];
@@ -1815,13 +1815,13 @@
           '<td class="num">' + escapeHtml(r.hub_id != null ? r.hub_id : '—') + '</td>' +
           '<td>' + escapeHtml(r.city || '—') + '</td>' +
           '<td>' + escapeHtml(r.state || '—') + '</td>' +
-          '<td class="num">' + FMT.format(r.devices || 0) + '</td>' +
           '<td class="num">' + FMT.format(r.jira_devices || 0) + '</td>' +
           '<td class="num">' + (r.lifecycle_years != null ? r.lifecycle_years + 'y' : '—') + '</td>' +
           '<td class="num">' + (r.downtime_days != null ? r.downtime_days + 'd' : '—') + '</td>' +
           '<td class="num"><span class="badge badge-' + upBadge + '">' + (r.uptime_pct != null ? r.uptime_pct + '%' : '—') + '</span></td>' +
           '<td class="num">' + FMT.format(r.tickets_total || 0) + '</td>' +
           '<td class="num"><span class="badge badge-' + ticketBadge + '">' + FMT.format(r.open_tickets || 0) + '</span></td>' +
+          '<td class="num">' + FMT.format(r.swapped || 0) + '</td>' +
           '<td class="num">' + (r.mtbf_hrs == null ? '—' : FMT.format(Math.round(r.mtbf_hrs / 24)) + 'd') + '</td>' +
           '<td class="num">' + FMT.format(r.failures || 0) + '</td>' +
           '</tr>';

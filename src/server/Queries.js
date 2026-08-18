@@ -859,8 +859,13 @@ function buildCenterSourceSpecs() {
       sql:
         // Segment comes from ALL tickets (open filter would drop centers whose
         // tickets are all closed), open_tickets counts only active ones.
+        // swapped = tickets whose IssueCategory is one of the 3 real "swap"
+        // categories (Temporary swapping / International Demo Swapping /
+        // Mac 600 To V-Cardia(Swapping)) — all-time count, not open-only,
+        // since a swap is a completed action, not a backlog item.
         "SELECT CenterID AS center_id, COUNT(*) AS tickets_total, " +
         " COUNTIF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS open_tickets, " +
+        " COUNTIF(LOWER(IFNULL(IssueCategory, '')) LIKE '%swap%') AS swapped, " +
         " ANY_VALUE(CASE WHEN NULLIF(TRIM(hub_master_segment), '') IS NULL THEN NULL " +
         "  ELSE " + segmentGroupSql_('hub_master_segment') + " END) AS segment " +
         "FROM " + zohoDedupSql_() + " WHERE CenterID IS NOT NULL " +

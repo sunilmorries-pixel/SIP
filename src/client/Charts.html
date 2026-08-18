@@ -723,6 +723,40 @@ var Charts = (function () {
   function decompNodeColor_(depth) {
     return depth === 0 ? C.primary : (depth === 1 ? C.info : C.muted);
   }
+
+  /**
+   * Hard-wraps a node name onto multiple lines so it can never run past the
+   * box width into a neighbor's label. Some names are raw data values (e.g.
+   * ServiceWRK's closure_type, unprettified SCREAMING_SNAKE_CASE) with no
+   * whitespace to break at — ECharts rich-text `overflow`/`width` wrapping
+   * did not engage for tree-series node labels in testing, so this wraps by
+   * literal '\n' insertion instead of relying on that. Breaks preferentially
+   * at existing separators (space/underscore/hyphen); falls back to a hard
+   * character split for a single run longer than maxLen.
+   */
+  function decompWrapName_(name, maxLen) {
+    maxLen = maxLen || 10;
+    var text = String(name == null ? '' : name);
+    if (text.length <= maxLen) return text;
+    var parts = text.split(/([ _-])/); // split on separators, keep them as their own parts
+    var lines = [];
+    var cur = '';
+    parts.forEach(function (part) {
+      if (!part) return;
+      if ((cur + part).length <= maxLen) {
+        cur += part;
+        return;
+      }
+      if (cur.trim()) lines.push(cur.trim());
+      cur = part;
+      while (cur.length > maxLen) {
+        lines.push(cur.slice(0, maxLen));
+        cur = cur.slice(maxLen);
+      }
+    });
+    if (cur.trim()) lines.push(cur.trim());
+    return lines.join('\n');
+  }
   function decompStyleTree_(node, depth) {
     var styled = Object.assign({}, node, {
       // __depth drives symbolSize below too — deriving size from "has
@@ -764,25 +798,41 @@ var Charts = (function () {
       series: [{
         type: 'tree', data: [styledRoot],
         orient: 'TB', layout: 'orthogonal',
-        top: '6%', bottom: '6%', left: '9%', right: '9%',
+        // Same margins as the original, proven-safe layout — ECharts sizes
+        // each branch's horizontal share by its OWN subtree's leaf count
+        // (Reingold-Tilford-style), so a thin sibling (few/no children)
+        // next to a wide one (e.g. India's 6 segments) gets squeezed
+        // regardless of matching symbol sizes. Kept the size bump modest
+        // for this reason — see decompTree's design note above.
+        top: '4%', bottom: '4%', left: '8%', right: '8%',
         symbol: 'roundRect',
-        // Bigger at the root, tapering toward the leaves — the size step
-        // itself communicates depth, on top of the color step above. Sized
-        // by __depth (every sibling at a level matches), not by whether
-        // this particular node has children.
+        // Root a bit larger for emphasis; everything else barely changed
+        // from the original 70x30 — that size is the one already proven
+        // not to squeeze a thin sibling next to a wide subtree, so most of
+        // the readability gain here comes from color (decompNodeColor_)
+        // and the bigger/bolder label text below, not from box size.
+        // Height (not width) is free to grow more — this is a top-down
+        // (TB) tree, so taller boxes don't affect the horizontal sibling
+        // squeeze above, and the two-line rich-text label below needs more
+        // vertical room than the original's single line did.
         symbolSize: function (value, params) {
-          var depth = params.data.__depth;
-          return depth === 0 ? [138, 48] : (depth === 1 ? [108, 40] : [92, 34]);
+          return params.data.__depth === 0 ? [88, 52] : [74, 48];
         },
         lineStyle: { color: C.axis, curveness: 0.3, width: 1.5 },
         label: {
           position: 'inside', fontFamily: "'Fira Sans', sans-serif",
           formatter: function (info) {
-            return '{name|' + info.data.name + '}\n{val|' + FMT.format(info.data.value) + '}';
+            return '{name|' + decompWrapName_(info.data.name) + '}\n{val|' + FMT.format(info.data.value) + '}';
           },
           rich: {
-            name: { fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 16, align: 'center' },
-            val: { fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.82)', lineHeight: 15, align: 'center' }
+            name: {
+              fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 15,
+              align: 'center'
+            },
+            val: {
+              fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.82)',
+              lineHeight: 14, align: 'center'
+            }
           }
         },
         leaves: { label: { position: 'inside' } },

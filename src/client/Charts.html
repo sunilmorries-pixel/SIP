@@ -725,6 +725,12 @@ var Charts = (function () {
   }
   function decompStyleTree_(node, depth) {
     var styled = Object.assign({}, node, {
+      // __depth drives symbolSize below too — deriving size from "has
+      // children" instead breaks when a depth-1 node happens to be a leaf
+      // (e.g. an inert "Others" bucket next to real branches), sizing it
+      // smaller than same-row siblings and overlapping them, since ECharts'
+      // tree layout assumes uniform slot widths per sibling row.
+      __depth: depth,
       itemStyle: { color: decompNodeColor_(depth), borderColor: C.axis, borderWidth: 2 }
     });
     if (node.children && node.children.length) {
@@ -761,11 +767,12 @@ var Charts = (function () {
         top: '6%', bottom: '6%', left: '9%', right: '9%',
         symbol: 'roundRect',
         // Bigger at the root, tapering toward the leaves — the size step
-        // itself communicates depth, on top of the color step above.
+        // itself communicates depth, on top of the color step above. Sized
+        // by __depth (every sibling at a level matches), not by whether
+        // this particular node has children.
         symbolSize: function (value, params) {
-          var d = params.data;
-          if (d === styledRoot) return [138, 48];
-          return (d.children && d.children.length) ? [108, 40] : [92, 34];
+          var depth = params.data.__depth;
+          return depth === 0 ? [138, 48] : (depth === 1 ? [108, 40] : [92, 34]);
         },
         lineStyle: { color: C.axis, curveness: 0.3, width: 1.5 },
         label: {

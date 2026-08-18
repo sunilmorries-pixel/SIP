@@ -691,7 +691,19 @@ var Charts = (function () {
     }));
     if (opts.onNodeClick) {
       onClick(id, function (params) {
-        if (params.data) opts.onNodeClick(params.data);
+        if (params.data) {
+          // Explicitly tear down the tooltip on THIS instance before the click
+          // handler (which mutates global filters and re-renders via
+          // renderOverviewFlow → Charts.decompTree → render()/apply_()) swaps
+          // the option out from under it — otherwise ECharts can still be
+          // mid-flight showing/moving the old tooltip when apply_() replaces
+          // the option, and throws trying to update a tooltip DOM node that no
+          // longer matches (TypeError: Cannot set properties of null (setting
+          // 'innerHTML'), confirmed reproducible via hover-then-click in the
+          // local preview).
+          if (instances[id]) instances[id].dispatchAction({ type: 'hideTip' });
+          opts.onNodeClick(params.data);
+        }
       });
     }
   }

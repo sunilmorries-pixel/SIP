@@ -52,7 +52,7 @@ function warmCaches() {
   var f = warmDefaultFilters_();
   [
     ['dashboard', function () { return apiGetDashboardCD({ bypassCache: true, filters: f }); }],
-    ['exec', function () { return apiGetExecOverviewCD({ bypassCache: true, filters: f }); }],
+    ['overviewFlow', function () { return apiGetOverviewFlowCD({ bypassCache: true, filters: f }); }],
     ['map', function () { return apiGetMapDataCD({ bypassCache: true, filters: f }); }],
     ['topCustomers', function () { return apiGetTopCustomersCD({ bypassCache: true, filters: f }); }],
     // apiGetNumbers takes no filters — the Numbers page is exempt from the

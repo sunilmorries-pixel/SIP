@@ -38,6 +38,7 @@ var Charts = (function () {
 
   var instances = {};   // id → echarts instance
   var staged = {};      // id → option waiting to be applied
+  var handlers = {};    // id → desired click handler (see onClick/bindClick_)
 
   function isVisible(el) {
     return !!(el && el.offsetWidth > 0 && el.offsetHeight > 0);
@@ -93,6 +94,22 @@ var Charts = (function () {
     if (!instances[id]) instances[id] = echarts.init(el);
     instances[id].setOption(staged[id], true);
     instances[id].resize();
+    bindClick_(id);
+  }
+
+  /**
+   * (Re)binds the click handler registered for `id` via onClick(), if any.
+   * Called from apply_() every time it runs (not just on first init), so a
+   * handler registered while the instance didn't exist yet (e.g. the first
+   * render landed in a hidden tab panel) still gets attached the first time
+   * apply_() actually creates the instance. off() first makes repeat calls
+   * idempotent — re-renders never accumulate duplicate listeners, since the
+   * one listener that stays bound always reads the CURRENT handlers[id].
+   */
+  function bindClick_(id) {
+    if (!instances[id]) return;
+    instances[id].off('click');
+    if (handlers[id]) instances[id].on('click', handlers[id]);
   }
 
   /** Called on tab switch: materialise anything staged inside the panel. */
@@ -120,7 +137,8 @@ var Charts = (function () {
   }
 
   function onClick(id, handler) {
-    if (instances[id]) instances[id].on('click', handler);
+    handlers[id] = handler;
+    bindClick_(id);
   }
 
   window.addEventListener('resize', function () {

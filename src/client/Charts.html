@@ -644,10 +644,63 @@ var Charts = (function () {
     }));
   }
 
+  /* ── Decomposition trees (Overview) ──────────────────────────── */
+
+  /**
+   * Renders a top-down decomposition tree. `treeNode` is the exact
+   * {name, value, children, stats?, filterDim?, filterValue?, clearDims?,
+   * navTab?, navDeviceType?} shape OverviewFlow.js's tree builders return —
+   * the metadata fields ride along on ECharts' native node data untouched,
+   * so the click handler reads them straight off `params.data`.
+   */
+  function decompTree(id, treeNode, opts) {
+    opts = opts || {};
+    if (!treeNode || !treeNode.children || !treeNode.children.length) return showEmpty(id);
+    render(id, base({
+      tooltip: {
+        trigger: 'item', triggerOn: 'mousemove',
+        formatter: function (info) {
+          var d = info.data;
+          var lines = ['<strong>' + d.name + '</strong>: ' + FMT.format(d.value)];
+          if (d.stats) {
+            if (d.stats.devices != null) lines.push(FMT.format(d.stats.devices) + ' devices');
+            if (d.stats.uptimePct != null) lines.push(d.stats.uptimePct + '% uptime');
+            if (d.stats.openTickets != null) lines.push(FMT.format(d.stats.openTickets) + ' open tickets');
+            if (d.stats.topCity) lines.push('Top city: ' + d.stats.topCity);
+          }
+          return lines.join('<br/>');
+        }
+      },
+      series: [{
+        type: 'tree', data: [treeNode],
+        orient: 'TB', layout: 'orthogonal',
+        top: '4%', bottom: '4%', left: '8%', right: '8%',
+        symbol: 'roundRect', symbolSize: [70, 30],
+        itemStyle: { color: C.primary, borderColor: C.axis },
+        lineStyle: { color: C.axis, curveness: 0.3 },
+        label: {
+          position: 'inside', color: '#fff', fontSize: 11, fontWeight: 700,
+          formatter: function (info) { return info.data.name + '\n' + FMT.format(info.data.value); },
+          lineHeight: 14
+        },
+        leaves: { label: { position: 'inside' } },
+        expandAndCollapse: true,
+        initialTreeDepth: -1,
+        animationDuration: 400
+      }]
+    }));
+    if (opts.onNodeClick) {
+      onClick(id, function (params) {
+        if (params.data) opts.onNodeClick(params.data);
+      });
+    }
+  }
+
   return {
     setLoading: setLoading,
     flushVisible: flushVisible,
     showEmpty: showEmpty,
+    decompTree: decompTree,
     svcTatBands: svcTatBands,
     svcResolution: svcResolution,
     // Exported for the TOM monthly-volume chart; previously only used

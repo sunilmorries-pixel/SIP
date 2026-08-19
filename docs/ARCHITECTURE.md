@@ -46,7 +46,7 @@ See `docs/SOURCES.md` for the full source-of-truth table. Summary of current rol
 |---|---|---|
 | `center_details` (BQ) | ~35.8k rows / 27,410 distinct centers (dup rows per center; no F2P-exclusion — full universe) | **Sole center source** — counts, uptime/MTBF/health, geo, deployment age. Country filter derives from `hub_country` (switched from `Spoke_Country`, v5.33 — see docs/SOURCES.md) |
 | `jira_data` (BQ) | ~49.9k rows / ~45.4k distinct devices (changelog grain, `GROUP BY issue_key`) | **Devices/fleet count, asset lifecycle, cohort/FTF analysis**; serial (from `summary`) → center via `cloud_devices`/`center_details` |
-| `cloud_devices` (BQ) | ~11.3k | Fleet-status donut, device explorer, serial→center bridge, and the CDM page |
+| `cloud_devices` (BQ) | ~11.3k | Serial→center bridge, and the CDM page — its only user-facing surface since 2026-08-19 (device-status donut/firmware spread/device explorer on Asset were removed; that telemetry is now CDM/Numbers/Raw-Data only) |
 | `zoho_data` (BQ) | ~80k (post-dedup + unassigned-ticket exclusion, v5.22/v5.23) | Support tickets, SLA compliance, uptime-downtime proxy. `CreatedAt`/`ClosedAt` are native DATETIME in production (not strings, despite the sandbox — a live-crashing assumption fixed in the v5.24 hotfix) |
 | `device_metrics` (BQ) | dup rows | Reliability watchlist — deduped with `GROUP BY deviceid` |
 | `device_center_mapping` (BQ) | — | **Retired as a user-facing source** (legacy serial-linking only, read internally by `Geo.js` history) |
@@ -89,7 +89,7 @@ ever leave BigQuery for the device explorer, which is paginated server-side
 
 ### 3. Caching
 Every filter-aware endpoint (`apiGetDashboardCD`, `apiGetMapDataCD`, `apiGetTopCustomersCD`,
-`apiGetExecOverviewCD`, …) keys its `CacheService`/large-cache entry on a version tag
+`apiGetCenterDetailCD`, …) keys its `CacheService`/large-cache entry on a version tag
 (bumped often as filters/queries change — check the current value in-code rather than trusting
 a specific tag quoted here) + the current cache epoch (`getCacheEpoch_()`, a counter in Script
 Properties) + a hash of the active filter set (`filterHash_(filters)` — 7 dimensions as of
@@ -105,7 +105,7 @@ Refresh button passes `bypassCache: true`.
 
 ### 4. Injection safety
 - Untrusted values (search text, hub, status, paging) → **named query parameters**.
-- Sort column/direction → validated against a whitelist map (`DEVICE_SORT_COLUMNS`).
+- Sort column/direction → validated against a whitelist map (`CDM_SORT_COLUMNS`, `CENTER_SORT_KEYS`, …).
 
 ### 4b. Joins happen in Apps Script, not SQL
 All BigQuery statements are single-table reads. Multi-source views (Center-360,
@@ -144,12 +144,15 @@ shipped tokens in `Styles.html` are the source of truth.)
 2. `apiGetDashboardCD` → cache hit (epoch + filterHash key)? return : build specs → `runQueriesParallel`
 3. Client renders KPIs (count-up), stages chart options, flushes visible ones.
 
-**Device explorer**
-1. Search input (debounced 400ms) / chip / sort / page → `gsCall('apiGetDevices', query)`
-2. Stale responses are dropped via a request-id guard (`devicesRequestId`).
+**Communicator explorer (CDM)**
+1. Search input (debounced 400ms) / sort / page → `gsCall('apiGetCdmDevices', query)`
+2. Stale responses are dropped via a request-id guard (`cdmDevicesRequestId`).
+   (The Asset page's own device explorer over `cloud_devices` — same shape, minus
+   Latency/Retries/SpaceAvailable/EcgCounter/hardware-version — was removed 2026-08-19; that
+   telemetry is CDM/Numbers/Raw-Data only now.)
 
 **Auto-refresh**
-1-second countdown ticker; at zero → `loadDashboard(bypassCache=true)` + `loadDevices()`.
+1-second countdown ticker; at zero → `loadDashboard(bypassCache=true)` + `loadCenters()`.
 Toggle state persists in `localStorage`.
 
 ## Extending

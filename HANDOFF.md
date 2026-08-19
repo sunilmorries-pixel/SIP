@@ -1,33 +1,20 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-19 · **Live version:** 5.47 · **Status:** ⚠️ **Production deployed
-(@76/v5.47, built from commit `02d141f`), but git has moved on since.** Production
+**Last updated:** 2026-08-19 · **Live version:** 5.48 · **Status:** ✅ **Production deployed
+(@77/v5.48, built from commit `cd29dc6`) — git, GitHub, and production all agree.** Production
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always)
-serves Apps Script **@76 / v5.47**. Local `main`'s tip is `c977a00` — one commit **ahead of what's
-deployed**: a leaf-slot sizing fix for the decomposition trees, committed but not yet shipped (no
-`@77` deploy exists yet). No tag cut for v5.27–v5.47; tags are not a reliable release index.
+serves Apps Script **@77 / v5.48**. Local `main`'s tip is `cd29dc6`, identical to `origin/main` —
+no deploy-vs-git gap, no unpushed commits. No tag cut for v5.27–v5.48; tags are not a reliable
+release index.
 
-⚠️ **Local `main` is 32 commits ahead of `origin/main` — none of this has been pushed to GitHub.**
-`git push` has not been run since the v5.37/@66 catch-up. If you're starting a session from a
-fresh clone or a different machine, you are missing all of v5.38–v5.47 until someone pushes.
-
-⚠️ **Uncommitted working-tree changes exist as of this doc update** (session in progress,
-2026-08-19 ~13:40): `Config.js` is locally bumped to `APP_VERSION: '77'` in prep for the next
-deploy, alongside real feature diffs in `App.html`/`Index.html`/`MapView.html`/`Styles.html`/
-`EditionCD.js`/`Numbers.js`/`OverviewFlow.js`/`overview-flow-helpers.test.js`. Two things are mixed
-into this snapshot:
-- A "devices" semantics change — per user, 2026-08-19, "devices" now means the **Jira fleet
-  count** (`jira_devices`) everywhere *except* the CDM page, which stays on `cloud_devices`
-  telemetry on purpose. Touches the map payload, Top Customers rollup, Exec Overview rollup, the
-  Numbers page raw table, and the Overview decomposition-tree stats — each site left an inline
-  comment citing this same rationale so a future reader isn't left guessing why two "device count"
-  fields exist side by side.
-- A filter-drawer redesign: the 10 filter dimensions are being regrouped from one flat scrolling
-  list into 4 collapsible `<details>` sections with active-filter count badges (`Styles.html`'s new
-  `.filter-group*` rules), plus a collapsed-by-default nested disclosure for the dense per-page
-  scope notes.
-- Do not treat this as a finished, reviewable diff — it was mid-flight when this HANDOFF pass ran.
-  Re-check `git status`/`git diff` before assuming it's still in this state.
+⚠️ **Uncommitted working-tree changes exist as of this doc update** — the *other* concurrent
+session's in-progress work, not this session's: `Charts.html` (a 378-line diff) and `Styles.html`
+are mid-edit; `Config.js` matches HEAD (its stash-pop conflict, from isolating the @77 deploy below,
+was resolved in favor of the committed value). These three files were temporarily `git stash`-ed
+during the @77 deploy so `clasp push` — which uploads whatever's on disk, regardless of git state —
+didn't ship someone else's unfinished, unreviewed work, then restored after. See the v5.48/@77
+entry below for the full sequence. Do not treat the current Charts.html/Styles.html diff as
+finished or reviewable; re-check `git status`/`git diff` before assuming it's still in this state.
 
 **This handoff was stale for ten deploys** (v5.38–v5.47) before this catch-up pass — it still cited
 `7ae7549`/v5.37 while `main` had moved 32 commits ahead, largely from a worktree-based feature
@@ -80,6 +67,60 @@ reverted by the other's save at least once. Consequences to know:
 - **Before editing `src/client/App.html` / `Index.html` / `Styles.html`, re-read the file
   immediately before and after each edit** and grep for your own identifier to confirm the change
   survived. A successful Edit call is not proof the change is still on disk a minute later.
+- **Recurred again 2026-08-19**, at the v5.48/@77 deploy: the other session had a 378-line
+  uncommitted `Charts.html` diff (plus `Styles.html`/`Config.js`) sitting in the working tree.
+  `clasp push` uploads the filesystem, not git state, so deploying as-is would have shipped their
+  unfinished, unreviewed work to production. Fix: `git stash` those 3 files, deploy from the
+  clean/committed tree, `git stash pop` afterward. The pop conflicted on `Config.js`'s
+  `APP_DEPLOYED_AT` line (both sessions had independently bumped `APP_VERSION` to the same
+  `'77'`) — resolved in favor of the value that's actually live; the other session's version bump
+  will need to move to `'78'` when they deploy. See the v5.48/@77 entry below.
+
+### v5.48 / @77 (2026-08-19) — devices=Jira everywhere but CDM, Filters drawer redesign, cloud_devices removed from every non-CDM page
+
+> Catch-up deploy bundling everything accumulated since v5.47/@76. Built from commit `cd29dc6`.
+>
+> **`844b44f` — "devices" now means the Jira fleet count everywhere except CDM.** Per user: device
+> counts on the Map payload, Top Customers rollup, and the (now-deleted) Exec Overview rollup
+> switched from `cloud_devices`-derived counts to `jira_devices` (`jiraDeviceStats_`/
+> `getAssetIndex_`). `online` (the `cloud_devices` heartbeat stat) was initially kept alongside —
+> "no Jira equivalent for reported-in-the-last-24h" — see below for why that didn't survive the day.
+>
+> **`a5c3cec` — Filters drawer redesign.** The 10 filter dimensions, previously one flat scrolling
+> list, are now 4 collapsible `<details>` groups (Status & Segment / Location & Hub / Device
+> (Jira) / Date range) via a new `FILTER_GROUPS_` map (`App.html`) — each group shows a live
+> "N selected" badge (`updateFilterGroupCounts_`) and auto-expands on drawer-open if it holds an
+> active filter (`autoExpandFilterGroups_`). Native `<details>`/`<summary>` gives keyboard/
+> screen-reader semantics for free. New `.filter-group*` rules in `Styles.html`.
+>
+> **`3b49fb4` — cloud_devices data removed from every page except CDM/Numbers/Raw Data.** Per
+> user, the "no Jira equivalent" carve-out for `online` (from `844b44f`, same day) was explicitly
+> revoked:
+> - **Top Customers** — the Online KPI/table-column/drawer-stat dropped entirely;
+>   `computeTopCustomersCD_` no longer tracks `online` at all.
+> - **Map** — the Online KPI dropped (device counts stay Jira-based, untouched).
+> - **Asset** — deleted the Device status donut (`chartFleetStatus`), Firmware spread chart
+>   (`chartFirmware`), and the entire Device Explorer (search chips, CSV export, pagination,
+>   `apiGetDevices`, `buildDeviceExplorerQuery`/`DEVICE_SORT_COLUMNS`) — all three were
+>   `cloud_devices`-only with no Jira equivalent. Device age chart now spans the freed row; the
+>   page's search box is disabled (nothing left to search).
+> - Two more confirmed-dead `cloud_devices` reads surfaced while tracing dependencies, deleted in
+>   the same pass: `apiGetExecOverviewCD` (unreachable — no client ever called it; its `kpis`/
+>   `fleetStatus` specs were its only remaining justification) and an unread `devices` query on the
+>   center-detail drawer (`buildCenterDetailSpecs`'s `devices` key — queried on every drawer open,
+>   never rendered by the client).
+> - CDM, Numbers, and Raw Data are unaffected — `cloud_devices` telemetry is their exclusive
+>   surface now. `getCenter360RowsCD_`'s `centerTelemetry` join is UNCHANGED (CDM's map still
+>   depends on it); only the non-CDM *consumers* of `row.online`/`avg_csq`/`avg_battery`/
+>   `low_battery` were removed.
+> - Verified: 172 unit tests pass; walked Asset/Top Customers/Map/CDM/Customer 360/Overview/Numbers
+>   in the local preview — correct data, zero console errors.
+>
+> **`cd29dc6`** — `APP_VERSION`/`APP_DEPLOYED_AT` bump for this deploy (`'76'` → `'77'`).
+>
+> **Deploy isolation from concurrent work:** see the two-concurrent-sessions note above — the other
+> session's uncommitted `Charts.html`/`Styles.html`/`Config.js` were stashed for the deploy and
+> restored after, so `@77` carries only the four commits above.
 
 ### v5.33 / @62 (2026-08-14) — CDM page, hub_country country filter, Support KPI grid fix
 

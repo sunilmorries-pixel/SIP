@@ -551,8 +551,16 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 .card-title { font-family: var(--font-head); font-size: 16px; font-weight: 600; letter-spacing: 0.01em; }
 .card-sub { font-size: 13px; color: var(--text-3); margin-top: 2px; }
 
-/* ── Overview flow cards — a KPI total that expands into a Sankey flow ── */
+/* ── Overview flow cards — a KPI total that expands into a decomposition
+   tree. Closed, each card sits in its normal 3-column span-4 slot; open, it
+   grows to the full page width (:has() reacts live to the <details>'s own
+   [open] attribute, no JS needed for the layout change) — the tree's
+   Reingold-Tilford-style layout needs much more absolute horizontal room
+   than one column ever gave it, which is what actually keeps a thin
+   sibling (e.g. an inert "Others" bucket) from being squeezed against a
+   wide subtree (e.g. India's 7 segments). ── */
 .flow-card { padding: 0; }
+.flow-card:has(details[open]) { grid-column: 1 / -1; }
 .flow-summary {
   list-style: none; cursor: pointer; display: flex; align-items: center;
   justify-content: space-between; gap: 12px; padding: var(--pad);
@@ -572,7 +580,10 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
   font-family: var(--font-head); font-size: 32px; font-weight: 700;
   color: var(--secondary); font-variant-numeric: tabular-nums; flex: none;
 }
-.chart-flow { padding: 0 var(--pad) var(--pad); animation: rise 320ms var(--ease-out) both; }
+/* Full page width buys height too, not just width — a wider tree still
+   wants room for its two-line rich-text labels and however many rows of
+   leaf nodes a branch stacks. */
+.chart-flow { height: 620px; padding: 0 var(--pad) var(--pad); animation: rise 320ms var(--ease-out) both; }
 
 /* NOTE: mobile/tablet view intentionally removed for now — desktop only.
    When we add the mobile view, reintroduce breakpoint overrides here. */
@@ -580,11 +591,6 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 /* ── charts + skeletons ─────────────────────────────────────────── */
 .chart { width: 100%; height: 280px; }
 .chart-tall { height: 320px; }
-/* Overview's flow diagrams (Sankey) — taller than a bar/donut chart since a
-   branch can carry many leaf nodes stacked vertically within its column;
-   the Customers flow in particular can stack ~25-30 leaf nodes across 6
-   countries when segments are heavily skewed toward one of them. */
-.chart-flow { height: 560px; }
 .chart.is-loading {
   border-radius: var(--radius-sm);
   background: linear-gradient(100deg,

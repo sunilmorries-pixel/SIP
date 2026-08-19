@@ -138,16 +138,18 @@
 <main class="page" role="main">
 
   <!-- ══════════════ VIEW 0 · OVERVIEW (landing) ══════════════
-       Three KPI cards (2026-08-19 redesign, superseding the always-expanded
-       decomposition trees below each number) — the landing state shows only
-       the three root totals; expanding a card lazily renders its flow
-       (Charts.decompFlow, a Sankey graph). Overview still has its own
-       endpoint, apiGetOverviewFlowCD, not shared with Asset/Customers/
-       Support/Service. -->
+       Three KPI cards (2026-08-19 redesign) — the landing state shows only
+       the three root totals; expanding a card lazily renders its
+       decomposition tree (Charts.decompTree). An expanded card grows to the
+       full page width (.flow-card:has(details[open]) in Styles.html) so the
+       tree's layout has much more horizontal room than a fixed 3-column
+       span ever gave it. Overview still has its own endpoint,
+       apiGetOverviewFlowCD, not shared with Asset/Customers/Support/
+       Service. -->
   <section id="panel-overview" class="panel is-active" role="tabpanel" aria-labelledby="tab-overview">
     <div class="card-grid">
       <article class="card span-4 flow-card">
-        <details id="flowDetailsCustomers">
+        <details id="flowDetailsCustomers" open>
           <summary class="flow-summary">
             <span class="flow-summary-text">
               <span class="card-title">Customers</span>
@@ -156,12 +158,12 @@
             <span class="flow-number" id="flowTotalCustomers">0</span>
           </summary>
           <div id="flowCustomers" class="chart chart-flow" role="img"
-               aria-label="Flow diagram of customers by country and segment"></div>
+               aria-label="Decomposition tree of customers by country and segment"></div>
         </details>
       </article>
 
       <article class="card span-4 flow-card">
-        <details id="flowDetailsDevices">
+        <details id="flowDetailsDevices" open>
           <summary class="flow-summary">
             <span class="flow-summary-text">
               <span class="card-title">Devices</span>
@@ -170,12 +172,12 @@
             <span class="flow-number" id="flowTotalDevices">0</span>
           </summary>
           <div id="flowDevices" class="chart chart-flow" role="img"
-               aria-label="Flow diagram of devices by type and age band"></div>
+               aria-label="Decomposition tree of devices by type and age band"></div>
         </details>
       </article>
 
       <article class="card span-4 flow-card">
-        <details id="flowDetailsTickets">
+        <details id="flowDetailsTickets" open>
           <summary class="flow-summary">
             <span class="flow-summary-text">
               <span class="card-title">Tickets</span>
@@ -184,7 +186,7 @@
             <span class="flow-number" id="flowTotalTickets">0</span>
           </summary>
           <div id="flowTickets" class="chart chart-flow" role="img"
-               aria-label="Flow diagram of tracked tickets by source and outcome"></div>
+               aria-label="Decomposition tree of tracked tickets by source and outcome"></div>
         </details>
       </article>
     </div>

@@ -1604,8 +1604,11 @@
 
   /**
    * Landing shows only each tree's root total (2026-08-19 redesign); the
-   * flow itself (Charts.decompFlow, a Sankey graph) renders lazily the
-   * first time its card is expanded, not eagerly for all three on load.
+   * tree itself renders lazily the first time its card is expanded, not
+   * eagerly for all three on load. The expanded card takes the full page
+   * width (see .flow-card:has(details[open]) in Styles.html), giving
+   * Charts.decompTree's layout much more horizontal room than its old
+   * fixed-3-column span ever had.
    */
   var OVERVIEW_FLOW_CARDS = [
     { details: 'flowDetailsCustomers', chart: 'flowCustomers', total: 'flowTotalCustomers', key: 'customers' },
@@ -1616,7 +1619,7 @@
   function renderOverviewFlowCard_(card) {
     var payload = state.overviewFlowData;
     if (!payload) return;
-    Charts.decompFlow(card.chart, payload[card.key], { onNodeClick: handleTreeNodeClick_ });
+    Charts.decompTree(card.chart, payload[card.key], { onNodeClick: handleTreeNodeClick_ });
   }
 
   // Wired once: an open card's flow re-renders whenever fresh data arrives

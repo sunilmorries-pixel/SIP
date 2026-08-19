@@ -583,7 +583,7 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 /* Full page width buys height too, not just width — a wider tree still
    wants room for its two-line rich-text labels and however many rows of
    leaf nodes a branch stacks. */
-.chart-flow { height: 620px; padding: 0 var(--pad) var(--pad); animation: rise 320ms var(--ease-out) both; }
+.chart-flow { min-height: 620px; padding: 0 var(--pad) var(--pad); animation: rise 320ms var(--ease-out) both; }
 
 /* NOTE: mobile/tablet view intentionally removed for now — desktop only.
    When we add the mobile view, reintroduce breakpoint overrides here. */

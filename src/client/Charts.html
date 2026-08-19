@@ -845,8 +845,13 @@ var Charts = (function () {
     // render()/apply_() runs so echarts.init()/resize() picks up the
     // correct size immediately rather than clipping until some later
     // resize event.
+    // Per-leaf slot must clear the leaf node's own height (48px, see
+    // symbolSize below) plus a visible gap, or rows still touch/overlap
+    // regardless of orientation — confirmed live in production at 34px/leaf
+    // (India's 7-segment column rendered with zero gap between boxes).
+    // 72px/leaf leaves a ~24px gap.
     var el = document.getElementById(id);
-    if (el) el.style.height = Math.max(420, decompLeafCount_(treeNode) * 34) + 'px';
+    if (el) el.style.height = Math.max(420, decompLeafCount_(treeNode) * 72) + 'px';
     render(id, base({
       tooltip: Object.assign({
         backgroundColor: C.tooltipBg, borderColor: C.axis,

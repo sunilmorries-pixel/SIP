@@ -8,14 +8,17 @@ flow (Zoho), SLA compliance, device fleet, and asset reliability.
 ![stack](https://img.shields.io/badge/stack-Apps%20Script%20%C2%B7%20BigQuery%20%C2%B7%20ECharts-E5344F)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-black?logo=github)](https://github.com/sunilmorries-pixel/SIP)
 
-## What it shows (8 tabs)
+## What it shows (11 tabs)
 
 | Tab | Insights |
 |---|---|
-| **Overview** | Executive rollup: narrative hero, device-age ring, KPI strip, **Device status (Jira)** lifecycle donut, ticket flow, centers-needing-attention + reliability tables |
-| **Centers / Customers** | Geo, deployment age, segment breakdown (`hub_master_segment`), top hubs (by spoke count), Center-360 table (MTBF/Failures columns, sticky Center column, clickable rows → drawer) |
-| **Support / CS** | Zoho KPIs, ticket flow, **SLA-compliance suite** (within% + Tech/Non-Tech + breach-by-type), backlog, categories, priority, channel, segment |
+| **Overview** | 3 decomposition trees — Customers, Devices, Tickets (as of v5.38/@67, layout iterated through @76/v5.47 — see `HANDOFF.md`) — each card opens from a KPI total into an ECharts tree (`Charts.decompTree`) built from pure-JS aggregation over one combined endpoint (`apiGetOverviewFlowCD`). Every node is clickable and drills the global filters |
+| **Centers / Customers** | Geo, deployment age, segment breakdown (`hub_master_segment`), top hubs (by spoke count), Center-360 table (MTBF/Failures columns, sticky Center column, swapped-ticket count, clickable rows → drawer) |
+| **Support / CS** | Zoho KPIs (with prior-7-day delta chips), ticket flow, **SLA-compliance suite** (within% + Tech/Non-Tech + breach-by-type), **SLA risk card** (breached/at-risk chart + ticket worklist), open-ticket age-bucket chart, backlog, categories, channel, segment |
+| **Service** | Field-service ticket analytics from `servicewrk_Tickets` (added v5.29) — deliberately not the Machine Uptime source; see `docs/SOURCES.md` |
+| **TOM** | CS-owned issue/escalation tracker from `tom_tickets` (added v5.30); Centre + date-range filter only |
 | **Asset** | Device age (executive summary), device-status donut, firmware spread, asset lifecycle/type breakdown, failure-analysis cohort (M-A3/A5), device explorer (search/sort/paginate/CSV) — donut/firmware/lifecycle/cohort tiles still await a metric-by-metric confirmation pass |
+| **CDM** | Communicator Device Management (added v5.33) — `cloud_devices` map colored by battery severity, signal/battery/hardware-mix charts, paginated communicator explorer |
 | **Map** | Leaflet map of located centers, clustered, colored by open tickets, clickable ticket-bucket legend |
 | **Top Customers** | Curated 27 "Top LE" hubs: KPIs, map, ranked bars, leaderboard (→ customer drawer) |
 | **Numbers** | Source-reconciliation counts + raw paginated `center_details` table (Devices + Mapped columns) |
@@ -43,7 +46,12 @@ demo-sip/
 │   │   ├── Queries.js        # base SQL statements, parameterised
 │   │   ├── EditionCD.js      # center_details data layer — LIVE client endpoints
 │   │   ├── SlaCatalog.js     # SLA catalog + Tech/Non-Tech classification
+│   │   ├── SlaRisk.js        # SLA risk card: breached/at-risk chart + ticket worklist (Support/CS)
 │   │   ├── Numbers.js         # Numbers page + Jira device stats (live jira_data BQ table, exclude-list device-type filter)
+│   │   ├── OverviewFlow.js   # Overview decomposition trees: apiGetOverviewFlowCD + pure-JS tree aggregation
+│   │   ├── ServiceWrk.js     # Service page — field-service ticket analytics (servicewrk_Tickets)
+│   │   ├── TomTickets.js     # TOM page — CS issue/escalation tracker (tom_tickets)
+│   │   ├── ProfileNewSources.js # one-off join-key profiling helpers for new BQ tables (dev/diagnostic only)
 │   │   ├── RawData.js        # Raw Data page: all 4 BQ sources, paginated, CSV export
 │   │   ├── Api.js            # apiGetDevices/apiGetCdmDevices/apiHealthCheck + shared asset-index helpers
 │   │   ├── TopCustomers.js   # curated 27 "Top LE" hubs + shared SLA-stats helper

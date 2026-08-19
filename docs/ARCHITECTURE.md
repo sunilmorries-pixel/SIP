@@ -27,6 +27,17 @@ battery/signal/hardware-mix) · Centers · Customers (Top Customers) · Support/
 (new v5.29 — `servicewrk_Tickets`) · **TOM** (new v5.30 — `tom_tickets`) · Numbers · Raw Data.
 Every page now has a real data source — there are no "not yet connected" placeholder cards left.
 
+**Overview was rebuilt as 3 decomposition trees as of v5.38/@67** (Customers, Devices, Tickets),
+replacing the old always-static exec-summary cards. Each tree is pure-JS aggregation over one
+combined endpoint (`apiGetOverviewFlowCD`, `src/server/OverviewFlow.js`) and renders via a new
+`Charts.decompTree` ECharts tree-series builder (`src/client/Charts.html`). The visual layout has
+churned across several same-week releases — TB orientation → depth-colored/sized nodes → briefly
+replaced with a Sankey diagram (v5.44/@73) → reverted back to trees per user feedback (v5.46/@75)
+→ switched to LR orientation with a depth-based color ramp (@76/v5.47, current). See `HANDOFF.md`'s
+v5.38–v5.47 entries for the full sequence and the reasoning behind each layout change before
+"fixing" any perceived layout issue — several apparent bugs here were already tried, measured
+against real production data, and deliberately reverted once.
+
 ## Data sources
 
 See `docs/SOURCES.md` for the full source-of-truth table. Summary of current roles:

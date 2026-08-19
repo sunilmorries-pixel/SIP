@@ -1,17 +1,49 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-17 · **Live version:** 5.37 · **Status:** ✅ **Production deployed from
-git `main` @ `7ae7549`.** Production (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`,
-same URL as always) serves Apps Script **@66 / v5.37**. `main`'s current tip is `6b1ccda` (the
-HANDOFF catch-up commit itself, docs-only — nothing to redeploy for it). No tag cut for v5.27–v5.37.
-v5.21–v5.25 and v5.27–v5.37 were deployed **without** tags; only `v5.16`–`v5.18`, `v5.20` and
-`v5.26` are tagged, so tags are not a reliable release index.
+**Last updated:** 2026-08-19 · **Live version:** 5.47 · **Status:** ⚠️ **Production deployed
+(@76/v5.47, built from commit `02d141f`), but git has moved on since.** Production
+(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always)
+serves Apps Script **@76 / v5.47**. Local `main`'s tip is `c977a00` — one commit **ahead of what's
+deployed**: a leaf-slot sizing fix for the decomposition trees, committed but not yet shipped (no
+`@77` deploy exists yet). No tag cut for v5.27–v5.47; tags are not a reliable release index.
 
-**This handoff was stale for three deploys** (v5.35–v5.37) before this catch-up pass — it still
-said tip was `7d98b69` / live was v5.33 while `main` had moved 11 commits ahead from a concurrent
-session that didn't update this file. Don't trust the "Last updated" date alone; if `git log
-7d98b69..HEAD` (or whatever the last-cited commit was) returns anything, this doc is behind
-reality by at least that much.
+⚠️ **Local `main` is 32 commits ahead of `origin/main` — none of this has been pushed to GitHub.**
+`git push` has not been run since the v5.37/@66 catch-up. If you're starting a session from a
+fresh clone or a different machine, you are missing all of v5.38–v5.47 until someone pushes.
+
+⚠️ **Uncommitted working-tree changes exist as of this doc update** (session in progress,
+2026-08-19 ~13:40): `Config.js` is locally bumped to `APP_VERSION: '77'` in prep for the next
+deploy, alongside real feature diffs in `App.html`/`Index.html`/`MapView.html`/`Styles.html`/
+`EditionCD.js`/`Numbers.js`/`OverviewFlow.js`/`overview-flow-helpers.test.js`. Two things are mixed
+into this snapshot:
+- A "devices" semantics change — per user, 2026-08-19, "devices" now means the **Jira fleet
+  count** (`jira_devices`) everywhere *except* the CDM page, which stays on `cloud_devices`
+  telemetry on purpose. Touches the map payload, Top Customers rollup, Exec Overview rollup, the
+  Numbers page raw table, and the Overview decomposition-tree stats — each site left an inline
+  comment citing this same rationale so a future reader isn't left guessing why two "device count"
+  fields exist side by side.
+- A filter-drawer redesign: the 10 filter dimensions are being regrouped from one flat scrolling
+  list into 4 collapsible `<details>` sections with active-filter count badges (`Styles.html`'s new
+  `.filter-group*` rules), plus a collapsed-by-default nested disclosure for the dense per-page
+  scope notes.
+- Do not treat this as a finished, reviewable diff — it was mid-flight when this HANDOFF pass ran.
+  Re-check `git status`/`git diff` before assuming it's still in this state.
+
+**This handoff was stale for ten deploys** (v5.38–v5.47) before this catch-up pass — it still cited
+`7ae7549`/v5.37 while `main` had moved 32 commits ahead, largely from a worktree-based feature
+branch (`worktree-overview-decomposition-trees`, merged at `7311b12`) that this doc never tracked
+mid-flight. Don't trust the "Last updated" date alone; if `git log <last-cited-commit>..HEAD`
+returns anything, this doc is behind reality by at least that much.
+
+**Dangling worktree, not yet merged, likely superseded:** `.claude/worktrees/centers-360-reliability-merge`
+(branch `worktree-centers-360-reliability-merge`, tip `c622815`) diverged from `main` on 2026-07-30
+at commit `096e4d6` and has only 2 commits of its own — adding MTBF/Failures columns to Center 360.
+**`main` already has MTBF/Failures on Center 360** (`grep -rl MTBF src/` hits `App.html`,
+`EditionCD.js`, `Queries.js`) via a different, later effort, so this branch's `git diff --stat main`
+shows ~9,980 deleted lines — almost entirely files that didn't exist yet when it branched
+(`OverviewFlow.js`, `TomTickets.js`, `SlaRisk.js`, etc.), not real divergent work. **Before reviving
+or merging this branch, check whether its MTBF/Failures implementation actually differs from what's
+already on `main` — it may just be safe to delete the branch and worktree.**
 
 **`7d98b69` (2026-08-14, git only, not deployed):** local preview server switched from a
 hardcoded port 8765 to `autoPort` (`.claude/launch.json`) + reading `$env:PORT`
@@ -147,6 +179,111 @@ reverted by the other's save at least once. Consequences to know:
 > Commits `20d1bc0` + `8634606`, version bump `57fa0a2`. New Tricog brand logo; tagline now reads
 > "SIP - Service Insights Platform". Follow-up commit fixed CSS specificity bugs introduced by the
 > new tagline layout.
+
+### @76 / v5.47 (2026-08-19) — decomposition trees go LR, radiant depth gradient — CURRENT LIVE
+
+> Commit `02d141f`. TB (top-to-bottom) orientation divided a hard-capped horizontal width among
+> same-depth siblings, so a lopsided branch (one dominant segment vs. several thin ones, e.g.
+> India's 7 customer segments) crowded labels no matter how node size was tuned. Switched to LR
+> (left-to-right): siblings now stack vertically, so each tree's height (computed from its own leaf
+> count) absorbs the skew instead of squeezing it. Node color is now a depth-based HSL lightness
+> ramp (dark root → bright leaves), with per-node label-color overrides so text stays legible at
+> every lightness.
+>
+> **Known bug found live at this version, already fixed in git but not yet redeployed:** leaf slots
+> were sized at 34px without checking against the leaf node's actual rendered height (48px), so
+> every row touched its neighbor with zero gap on real skewed data. Fixed in `c977a00` (72px/leaf =
+> 48px node + ~24px gap) — **committed but not deployed; still needs a `clasp deploy` to reach
+> production.**
+
+### v5.46 / @75 (2026-08-19) — reverted to decomposition trees, full width, open by default
+
+> Commits `d2b4b1c` + `d6cd495`. Reverses the previous release's Sankey redesign back to the
+> tree visualization "per feedback that the tree was preferred." Two changes address the exact
+> reasons the tree was replaced in the first place, without bringing back the Sankey:
+> 1. Each card now expands to the full page width while its `<details>` is open (a
+>    `.flow-card:has(details[open])` rule in `Styles.html`, no JS) instead of staying pinned to one
+>    of three grid columns — roughly 3× the horizontal room for a thin sibling to spread into.
+> 2. All three cards default **open** (previously required a click) so the Overview landing page
+>    is dense and immediately visible on load, like every other tab.
+
+### v5.45 / @74 (2026-08-19) — Sankey flow-chart height increase
+
+> Commit `deb7351` (+ code in `ddbded9`). Overview flow-chart height raised 420px → 560px for dense
+> breakdowns, while the page was still in its brief Sankey phase (see v5.44 below).
+
+### v5.44 / @73 (2026-08-19) — Overview redesigned as 3 KPI totals → Sankey flow (superseded next release)
+
+> Commit `621dfc2` (+ code in `5ad63f3`). Landing state collapsed to just each metric's root total
+> (Customers/Devices/Tickets); clicking a card lazily rendered a Sankey diagram via a new
+> client-side transform (`decompSankeyData_`) reshaping the existing tree payload into ECharts'
+> `{data, links}` shape — no server changes. Framed as fixing the sibling-overlap bug "at its root"
+> (a Sankey stacks same-depth nodes vertically with a fixed gap, so the tree's per-branch
+> horizontal-share collision can't occur) — **reverted one release later (v5.46) per user
+> feedback that the tree was preferred anyway; the overlap bug was instead fixed by giving the tree
+> more room (see v5.46, v5.47).** Node click-through was preserved unchanged since Sankey nodes
+> carry the same raw tree-node data the tree's click handler already read.
+
+> **Undocumented gap: @69–@72 (2026-08-18, between v5.39 and v5.44) have no corresponding `Config.js`
+> bump commit in git**, even though 4 commits of real, individually-live-checked tuning landed in
+> this window: `5c51ad1` (size nodes by depth, not by presence of children), `f30d287` (wrap long
+> node names instead of overflowing), `7e26e74` (revert branch/leaf width to original 70px after a
+> "live production check" showed even +4px overlapped), `5d6c46c` (8%→2% side margins for more
+> horizontal room). Each was very likely deployed individually to check against real production
+> skew (the commit messages talk about live checks), but none bumped/committed `APP_VERSION` — the
+> same class of mistake flagged twice already below (v5.28/@57 section). Treat `v5.40`–`v5.43` as
+> not existing; don't try to reconstruct exact `@69`–`@72` → commit mappings, `clasp deployments`
+> only retains each deployment ID's *current* description, not its history.
+
+### v5.39 / @68 (2026-08-18) — decomposition-tree node styling
+
+> Commit `71a094c` (+ code in `f878aac`). Root/branch/leaf nodes switched from one flat color and a
+> fixed 70×30 box to the app's existing hero/secondary/muted color tokens, tapering in size by
+> depth. Also restored theme-aware tooltip chrome (background/border/confine) that the custom
+> tree-tooltip formatter had been silently dropping.
+
+### v5.38 / @67 (2026-08-18) — Overview redesigned as 3 decomposition trees; SIP rename; Customer 360 swap column
+
+> Commit `e2f90d4` bumps the version for a large batch of work merged via `7311b12` (see below),
+> plus same-day fixes.
+>
+> **Overview's exec-summary page replaced by three decomposition trees** (Customers, Devices,
+> Tickets) built from pure-JS aggregation over existing endpoints, served by one new combined
+> endpoint `apiGetOverviewFlowCD` and rendered by a new `Charts.decompTree` ECharts tree-series
+> renderer (`e16d118`, `3b07f29`, `5320c8d`, `3a7ea7b`, `b48e32e`). Follow-up fixes in the same
+> batch: a tooltip-vs-redraw race that threw on node click (`fd4322e`), `diagnostics()` coverage for
+> the new endpoint using the app's real default filters instead of no filters (`20c875d`, `491a342`),
+> the 10-minute warm trigger retargeted from the now-dead exec endpoint to this one (`bcf4f0e`), a
+> missing date-range filter on one of three Zoho ticket-count branches (`5fab58b`), tree click
+> payloads gaining compound `filterSet`/`resetSet` handling instead of only single-`filterDim`
+> (`5fab58b`, `806e053`), trees re-rendering on theme toggle instead of going stale
+> (`806e053`), click handlers staying bound across re-renders and across a tab that starts hidden
+> (`75e62c1`), and the filter drawer's Overview date-range note corrected to describe what the
+> trees actually honor per-branch (`52a72cc`).
+>
+> **`5bfae24` — app renamed "SIP Insights" → "SIP"** in the about popup, footer, design-token header
+> comment, and the local-preview build script (the topbar already said "SIP" since the earlier brand
+> logo change; this just brought the rest in line). The "Service Insights Platform" tagline is
+> untouched — that's a separate phrase from the old app name. **This repo's own docs
+> (`README.md`, this file's H1) still say "SIP Insights"** — nobody has touched those, and this
+> catch-up pass didn't either since no commit signaled doc titles should follow. Worth a decision,
+> not an assumption.
+>
+> Also notable from this commit's own message: it was staged **selectively** because the working
+> tree at the time also held another session's in-flight Customer 360 "swapped ticket count" work
+> mixed into the same `App.html`/`Index.html` — left unstaged for that session to commit itself.
+> That work landed as `8b6624c`: **Customer 360 now tracks a `swapped` ticket count (all-time, not
+> restricted to open) instead of a Devices column** — swap categories are temporary/international-
+> demo/Mac600-to-V-Cardia swaps, counted as a completed action rather than a backlog item.
+>
+> **`7311b12` — merge of `worktree-overview-decomposition-trees`** (conflicts in `App.html` +
+> `Index.html`, resolved). This is the first record in this doc of decomposition-tree work
+> happening on a separate git worktree/branch before merging back to `main` — if you see other
+> `.claude/worktrees/*` directories, check whether they're stale/superseded the same way the
+> `centers-360-reliability-merge` one turned out to be (see the header warning above).
+>
+> Internal refactor earlier the same day, no behavior change, no version bump: `9754ad0`, `a7acec1`,
+> `59cc435` extracted and fixed a shared `filteredJiraDevices_` helper out of `jiraDeviceStats_`.
 
 ### v5.32 / @61 (2026-08-14) — rankBar chart axis-label fix
 

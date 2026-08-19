@@ -514,7 +514,11 @@ function enrichCenterNamesCD_(rows) {
   rows.forEach(function (r) {
     var c = byId[r.centerid];
     r.center = (c && c.center) || ('Center #' + r.centerid);
-    if (r.devices == null) r.devices = c ? c.devices : 0;
+    // Jira fleet count, not cloud_devices — per user, 2026-08-19: everywhere
+    // except CDM. reliability/assetHealth specs never select their own
+    // `devices` field, so this always backfills it (the `== null` guard is
+    // for safety, not because some caller already sets it).
+    if (r.devices == null) r.devices = c ? c.jira_devices : 0;
   });
   return rows;
 }
@@ -883,7 +887,15 @@ function apiGetMapDataCD(options) {
       if (c) {
         locatedIds[row.center_id] = true;
         located.push([
-          row.center_id, row.center, c[0], c[1], row.devices, row.online,
+          // index 4 ("devices") is Jira-sourced (row.jira_devices), not
+          // cloud_devices — per user, 2026-08-19: devices means the Jira
+          // fleet count everywhere except the CDM page, which stays on
+          // cloud_devices telemetry on purpose. row.online (index 5) is
+          // left as the cloud_devices heartbeat stat — there's no Jira
+          // equivalent for "reported in the last 24h". Index 7 duplicates
+          // the same Jira count for the App.html drawer fallback that reads
+          // it directly (jiraDevCount = assetsList.length || c[7]).
+          row.center_id, row.center, c[0], c[1], row.jira_devices, row.online,
           row.open_tickets, assetCount[row.center_id] || 0,
           row.hub || '', row.hub_id != null ? row.hub_id : '',
           row.segment || '', row.state || ''
@@ -1003,12 +1015,15 @@ function computeTopCustomersCD_(filters) {
     var grp = hubToGroup[row.hub_id];
     if (!grp) return;
     var a = agg[grp.group];
-    a.centers += 1; a.devices += row.devices || 0; a.online += row.online || 0;
+    // devices = Jira fleet count (row.jira_devices), not cloud_devices — per
+    // user, 2026-08-19: everywhere except CDM. online stays cloud_devices
+    // heartbeat (no Jira equivalent).
+    a.centers += 1; a.devices += row.jira_devices || 0; a.online += row.online || 0;
     a.open_tickets += row.open_tickets || 0;
     var c = coordsForCD_(row, geoStore);
     if (c) {
       a.located += 1;
-      mapCenters.push([row.center_id, row.center, c[0], c[1], row.devices, row.online,
+      mapCenters.push([row.center_id, row.center, c[0], c[1], row.jira_devices, row.online,
         row.open_tickets, 0, row.hub || a.hub, row.hub_id, row.segment || '', row.state || '']);
     }
   });
@@ -1092,9 +1107,12 @@ function apiGetExecOverviewCD(options) {
       enrichCenterNamesCD_(r.reliability);
       var age = (r.deviceAge && r.deviceAge[0]) || {};
 
+      // devices = Jira fleet count (c.jira_devices), not cloud_devices — per
+      // user, 2026-08-19: everywhere except CDM. online stays cloud_devices
+      // heartbeat (no Jira equivalent).
       var rollup = { centers: centers.length, devices: 0, online: 0, open_tickets: 0, attention_centers: 0 };
       centers.forEach(function (c) {
-        rollup.devices += c.devices || 0; rollup.online += c.online || 0;
+        rollup.devices += c.jira_devices || 0; rollup.online += c.online || 0;
         rollup.open_tickets += c.open_tickets || 0;
         if ((c.open_tickets || 0) >= 4) rollup.attention_centers += 1;
       });
@@ -1105,7 +1123,7 @@ function apiGetExecOverviewCD(options) {
         .slice(0, 8)
         .map(function (c) {
           return { center_id: c.center_id, center: c.center, hub: c.hub, state: c.state,
-            devices: c.devices, online: c.online, open_tickets: c.open_tickets };
+            devices: c.jira_devices, online: c.online, open_tickets: c.open_tickets };
         });
 
       return {

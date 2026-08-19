@@ -288,23 +288,30 @@ function apiGetCenterDetailsRaw(options) {
     var centerCond = centerAttrCond_(filters);
     var centerDateCond = dateRangeCond_('deploymentdate', filters.dateFrom, filters.dateTo);
     var sql =
-      "WITH dev AS (SELECT CenterID, COUNT(*) AS devices FROM " + T('cloud_devices') +
-      " WHERE CenterID IS NOT NULL GROUP BY CenterID), " +
       // DISTINCT CTE: the 2026-07-07 reload duplicated center rows verbatim —
       // dedupe BEFORE the COUNT(*) OVER() so the pager total is centers, not rows.
-      "c AS (SELECT DISTINCT CenterID, Centername, Status, Type, Spoke_Center_Segment, " +
+      "WITH c AS (SELECT DISTINCT CenterID, Centername, Status, Type, Spoke_Center_Segment, " +
       " HubID, HubName, City, State, PinCode, deploymentdate, deactivationdate " +
       " FROM " + T('center_details') + " WHERE " + cdFilter_() + centerCond + centerDateCond + ") " +
       "SELECT c.CenterID AS center_id, c.Centername AS center, c.Status AS status, c.Type AS type, " +
       " c.Spoke_Center_Segment AS segment, c.HubID AS hub_id, c.HubName AS hub, c.City AS city, " +
       " c.State AS state, c.PinCode AS pin, CAST(c.deploymentdate AS STRING) AS deployed, " +
-      " CAST(c.deactivationdate AS STRING) AS deactivated, IFNULL(d.devices, 0) AS devices, " +
+      " CAST(c.deactivationdate AS STRING) AS deactivated, " +
       " COUNT(*) OVER() AS total_rows " +
-      "FROM c LEFT JOIN dev d ON d.CenterID = c.CenterID " +
-      "ORDER BY c.CenterID LIMIT " + pageSize + " OFFSET " + (page * pageSize);
+      "FROM c ORDER BY c.CenterID LIMIT " + pageSize + " OFFSET " + (page * pageSize);
     var rows = runQuery(sql);
     var total = rows.length ? rows[0].total_rows : 0;
     rows.forEach(function (r) { delete r.total_rows; });
+    // devices = Jira fleet count per center, not cloud_devices — per user,
+    // 2026-08-19: devices means Jira everywhere except the CDM page. Built in
+    // JS (not a SQL join, since jira_data has no CenterID — see
+    // deviceCenterMap_) from the cached asset index, so this only costs a
+    // cache read per page-turn, not a fresh BigQuery scan.
+    var jiraCountByCenter = {};
+    getAssetIndex_().forEach(function (a) {
+      if (a.center_id != null) jiraCountByCenter[a.center_id] = (jiraCountByCenter[a.center_id] || 0) + 1;
+    });
+    rows.forEach(function (r) { r.devices = jiraCountByCenter[r.center_id] || 0; });
     return { rows: rows, totalRows: total, page: page, pageSize: pageSize };
   });
 }

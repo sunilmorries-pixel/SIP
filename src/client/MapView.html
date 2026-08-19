@@ -6,6 +6,13 @@
    Center arrays are compact (indices match EditionCD.js apiGetMapDataCD):
      [0]id [1]name [2]lat [3]lng [4]devices [5]online [6]open_tickets [7]assets
    Bubble color = open-ticket severity, size = device count.
+   [4]devices is the Jira fleet count (row.jira_devices), not cloud_devices —
+   per user, 2026-08-19: devices means Jira everywhere except the CDM page
+   (which supplies its own tooltipFn/colorFn and a differently-shaped array
+   from apiGetCdmDataCD, so it never reaches defaultTooltip below). [5]online
+   stays cloud_devices heartbeat — no Jira equivalent. [7]assets is now the
+   same Jira count as [4] (both come from the same per-center map), kept for
+   the App.html drawer fallback that reads it directly — see defaultTooltip.
    ═══════════════════════════════════════════════════════════════════ */
 function MapView(containerId) {
   'use strict';
@@ -50,9 +57,10 @@ function MapView(containerId) {
   }
 
   function defaultTooltip(c) {
+    // No trailing "N assets" clause: c[7] is now the same Jira count as c[4]
+    // (see the file-header note), so it would just repeat the device count.
     return esc(c[1]) + ' · ' + esc(c[4]) + ' device' + (c[4] === 1 ? '' : 's') +
-      ' · ' + esc(c[6]) + ' open ticket' + (c[6] === 1 ? '' : 's') +
-      (c[7] ? ' · ' + esc(c[7]) + ' assets' : '');
+      ' · ' + esc(c[6]) + ' open ticket' + (c[6] === 1 ? '' : 's');
   }
 
   // opts lets a page override marker color/tooltip while reusing the same

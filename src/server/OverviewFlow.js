@@ -72,7 +72,9 @@ function centerRowStats_(rows) {
   var devices = 0, openTickets = 0, uptimeSum = 0, uptimeN = 0;
   var cityCounts = {};
   rows.forEach(function (r) {
-    devices += r.devices || 0;
+    // Jira fleet count, not cloud_devices — per user, 2026-08-19: devices
+    // means Jira everywhere except the CDM page.
+    devices += r.jira_devices || 0;
     openTickets += r.open_tickets || 0;
     if (r.uptime_pct != null) { uptimeSum += r.uptime_pct; uptimeN++; }
     var c = r.city || '';

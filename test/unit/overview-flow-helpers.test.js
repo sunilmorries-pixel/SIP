@@ -66,12 +66,13 @@ describe('Overview decomposition tree helpers (OverviewFlow.js)', function () {
 
   describe('buildCustomersTree_', function () {
     // Fixture mirrors getCenter360RowsCD_'s row shape, trimmed to the fields
-    // the tree actually reads.
+    // the tree actually reads. jira_devices (not devices/cloud_devices) —
+    // centerRowStats_ counts the Jira fleet, per user 2026-08-19.
     const rows = [
-      { center_id: 1, country: 'India', segment: 'SME', city: 'Pune', devices: 10, uptime_pct: 98, open_tickets: 1 },
-      { center_id: 2, country: 'India', segment: 'SME', city: 'Pune', devices: 8, uptime_pct: 96, open_tickets: 0 },
-      { center_id: 3, country: 'India', segment: 'LE', city: 'Mumbai', devices: 40, uptime_pct: 99, open_tickets: 3 },
-      { center_id: 4, country: 'Nepal', segment: 'Government', city: 'Kathmandu', devices: 5, uptime_pct: 90, open_tickets: 0 }
+      { center_id: 1, country: 'India', segment: 'SME', city: 'Pune', jira_devices: 10, uptime_pct: 98, open_tickets: 1 },
+      { center_id: 2, country: 'India', segment: 'SME', city: 'Pune', jira_devices: 8, uptime_pct: 96, open_tickets: 0 },
+      { center_id: 3, country: 'India', segment: 'LE', city: 'Mumbai', jira_devices: 40, uptime_pct: 99, open_tickets: 3 },
+      { center_id: 4, country: 'Nepal', segment: 'Government', city: 'Kathmandu', jira_devices: 5, uptime_pct: 90, open_tickets: 0 }
     ];
     let tree;
 

@@ -19,52 +19,10 @@ function respond_(producer) {
 }
 
 /**
- * Paginated device explorer.
- * @param {{search:string, hub:string, status:string,
- *          filters:{segments:Array,statuses:Array,states:Array,hubs:Array}=,
- *          sortBy:string, sortDir:string, page:number, pageSize:number}=} options
- *          `filters` is the new global filter — SEPARATE from the pre-existing
- *          `hub` (free-text HubName equality) and `status` (device heartbeat
- *          bucket) params, which are device-explorer-local concepts. No
- *          dateFrom/dateTo: cloud_devices has no "created" field to range
- *          against (see the design spec's device-explorer date exemption).
- * @return {Object} envelope with { rows, totalRows, page, pageSize }
- */
-function apiGetDevices(options) {
-  options = options || {};
-  var clean = {
-    search: String(options.search || '').toLowerCase().slice(0, 80),
-    hub: String(options.hub || '').slice(0, 120),
-    status: String(options.status || '').slice(0, 40),
-    filters: {
-      segments: ((options.filters && options.filters.segments) || []).map(segClean_).filter(Boolean),
-      statuses: ((options.filters && options.filters.statuses) || []).map(segClean_).filter(Boolean),
-      states: ((options.filters && options.filters.states) || []).map(segClean_).filter(Boolean),
-      hubs: ((options.filters && options.filters.hubs) || []).map(segClean_).filter(Boolean)
-      // no dateFrom/dateTo here — cloud_devices has no "created" field to
-      // range against (see the design spec's device-explorer date exemption).
-    },
-    sortBy: String(options.sortBy || 'last_seen'),
-    sortDir: options.sortDir === 'asc' ? 'asc' : 'desc',
-    page: Math.max(0, parseInt(options.page, 10) || 0),
-    pageSize: Math.min(100, Math.max(5, parseInt(options.pageSize, 10) || 15))
-  };
-  return respond_(function () {
-    var cacheKey = 'dev_v3_' + shortHash(JSON.stringify(clean)); // v3: country filter sources from hub_country
-    return withCache(cacheKey, function () {
-      var query = buildDeviceExplorerQuery(clean);
-      var rows = runQuery(query.sql, query.params);
-      var totalRows = rows.length ? rows[0].total_rows : 0;
-      rows.forEach(function (row) { delete row.total_rows; });
-      return { rows: rows, totalRows: totalRows, page: clean.page, pageSize: clean.pageSize };
-    });
-  });
-}
-
-/**
- * Paginated Communicator (cloud_devices) explorer for the CDM page — same
- * shape as apiGetDevices, called directly (no CD suffix): cloud_devices is
- * a single physical table, so nothing here differs by edition.
+ * Paginated Communicator (cloud_devices) explorer for the CDM page — cloud_devices
+ * is a single physical table, so nothing here differs by edition. The Asset
+ * page's own device explorer (apiGetDevices) was removed 2026-08-19 — per
+ * user, cloud_devices data is CDM/Numbers/Raw-Data only now.
  * @param {{search:string, filters:Object=, sortBy:string, sortDir:string,
  *          page:number, pageSize:number}=} options
  * @return {Object} envelope with { rows, totalRows, page, pageSize }

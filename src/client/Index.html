@@ -138,14 +138,20 @@
 <main class="page" role="main">
 
   <!-- ══════════════ VIEW 0 · OVERVIEW (landing) ══════════════
-       Three KPI cards (2026-08-19 redesign) — the landing state shows only
-       the three root totals; expanding a card lazily renders its
-       decomposition tree (Charts.decompTree). An expanded card grows to the
-       full page width (.flow-card:has(details[open]) in Styles.html) so the
-       tree's layout has much more horizontal room than a fixed 3-column
-       span ever gave it. Overview still has its own endpoint,
-       apiGetOverviewFlowCD, not shared with Asset/Customers/Support/
-       Service. -->
+       Three KPI cards — each header carries the metric's total; expanding a
+       card lazily renders its decomposition treemap (Charts.decompTreemap,
+       which draws the payload root's CHILDREN, so the total appears once per
+       card and only in the header). An expanded card grows to the full page
+       width (.flow-card:has(details[open]) in Styles.html); the treemap
+       spends that width captioning small tiles. Overview still has its own
+       endpoint, apiGetOverviewFlowCD, not shared with Asset/Customers/
+       Support/Service.
+
+       "All tickets" is named apart from the Numbers page's "Tickets" card on
+       purpose: this one sums three separate systems, that one is Zoho only.
+       The two titles resolve to different METRIC_INFO entries (App.html's
+       TITLE_METRIC keys on title text), so the popover cites the right
+       tables for each. -->
   <section id="panel-overview" class="panel is-active" role="tabpanel" aria-labelledby="tab-overview">
     <div class="card-grid">
       <article class="card span-4 flow-card">
@@ -158,7 +164,7 @@
             <span class="flow-number" id="flowTotalCustomers">0</span>
           </summary>
           <div id="flowCustomers" class="chart chart-flow" role="img"
-               aria-label="Decomposition tree of customers by country and segment"></div>
+               aria-label="Treemap of customers by country and segment, sized by share of the total"></div>
         </details>
       </article>
 
@@ -172,7 +178,7 @@
             <span class="flow-number" id="flowTotalDevices">0</span>
           </summary>
           <div id="flowDevices" class="chart chart-flow" role="img"
-               aria-label="Decomposition tree of devices by type and age band"></div>
+               aria-label="Treemap of devices by type and age band, sized by share of the total"></div>
         </details>
       </article>
 
@@ -180,13 +186,17 @@
         <details id="flowDetailsTickets" open>
           <summary class="flow-summary">
             <span class="flow-summary-text">
-              <span class="card-title">Tickets</span>
-              <span class="card-sub">Source → outcome breakdown</span>
+              <span class="card-title">All tickets</span>
+              <!-- Names the three systems being summed, in the same
+                   "sources → second level" shape as the two cards above. Kept
+                   this short on purpose: a longer sub-line wraps to five lines
+                   in the collapsed 3-column state and unbalances the row. -->
+              <span class="card-sub">Zoho · ServiceWRK · TOM → outcome</span>
             </span>
             <span class="flow-number" id="flowTotalTickets">0</span>
           </summary>
           <div id="flowTickets" class="chart chart-flow" role="img"
-               aria-label="Decomposition tree of tracked tickets by source and outcome"></div>
+               aria-label="Treemap of tickets by source system and outcome, sized by share of the total"></div>
         </details>
       </article>
     </div>
@@ -194,34 +204,25 @@
 
   <!-- ══════════════ VIEW 1 · ASSET ══════════════ -->
   <section id="panel-asset" class="panel" role="tabpanel" aria-labelledby="tab-asset" hidden>
-    <div id="kpiGrid" class="kpi-grid kpi-grid-5"><!-- KPI tiles rendered by App.html --></div>
+    <!-- 3 tiles, not 5: this page is jira_data only (per user, 2026-08-19), and
+         Poor signal / Unsynced ECGs were both cloud_devices telemetry. Those
+         two metrics still live on the CDM page, which is the communicator
+         (cloud_devices) view. -->
+    <div id="kpiGrid" class="kpi-grid kpi-grid-3"><!-- KPI tiles rendered by App.html --></div>
 
     <div class="card-grid">
-      <article class="card span-4">
-        <header class="card-head">
-          <h2 class="card-title">Device status</h2>
-          <p class="card-sub">By last heartbeat · click a slice to inspect devices</p>
-        </header>
-        <div id="chartFleetStatus" class="chart chart-tall" role="img"
-             aria-label="Donut chart of devices grouped by heartbeat recency"></div>
-      </article>
-
-      <article class="card span-4">
+      <!-- Device status (donut) and Firmware spread were removed 2026-08-19:
+           both were cloud_devices telemetry with no Jira equivalent, and
+           cloud_devices data is CDM/Numbers/Raw-Data only now. Device age
+           (jira_data) is the only survivor of the old 3-card row, so it now
+           spans the full row instead of sitting alone at span-4. -->
+      <article class="card span-12">
         <header class="card-head">
           <h2 class="card-title">Device age</h2>
           <p class="card-sub">Connector + ECG devices by age (today − Created); 5y+ past expected life</p>
         </header>
         <div id="chartDeviceAges" class="chart" role="img"
              aria-label="Bar chart of devices grouped by age band"></div>
-      </article>
-
-      <article class="card span-4">
-        <header class="card-head">
-          <h2 class="card-title">Firmware spread</h2>
-          <p class="card-sub">Active devices by firmware build</p>
-        </header>
-        <div id="chartFirmware" class="chart" role="img"
-             aria-label="Horizontal bar chart of devices per firmware version"></div>
       </article>
 
       <!-- span-6 pair, not span-4: five span-4 cards packed 3 + 2, leaving a
@@ -285,55 +286,14 @@
           </table>
         </div>
       </article>
-
-      <article class="card span-12" id="deviceExplorerCard">
-        <header class="card-head">
-          <h2 class="card-title">Device explorer</h2>
-          <p class="card-sub">Search, filter and sort all devices</p>
-        </header>
-        <div class="explorer-toolbar">
-          <div class="chip-row" id="statusChips" role="group" aria-label="Filter by device status"></div>
-          <button id="exportCsvBtn" class="btn btn-ghost" type="button">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
-                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span>Export CSV</span>
-          </button>
-        </div>
-
-        <div class="table-scroll">
-          <table class="data-table" id="deviceTable" aria-describedby="deviceTableInfo">
-            <caption class="sr-only">Device explorer — filterable, sortable list of devices</caption>
-            <thead><tr id="deviceTableHead"></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-
-        <div class="table-footer">
-          <span id="deviceTableInfo" class="table-info" aria-live="polite">Loading…</span>
-          <div class="pager">
-            <button id="prevPageBtn" class="btn btn-ghost btn-icon" type="button" aria-label="Previous page" disabled>
-              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
-            <span id="pageIndicator" class="page-indicator">–</span>
-            <button id="nextPageBtn" class="btn btn-ghost btn-icon" type="button" aria-label="Next page" disabled>
-              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-      </article>
     </div>
   </section>
 
   <!-- ══════════════ VIEW · CDM (Communicator Device Management) ══════════
-       cloud_devices telemetry, one row per communicator. Map + KPIs share the
-       Center-360 plumbing (Asset/Map); the explorer table is its own paginated
-       endpoint, mirroring the Asset page's Device explorer. -->
+       cloud_devices telemetry, one row per communicator — the only page
+       (besides Numbers/Raw Data) that still surfaces it, per user 2026-08-19.
+       Map + KPIs share the Center-360 plumbing (Asset/Map); the explorer
+       table is its own paginated endpoint. -->
   <section id="panel-cdm" class="panel" role="tabpanel" aria-labelledby="tab-cdm" hidden>
     <div id="cdmKpiGrid" class="kpi-grid kpi-grid-5"><!-- KPI tiles rendered by App.html --></div>
 

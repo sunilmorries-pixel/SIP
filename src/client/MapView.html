@@ -10,9 +10,11 @@
    per user, 2026-08-19: devices means Jira everywhere except the CDM page
    (which supplies its own tooltipFn/colorFn and a differently-shaped array
    from apiGetCdmDataCD, so it never reaches defaultTooltip below). [5]online
-   stays cloud_devices heartbeat — no Jira equivalent. [7]assets is now the
-   same Jira count as [4] (both come from the same per-center map), kept for
-   the App.html drawer fallback that reads it directly — see defaultTooltip.
+   is always 0 — cloud_devices data was dropped from this shape the same day
+   (data is CDM/Numbers/Raw-Data only now); the slot stays reserved so every
+   other index (open_tickets, assets, hub, …) doesn't have to shift. [7]assets
+   is now the same Jira count as [4] (both come from the same per-center map),
+   kept for the App.html drawer fallback that reads it directly — see defaultTooltip.
    ═══════════════════════════════════════════════════════════════════ */
 function MapView(containerId) {
   'use strict';

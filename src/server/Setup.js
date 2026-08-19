@@ -65,16 +65,11 @@ function diagnostics() {
       ' devices, ' + top.data.mapCenters.length + ' mapped'
     : 'top customers FAILED: ' + JSON.stringify(top.error));
 
-  var exec = apiGetExecOverviewCD();
-  Logger.log(exec.ok
-    ? 'exec overview: ' + exec.data.rollup.centers + ' centers, ' +
-      exec.data.rollup.devices + ' devices, ' + exec.data.rollup.attention_centers +
-      ' centers need attention, ' + exec.data.worstCenters.length + ' in watchlist'
-    : 'exec overview FAILED: ' + JSON.stringify(exec.error));
-  if (exec.ok && exec.data.uptimeFleet) {
-    Logger.log('Machine Uptime (M-A1): fleet avg ' + exec.data.uptimeFleet.avg_uptime +
-      '% across ' + exec.data.uptimeFleet.scored + ' centers · ' +
-      exec.data.uptimeFleet.pct99 + '% at/above 99% (North-Star)');
+  if (dash.ok && dash.data.uptimeFleet && dash.data.uptimeFleet[0]) {
+    var uf = dash.data.uptimeFleet[0];
+    Logger.log('Machine Uptime (M-A1): fleet avg ' + uf.avg_uptime +
+      '% across ' + uf.scored + ' centers · ' +
+      uf.pct99 + '% at/above 99% (North-Star)');
   }
   if (dash.ok && dash.data.cohortReliability) {
     var co = dash.data.cohortReliability;

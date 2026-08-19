@@ -214,11 +214,10 @@ function buildDashboardQuerySpecsCD(hub, filters) {
   // The jira_data BQ specs (assets/cohortReliability) were removed from
   // buildDashboardQuerySpecs — the status/type donut and the batch cohort are
   // now computed in JS from the Jira SHEET asset index (see apiGetDashboardCD).
+  // "Top hubs" (cloud_devices) and kpis/fleetStatus/firmware (cloud_devices)
+  // were removed from buildDashboardQuerySpecs entirely, 2026-08-19 — no
+  // filter needed here anymore, they're simply not in the base list.
   var specs = buildDashboardQuerySpecs(hub, filters)
-    // "Top hubs" chart removed from the Centers page (per user) — drop the
-    // spec entirely rather than just skip overriding it, so the legacy
-    // device_center_mapping-based query underneath doesn't still run unused.
-    .filter(function (s) { return s.key !== 'hubs'; })
     .map(function (s) {
       return cd[s.key] ? { key: s.key, params: s.params, sql: cd[s.key], maxRows: s.maxRows } : s;
     });
@@ -635,7 +634,10 @@ function apiGetDashboardCD(options) {
     // v14: Device Type/Status filter applied to asset donuts/cohort + fleet.
     // v15: country filter sources from hub_country.
     // v16: Support page — dropped zohoPriority/zohoChannel, added zohoOpenAge.
-    var cacheKey = 'dashcd_v16_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
+    // v17: Asset page — dropped cloud_devices kpis/fleetStatus/firmware/hubs
+    // specs (device-status donut, firmware chart, device explorer all removed;
+    // cloud_devices data is CDM/Numbers/Raw-Data only now).
+    var cacheKey = 'dashcd_v17_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -866,7 +868,7 @@ function apiGetMapDataCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    var cacheKey = 'mapcd_v10_' + getCacheEpoch_() + '_' + filterHash_(filters); // v10: country filter sources from hub_country
+    var cacheKey = 'mapcd_v11_' + getCacheEpoch_() + '_' + filterHash_(filters); // v11: dropped cloud_devices online (per user, 2026-08-19)
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -890,12 +892,12 @@ function apiGetMapDataCD(options) {
           // index 4 ("devices") is Jira-sourced (row.jira_devices), not
           // cloud_devices — per user, 2026-08-19: devices means the Jira
           // fleet count everywhere except the CDM page, which stays on
-          // cloud_devices telemetry on purpose. row.online (index 5) is
-          // left as the cloud_devices heartbeat stat — there's no Jira
-          // equivalent for "reported in the last 24h". Index 7 duplicates
-          // the same Jira count for the App.html drawer fallback that reads
-          // it directly (jiraDevCount = assetsList.length || c[7]).
-          row.center_id, row.center, c[0], c[1], row.jira_devices, row.online,
+          // cloud_devices telemetry on purpose. index 5 ("online") was the
+          // cloud_devices heartbeat stat — dropped per user, 2026-08-19:
+          // cloud_devices data is CDM/Numbers/Raw-Data only now. Index 7
+          // duplicates the same Jira count for the App.html drawer fallback
+          // that reads it directly (jiraDevCount = assetsList.length || c[7]).
+          row.center_id, row.center, c[0], c[1], row.jira_devices, 0,
           row.open_tickets, assetCount[row.center_id] || 0,
           row.hub || '', row.hub_id != null ? row.hub_id : '',
           row.segment || '', row.state || ''
@@ -1007,7 +1009,7 @@ function computeTopCustomersCD_(filters) {
   var agg = {};
   TOP_CUSTOMERS.forEach(function (c) {
     agg[c.group] = { hub: c.group, hub_ids: c.hub_ids.slice(), tier: c.tier, centers: 0,
-      devices: 0, online: 0, open_tickets: 0, located: 0, assets: assetByGroup[c.group] || 0 };
+      devices: 0, open_tickets: 0, located: 0, assets: assetByGroup[c.group] || 0 };
   });
 
   var mapCenters = [];
@@ -1016,14 +1018,14 @@ function computeTopCustomersCD_(filters) {
     if (!grp) return;
     var a = agg[grp.group];
     // devices = Jira fleet count (row.jira_devices), not cloud_devices — per
-    // user, 2026-08-19: everywhere except CDM. online stays cloud_devices
-    // heartbeat (no Jira equivalent).
-    a.centers += 1; a.devices += row.jira_devices || 0; a.online += row.online || 0;
+    // user, 2026-08-19: everywhere except CDM. cloud_devices online was
+    // dropped from this page for the same reason, 2026-08-19.
+    a.centers += 1; a.devices += row.jira_devices || 0;
     a.open_tickets += row.open_tickets || 0;
     var c = coordsForCD_(row, geoStore);
     if (c) {
       a.located += 1;
-      mapCenters.push([row.center_id, row.center, c[0], c[1], row.jira_devices, row.online,
+      mapCenters.push([row.center_id, row.center, c[0], c[1], row.jira_devices, 0,
         row.open_tickets, 0, row.hub || a.hub, row.hub_id, row.segment || '', row.state || '']);
     }
   });
@@ -1031,10 +1033,10 @@ function computeTopCustomersCD_(filters) {
   var customers = Object.keys(agg).map(function (k) { return agg[k]; })
     .sort(function (x, y) { return y.devices - x.devices; });
 
-  var totals = { customers: customers.length, centers: 0, devices: 0, online: 0,
+  var totals = { customers: customers.length, centers: 0, devices: 0,
     open_tickets: 0, assets: 0, withData: 0 };
   customers.forEach(function (c) {
-    totals.centers += c.centers; totals.devices += c.devices; totals.online += c.online;
+    totals.centers += c.centers; totals.devices += c.devices;
     totals.open_tickets += c.open_tickets; totals.assets += c.assets;
     if (c.centers > 0) totals.withData += 1;
   });
@@ -1067,79 +1069,9 @@ function apiGetTopCustomersCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('topcustcd_v10_' + getCacheEpoch_() + '_' + filterHash_(filters), // v10: country filter sources from hub_country
+    return withCache('topcustcd_v11_' + getCacheEpoch_() + '_' + filterHash_(filters), // v11: dropped cloud_devices online (per user, 2026-08-19)
       function () { return computeTopCustomersCD_(filters); },
       options.bypassCache === true);
-  });
-}
-
-function apiGetExecOverviewCD(options) {
-  options = options || {};
-  var filters = {
-    segments: (options.filters && options.filters.segments) || [],
-    statuses: (options.filters && options.filters.statuses) || [],
-    states: (options.filters && options.filters.states) || [],
-    hubs: (options.filters && options.filters.hubs) || [],
-    cities: (options.filters && options.filters.cities) || [],
-    countries: (options.filters && options.filters.countries) || [],
-    centers: (options.filters && options.filters.centers) || [],
-    deviceTypes: (options.filters && options.filters.deviceTypes) || [],
-    deviceStatusExclude: (options.filters && options.filters.deviceStatusExclude) || [],
-    dateFrom: String((options.filters && options.filters.dateFrom) || ''),
-    dateTo: String((options.filters && options.filters.dateTo) || '')
-  };
-  return respond_(function () {
-    return withCache('execcd_v11_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v11: country filter sources from hub_country
-      var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters); });
-      var top = computeTopCustomersCD_(filters);
-      var want = { kpis: 1, fleetStatus: 1, zohoKpis: 1, zohoTrend: 1, geo: 1, reliability: 1, uptimeFleet: 1, slaKpis: 1 };
-      var specs = buildDashboardQuerySpecsCD('', filters).filter(function (s) { return want[s.key]; });
-      specs.push({
-        key: 'deviceAge', maxRows: 1,
-        // Center age = days since the center's deploymentdate (center-grain).
-        sql: "SELECT ROUND(AVG(age_days), 0) AS avg_age_days, MAX(age_days) AS max_age_days FROM (" +
-             " SELECT DATE_DIFF(CURRENT_DATE(), DATE(deploymentdate), DAY) AS age_days" +
-             " FROM " + T('center_details') + " WHERE deploymentdate IS NOT NULL AND " + cdFilter_() +
-             centerAttrCond_(filters) +
-             dateRangeCond_('deploymentdate', filters.dateFrom, filters.dateTo) + ")"
-      });
-      var r = runQueriesParallel(specs);
-      enrichCenterNamesCD_(r.reliability);
-      var age = (r.deviceAge && r.deviceAge[0]) || {};
-
-      // devices = Jira fleet count (c.jira_devices), not cloud_devices — per
-      // user, 2026-08-19: everywhere except CDM. online stays cloud_devices
-      // heartbeat (no Jira equivalent).
-      var rollup = { centers: centers.length, devices: 0, online: 0, open_tickets: 0, attention_centers: 0 };
-      centers.forEach(function (c) {
-        rollup.devices += c.jira_devices || 0; rollup.online += c.online || 0;
-        rollup.open_tickets += c.open_tickets || 0;
-        if ((c.open_tickets || 0) >= 4) rollup.attention_centers += 1;
-      });
-
-      var worstCenters = centers
-        .filter(function (c) { return (c.open_tickets || 0) > 0; })
-        .sort(function (a, b) { return b.open_tickets - a.open_tickets; })
-        .slice(0, 8)
-        .map(function (c) {
-          return { center_id: c.center_id, center: c.center, hub: c.hub, state: c.state,
-            devices: c.jira_devices, online: c.online, open_tickets: c.open_tickets };
-        });
-
-      return {
-        kpis: (r.kpis && r.kpis[0]) || {}, zohoKpis: (r.zohoKpis && r.zohoKpis[0]) || {},
-        fleetStatus: r.fleetStatus || [], zohoTrend: r.zohoTrend || [], geo: r.geo || [],
-        reliability: r.reliability || [], rollup: rollup, worstCenters: worstCenters,
-        topCustomers: top.customers.slice(0, 6), topTotals: top.totals,
-        avgAgeDays: age.avg_age_days != null ? age.avg_age_days : null,
-        uptimeFleet: (r.uptimeFleet && r.uptimeFleet[0]) || null,
-        slaKpis: (r.slaKpis && r.slaKpis[0]) || null,
-        // jiraDeviceStats_ now accepts `filters` directly (Task 7) — see
-        // apiGetDashboardCD's identical call site above.
-        fleet: jiraDeviceStats_(filters),
-        edition: 'center_details', flags: FLAGS_CD
-      };
-    }, options.bypassCache === true);
   });
 }
 
@@ -1147,8 +1079,8 @@ function apiGetCenterDetailCD(options) {
   var centerId = parseInt(options && options.centerId, 10);
   return respond_(function () {
     if (!isFinite(centerId)) throw new Error('centerId is required');
-    return withCache('ctrdetcd_v5_' + centerId, function () { // v5: country filter sources from hub_country
-      // Reuse the original detail specs (devices/tickets/openTickets are keyed by
+    return withCache('ctrdetcd_v6_' + centerId, function () { // v6: dropped cloud_devices `devices` spec (unread by the client) — cloud_devices data is CDM/Numbers/Raw-Data only now
+      // Reuse the original detail specs (tickets/openTickets are keyed by
       // CenterID, center-table-agnostic); swap only the `info` query.
       var specs = buildCenterDetailSpecs(centerId).map(function (s) {
         if (s.key !== 'info') return s;
@@ -1174,7 +1106,6 @@ function apiGetCenterDetailCD(options) {
         tickets: (detail.tickets && detail.tickets[0]) || null,
         openTickets: detail.openTickets || [],
         allTickets: detail.allTickets || [],
-        devices: detail.devices || [],
         assets: assets,
         edition: 'center_details', flags: FLAGS_CD
       };

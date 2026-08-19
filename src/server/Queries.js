@@ -310,54 +310,19 @@ function zohoOpenAgeBandSql_() {
  */
 function buildDashboardQuerySpecs(hub, filters) {
   var p = { hub: hub || '' };
-  var NOW_IST_SQL = nowIstSql_();
-  var FLEET_BUCKET_SQL = fleetBucketSql_();
   var f = filters || {};
-  var centerCond = centerFilterSubqueryCond_(f);          // for cloud_devices / zoho_data
+  var centerCond = centerFilterSubqueryCond_(f);          // for zoho_data
   var supportDateCond = dateRangeCond_("CreatedAt", f.dateFrom, f.dateTo);
 
   return [
 
-    /* ═══════════ ASSET VIEW — fleet health, hardware, reliability ═══════ */
-    {
-      key: 'kpis',
-      params: p,
-      sql:
-        "WITH d AS (SELECT LastTimeStamp, " +
-        " SAFE_CAST(BatteryLevel AS INT64) AS batt, " +
-        " UPPER(IFNULL(BatteryLevel,'')) = 'CHARGING' AS charging, " +
-        " SAFE_CAST(CSQ AS INT64) AS csq, " +
-        " SAFE_CAST(UnsyncedData AS INT64) AS unsynced " +
-        " FROM " + T('cloud_devices') + " WHERE " + HUB_FILTER_SQL + centerCond + ") " +
-        "SELECT COUNT(*) AS total_devices, " +
-        " COUNTIF(LastTimeStamp >= TIMESTAMP_SUB(" + NOW_IST_SQL + ", INTERVAL " + CONFIG.ONLINE_WINDOW_HOURS + " HOUR)) AS online_24h, " +
-        " COUNTIF(LastTimeStamp >= TIMESTAMP_SUB(" + NOW_IST_SQL + ", INTERVAL 1 HOUR)) AS live_1h, " +
-        " COUNTIF(LastTimeStamp IS NULL OR LastTimeStamp < TIMESTAMP_SUB(" + NOW_IST_SQL + ", INTERVAL 7 DAY)) AS offline_7d, " +
-        " COUNTIF(batt IS NOT NULL AND batt < 20) AS low_battery, " +
-        " COUNTIF(charging) AS charging_now, " +
-        " COUNTIF(csq IS NOT NULL AND csq < 10) AS poor_signal, " +
-        " ROUND(AVG(csq), 1) AS avg_csq, " +
-        " SUM(IFNULL(unsynced, 0)) AS unsynced_total, " +
-        " CAST(MAX(LastTimeStamp) AS STRING) AS latest_heartbeat " +
-        "FROM d"
-    },
-    {
-      key: 'fleetStatus',
-      params: p,
-      sql:
-        "SELECT " + FLEET_BUCKET_SQL + " AS status, COUNT(*) AS cnt " +
-        "FROM " + T('cloud_devices') + " WHERE " + HUB_FILTER_SQL + centerCond + " " +
-        "GROUP BY status"
-    },
-    {
-      key: 'firmware',
-      params: p,
-      sql:
-        "SELECT IFNULL(NULLIF(TRIM(FirmwareName), ''), 'Unknown') AS firmware, COUNT(*) AS devices " +
-        "FROM " + T('cloud_devices') + " " +
-        "WHERE " + HUB_FILTER_SQL + centerCond + " AND LastTimeStamp >= TIMESTAMP_SUB(" + NOW_IST_SQL + ", INTERVAL 30 DAY) " +
-        "GROUP BY firmware ORDER BY devices DESC LIMIT 8"
-    },
+    /* ═══════════ ASSET VIEW — fleet health, hardware, reliability ═══════
+     * kpis/fleetStatus/firmware (cloud_devices fleet-health/status/firmware)
+     * removed 2026-08-19 — per user, cloud_devices data is CDM/Numbers/
+     * Raw-Data only now. Asset's own KPI tiles/device-status-donut/firmware
+     * chart/device-explorer were dropped from Index.html+App.html in the same
+     * pass; the same telemetry still lives on the CDM page (buildCdmQuerySpecs
+     * below), which is unaffected. */
     {
       // Reliability watchlist = canonical Machine Uptime % (TRD M-A1), worst
       // (lowest-uptime) centers first. center name + devices added in Api.js.
@@ -408,15 +373,6 @@ function buildDashboardQuerySpecs(hub, filters) {
         " FROM " + T('device_center_mapping') + ") " +
         "SELECT IFNULL(NULLIF(TRIM(state), ''), 'Unknown') AS state, COUNT(*) AS devices " +
         "FROM latest WHERE rn = 1 GROUP BY state ORDER BY devices DESC LIMIT 12"
-    },
-    {
-      key: 'hubs',
-      params: p,
-      sql:
-        "SELECT IFNULL(NULLIF(TRIM(HubName), ''), 'Unassigned') AS hub, COUNT(*) AS devices, " +
-        " COUNTIF(LastTimeStamp >= TIMESTAMP_SUB(" + NOW_IST_SQL + ", INTERVAL " + CONFIG.ONLINE_WINDOW_HOURS + " HOUR)) AS online " +
-        "FROM " + T('cloud_devices') + " WHERE " + HUB_FILTER_SQL + " " +
-        "GROUP BY hub ORDER BY devices DESC LIMIT 12"
     },
     {
       key: 'deploymentAge',
@@ -602,69 +558,6 @@ function buildDashboardQuerySpecs(hub, filters) {
         "GROUP BY segment ORDER BY cnt DESC LIMIT 8"
     }
   ];
-}
-
-/* ═════════════════ Device explorer (Asset view) ═════════════════════════ */
-
-/** Sortable columns — whitelist against injection. */
-var DEVICE_SORT_COLUMNS = {
-  device: 'DeviceID',
-  center: 'Centername',
-  hub: 'HubName',
-  last_seen: 'LastTimeStamp',
-  battery: 'SAFE_CAST(BatteryLevel AS INT64)',
-  csq: 'SAFE_CAST(CSQ AS INT64)',
-  unsynced: 'SAFE_CAST(UnsyncedData AS INT64)'
-};
-
-/**
- * Paginated, filterable device explorer query.
- * @param {{search:string, hub:string, status:string,
- *          filters:{segments:Array,statuses:Array,states:Array,hubs:Array},
- *          sortBy:string, sortDir:string, page:number, pageSize:number}} opts
- *          sanitised by Api.js. `filters` is the new global filter (Segment/
- *          Status/State/Hub multi-select) — a SEPARATE concept from the
- *          device explorer's OWN `hub` (free-text HubName equality) and
- *          `status` (device heartbeat bucket) params below; never conflate
- *          the two. No date-range field: cloud_devices has no "created"
- *          column to range against.
- * @return {{sql:string, params:Object}}
- */
-function buildDeviceExplorerQuery(opts) {
-  var FLEET_BUCKET_SQL = fleetBucketSql_();
-  var sortCol = DEVICE_SORT_COLUMNS[opts.sortBy] || 'LastTimeStamp';
-  var sortDir = opts.sortDir === 'asc' ? 'ASC' : 'DESC';
-  var globalCond = centerFilterSubqueryCond_(opts.filters || {});
-  var sql =
-    "WITH d AS (SELECT DeviceID, Centername, HubName, LastTimeStamp, " +
-    " BatteryLevel, CSQ, UnsyncedData, SpaceAvailable, FirmwareName, ServiceProvider, " +
-    " " + FLEET_BUCKET_SQL + " AS status_bucket " +
-    " FROM " + T('cloud_devices') + " WHERE TRUE" + globalCond + ") " +
-    "SELECT DeviceID AS device, IFNULL(Centername,'') AS center, IFNULL(HubName,'') AS hub, " +
-    " CAST(LastTimeStamp AS STRING) AS last_seen, " +
-    " IFNULL(BatteryLevel,'') AS battery, SAFE_CAST(CSQ AS INT64) AS csq, " +
-    " SAFE_CAST(UnsyncedData AS INT64) AS unsynced, IFNULL(FirmwareName,'') AS firmware, " +
-    " IFNULL(ServiceProvider,'') AS provider, status_bucket AS status, " +
-    " COUNT(*) OVER() AS total_rows " +
-    "FROM d " +
-    "WHERE (@hub = '' OR HubName = @hub) " +
-    " AND (@status = '' OR status_bucket = @status) " +
-    " AND (@search = '' OR LOWER(DeviceID) LIKE @like " +
-    "      OR LOWER(IFNULL(Centername,'')) LIKE @like " +
-    "      OR LOWER(IFNULL(HubName,'')) LIKE @like) " +
-    "ORDER BY " + sortCol + " " + sortDir + " " +
-    "LIMIT @limit OFFSET @offset";
-  return {
-    sql: sql,
-    params: {
-      hub: opts.hub,
-      status: opts.status,
-      search: opts.search,
-      like: '%' + opts.search + '%',
-      limit: opts.pageSize,
-      offset: opts.page * opts.pageSize
-    }
-  };
 }
 
 /* ═════════════════ CDM — Communicator Device Management ═════════════════
@@ -894,16 +787,6 @@ function buildCenterDetailSpecs(centerId) {
         " DATE_DIFF(CURRENT_DATE(), DATE(MIN(startdatetime)), MONTH) AS age_months, " +
         " COUNT(DISTINCT deviceid) AS devices_ever " +
         "FROM " + T('device_center_mapping') + " WHERE centerid = @cid"
-    },
-    {
-      key: 'devices',
-      params: p,
-      sql:
-        "SELECT DeviceID AS device, UPPER(IFNULL(IMSI,'')) AS imsi, " +
-        " CAST(LastTimeStamp AS STRING) AS last_seen, " +
-        " IFNULL(BatteryLevel,'') AS battery, SAFE_CAST(CSQ AS INT64) AS csq, " +
-        " " + fleetBucketSql_() + " AS status " +
-        "FROM " + T('cloud_devices') + " WHERE CenterID = @cid LIMIT 200"
     },
     {
       key: 'tickets',

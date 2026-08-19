@@ -809,8 +809,46 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 }
 .filter-chip-item button:hover { background: var(--surface); color: var(--text-1); }
 
-/* ── filter drawer sections (reuses .center-drawer/.center-panel-* shell) ── */
-.filter-section { margin-bottom: 18px; }
+/* ── filter drawer: grouped accordion (reuses .center-drawer/.center-panel-* shell) ──
+   Progressive disclosure: 10 filter dimensions flattened into one long scroll
+   read as visually identical, undifferentiated blocks — no way to tell at a
+   glance what's already set without scrolling past all of them. Grouped into
+   4 collapsible sections (native <details>, so keyboard/screen-reader toggling
+   is free); a group with active filters auto-opens and shows a count badge on
+   its (possibly collapsed) neighbours so state is visible either way. */
+.filter-group-list { display: flex; flex-direction: column; gap: 10px; }
+.filter-group {
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface-2); overflow: hidden;
+}
+.filter-group[open] { border-color: var(--border-strong); }
+.filter-group-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; cursor: pointer; user-select: none;
+  list-style: none; /* hide the default marker (Chrome + Firefox) */
+  min-height: 44px;
+  transition: background var(--dur-fast);
+}
+.filter-group-head::-webkit-details-marker { display: none; }
+.filter-group-head:hover { background: var(--surface); }
+.filter-group-head:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.filter-group-icon { width: 18px; height: 18px; flex: none; color: var(--text-3); }
+.filter-group-title { font-size: 13.5px; font-weight: 700; color: var(--text-1); flex: 1 1 auto; }
+.filter-group-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; background: var(--primary); color: #fff; flex: none;
+}
+.filter-group-chevron {
+  width: 18px; height: 18px; flex: none; color: var(--text-3);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.filter-group[open] > .filter-group-head .filter-group-chevron { transform: rotate(180deg); }
+.filter-group-body {
+  padding: 4px 14px 16px; border-top: 1px solid var(--border);
+}
+.filter-section { margin-top: 14px; }
+.filter-section:first-child { margin-top: 14px; }
 .filter-section-title {
   font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
   color: var(--text-3); margin: 0 0 8px;
@@ -818,6 +856,19 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 .filter-daterange { display: flex; gap: 12px; flex-wrap: wrap; }
 .filter-daterange label { font-size: 12px; color: var(--text-3); display: flex; flex-direction: column; gap: 4px; }
 .filter-note { font-size: 11.5px; color: var(--text-3); margin: 8px 0 0; }
+
+/* Nested disclosure for the dense per-page reference notes — collapsed by
+   default so it reads as "click if you need this", not as prose competing
+   with the actual date inputs above it. */
+.filter-scope-note { margin-top: 12px; }
+.filter-scope-note summary {
+  font-size: 12px; font-weight: 600; color: var(--secondary);
+  cursor: pointer; list-style: none; padding: 4px 0;
+}
+.filter-scope-note summary::-webkit-details-marker { display: none; }
+.filter-scope-note summary::before { content: '▸ '; }
+.filter-scope-note[open] summary::before { content: '▾ '; }
+.filter-scope-note .filter-note:first-of-type { margin-top: 8px; }
 
 /* ── searchable multi-select combobox (State/Hub) — vanilla, no library ── */
 .filter-combo { position: relative; }

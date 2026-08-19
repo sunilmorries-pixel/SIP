@@ -2189,6 +2189,46 @@
   var FILTER_DIM_PLURAL = { segments: 'segments', statuses: 'statuses', states: 'states', hubs: 'hubs', cities: 'cities', countries: 'countries',
     centers: 'centers', deviceTypes: 'device types', deviceStatusExclude: 'device statuses' };
 
+  /**
+   * Filter-drawer accordion groups (declutter pass, per user 2026-08-18):
+   * 10 dimensions in one flat scroll read as undifferentiated blocks, so
+   * they're grouped into 4 collapsible <details> sections. Each group's
+   * badge (and open/closed state on drawer-open) is driven from this map —
+   * add a new dimension to the matching group's array and both the badge
+   * count and the auto-expand-if-active behaviour pick it up for free.
+   */
+  var FILTER_GROUPS_ = {
+    fgCore: ['statuses', 'segments'],
+    fgLocation: ['states', 'hubs', 'centers', 'cities', 'countries'],
+    fgDevice: ['deviceTypes', 'deviceStatusExclude']
+    // fgDate is date-range, handled separately (not an array dimension).
+  };
+
+  /** Live "N selected" badge per accordion group, read from the STAGED (pending) filters. */
+  function updateFilterGroupCounts_() {
+    var f = state.globalFiltersPending || {};
+    Object.keys(FILTER_GROUPS_).forEach(function (groupId) {
+      var n = FILTER_GROUPS_[groupId].reduce(function (sum, dim) { return sum + ((f[dim] || []).length); }, 0);
+      var badge = $('fgCount' + groupId.slice(2));
+      if (badge) { badge.hidden = !n; badge.textContent = n; }
+    });
+    var dateN = (f.dateFrom ? 1 : 0) + (f.dateTo ? 1 : 0);
+    var dateBadge = $('fgCountDate');
+    if (dateBadge) { dateBadge.hidden = !dateN; dateBadge.textContent = dateN; }
+  }
+
+  /** Opens a group by id if it has an active filter, leaves user's own toggle alone otherwise. */
+  function autoExpandFilterGroups_() {
+    var f = state.globalFiltersPending || {};
+    Object.keys(FILTER_GROUPS_).forEach(function (groupId) {
+      var has = FILTER_GROUPS_[groupId].some(function (dim) { return (f[dim] || []).length; });
+      var el = $(groupId);
+      if (el && has) el.open = true;
+    });
+    var fgDate = $('fgDate');
+    if (fgDate && (f.dateFrom || f.dateTo)) fgDate.open = true;
+  }
+
   function openFilterDrawer_(preserveStaged) {
     // preserveStaged: true when the caller (Clear all) already staged the
     // pending edits it wants shown — a plain open must still snapshot the
@@ -2218,6 +2258,8 @@
     renderFilterCombo_('filterDeviceStatus', 'deviceStatusExclude', (state.deviceStatusOptions || []).map(function (s) { return s.status; }));
     $('filterDateFrom').value = state.globalFiltersPending.dateFrom;
     $('filterDateTo').value = state.globalFiltersPending.dateTo;
+    autoExpandFilterGroups_();
+    updateFilterGroupCounts_();
     $('filterScrim').hidden = false;
     $('filterDrawer').hidden = false;
     $('globalFilterBtn').setAttribute('aria-expanded', 'true');
@@ -2336,6 +2378,7 @@
           renderSelected();
         });
       });
+      updateFilterGroupCounts_();
     }
 
     /** Paints the checkbox list. Identical markup for both code paths. */
@@ -3675,6 +3718,15 @@
     $('filterScrim').addEventListener('click', function () {
       // Clicking the scrim (not the Apply button) discards pending edits.
       if (!$('filterDrawer').hidden) closeFilterDrawer_();
+    });
+    // Live badge on the Date range accordion header while the drawer is open
+    // (Apply itself re-reads .value directly, so this duplication is harmless).
+    ['filterDateFrom', 'filterDateTo'].forEach(function (id) {
+      $(id).addEventListener('input', function () {
+        state.globalFiltersPending.dateFrom = $('filterDateFrom').value || '';
+        state.globalFiltersPending.dateTo = $('filterDateTo').value || '';
+        updateFilterGroupCounts_();
+      });
     });
     $('filterApplyBtn').addEventListener('click', function () {
       state.globalFiltersPending.dateFrom = $('filterDateFrom').value || '';

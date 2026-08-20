@@ -28,15 +28,29 @@ battery/signal/hardware-mix) · Centers · Customers (Top Customers) · Support/
 Every page now has a real data source — there are no "not yet connected" placeholder cards left.
 
 **Overview was rebuilt as 3 decomposition trees as of v5.38/@67** (Customers, Devices, Tickets),
-replacing the old always-static exec-summary cards. Each tree is pure-JS aggregation over one
-combined endpoint (`apiGetOverviewFlowCD`, `src/server/OverviewFlow.js`) and renders via a new
-`Charts.decompTree` ECharts tree-series builder (`src/client/Charts.html`). The visual layout has
+replacing the old always-static exec-summary cards. The decomposition is pure-JS aggregation over
+one combined endpoint (`apiGetOverviewFlowCD`, `src/server/OverviewFlow.js`). The visual layout
 churned across several same-week releases — TB orientation → depth-colored/sized nodes → briefly
 replaced with a Sankey diagram (v5.44/@73) → reverted back to trees per user feedback (v5.46/@75)
-→ switched to LR orientation with a depth-based color ramp (@76/v5.47, current). See `HANDOFF.md`'s
-v5.38–v5.47 entries for the full sequence and the reasoning behind each layout change before
-"fixing" any perceived layout issue — several apparent bugs here were already tried, measured
-against real production data, and deliberately reverted once.
+→ LR orientation with a depth-based color ramp (@76/v5.47). See `HANDOFF.md`'s v5.38–v5.47 entries
+for the full sequence and the reasoning behind each layout change before "fixing" any perceived
+layout issue — several apparent bugs there were already tried, measured against real production
+data, and deliberately reverted once.
+
+**As of @77/v5.48 the renderer is a treemap, not a tree** — `Charts.decompTreemap`
+(`src/client/Charts.html`), replacing `Charts.decompTree`, which is deleted along with its five
+tree-only helpers. The payload shape is unchanged, so `OverviewFlow.js` and the click handler were
+untouched. This ends the layout churn above rather than continuing it: the `tree` series laid out by
+topology, drawing every node at a fixed 88×52 / 70×48 box whatever its count, so magnitude existed
+only as label text and same-depth siblings split one span whether a branch held 3% or 65% of its
+parent. Six passes (@69–@76 plus `c977a00`) each moved the resulting label collision instead of
+removing it. Rectangles that partition their parent by share cannot collide, so the page dropped
+from 2,436px to ~1,365px and label clipping is structurally gone. Two consequences worth knowing:
+`c977a00` (72px leaf slots) is **superseded and was never deployed** — it fixed a renderer that no
+longer exists; and a level-1 block under 5% of the total is folded to a single tile by
+`decompPrepLevel1_`, because ECharts draws a parent's `upperLabel` band at full height even on a
+7px-tall node and clips it (`childrenVisibleMin` does not fix this — verified at 340/420/500px).
+Folded tiles say so in their tooltip and still click through.
 
 ## Data sources
 

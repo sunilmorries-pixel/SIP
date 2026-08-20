@@ -76,6 +76,76 @@ reverted by the other's save at least once. Consequences to know:
   `'77'`) — resolved in favor of the value that's actually live; the other session's version bump
   will need to move to `'78'` when they deploy. See the v5.48/@77 entry below.
 
+### v5.49 / @78 (2026-08-19) — Overview trees become treemaps; Asset KPI strip goes Jira-only — COMMITTED, NOT DEPLOYED
+
+> This is the work that was sitting uncommitted as the "378-line `Charts.html` diff" the @77 deploy
+> stashed (see the concurrent-sessions note above). `APP_VERSION` is bumped to `'78'` per that
+> note; **`APP_DEPLOYED_AT` still reads @77's timestamp and must be set when @78 actually ships.**
+>
+> **Overview's three decomposition trees are now treemaps.** `Charts.decompTree` → a new
+> `Charts.decompTreemap`, and the five tree-only helpers (`decompWrapName_`, `decompLeafCount_`,
+> `decompMaxDepth_`, `decompStyleTree_`, `decompNodeColor_`/`decompLightness_`) are deleted. The
+> `apiGetOverviewFlowCD` payload and `handleTreeNodeClick_` are untouched — node metadata still
+> rides along on ECharts' data, so click-to-filter and tab-nav work unchanged.
+>
+> This is meant to *end* the @69–@76 layout churn, not extend it. The `tree` series lays out by
+> topology, not by value: every node drew at a fixed 88×52 / 70×48 box whatever its count, so a
+> category's magnitude existed only as label text, and same-depth siblings split one span whether a
+> branch held 3% or 65% of its parent. Measured before/after at 1512px: page height **2,436px →
+> 1,365px**; per-card canvas 432/720/504px (computed from leaf count in JS) → a flat 340px set in
+> CSS. Specific fixes: `Government`/`ECG Machine` label clipping gone structurally; the root box
+> dropped (it restated the total already in the card header); the canvas no longer needs a 620px
+> minimum, so narrow widths reshape tiles instead of cutting them off (no mobile breakpoints added
+> — `Styles.html` still says mobile is deliberately out of scope).
+>
+> **`c977a00` (72px leaf slots) is superseded and was never deployed** — it fixed a renderer that
+> no longer exists. Don't try to reconcile it against the current code.
+>
+> Three findings worth keeping:
+> - **ECharts inserts a synthetic root when a treemap's `data` is an array**, so every `levels[]`
+>   index shifts down by one. `levels[0]` is that root (left transparent and unlabelled here);
+>   countries/types/sources are `levels[1]`, their children `levels[2]`.
+> - **A parent's `upperLabel` band paints from its `borderColor`, not its fill.** Left on the chrome
+>   colour it renders as a dark empty bar over every block.
+> - **A parent too small for its band gets the band drawn anyway and clipped mid-glyph.**
+>   `childrenVisibleMin` does NOT fix this (verified at 340/420/500px canvas heights) — the node
+>   still lays out and labels as a parent. `decompPrepLevel1_` instead folds any level-1 block under
+>   5% of the total into a single tile in the DATA, so ECharts treats it as the leaf it now is.
+>   Folded tiles name what was folded in their tooltip and still click through to the same
+>   breakdown, so nothing is dropped silently. Caveat: such a tile can be a ~4px strip, well under
+>   the 44px tap-target guideline — the sidebar tab is the reliable route to that source.
+>
+> Colour is deliberately not a data channel: area carries every value, so the palette is two tones
+> per theme (band = label strip, tile = data), all four text pairs measured — dark 10.3/4.7, light
+> 9.5/4.7. A faded second line for tile counts was tried and dropped at 3.7 (82%) / 4.2 (92%).
+>
+> **Asset page — KPI strip is `jira_data` only.** Authored this session; the `App.html`/`Index.html`
+> half was swept up into `3b49fb4` (the other session's cloud_devices commit), so only
+> `Charts.html`/`Styles.html` land here. Poor signal (`cloud_devices.CSQ`) and Unsynced ECGs
+> (`cloud_devices.UnsyncedData`) tiles removed, grid `kpi-grid-5` → `kpi-grid-3`, and Total devices
+> lost its "Connector + ECG" sub per user. Also fixed a hidden grain swap: `kpiTotal` read
+> `fleet.total != null ? fleet.total : kpi.total_devices`, silently substituting a *communicator*
+> count when the Jira count was null — now `fleet.total` alone. The `var kpi = data.kpis[0]` local
+> is gone; nothing on the page reads the `cloud_devices` KPI row. The `kpis` spec itself stayed in
+> `buildDashboardQuerySpecsCD` at the time — note `3b49fb4` has since deleted
+> `apiGetExecOverviewCD`, its other consumer, so that spec is worth re-checking for deadness.
+>
+> **Known leftovers, not fixed here** (deliberately minimal diff — two sessions were editing this
+> repo concurrently):
+> - `Charts.fleetStatus` and `Charts.firmware` are now defined-but-uncalled — `3b49fb4` deleted the
+>   Asset donut and firmware chart, but `Charts.html` was stashed during that commit so the sweep
+>   never reached it. `FLEET_ORDER`/`FLEET_COLORS` must stay (`App.html`'s mock still reads
+>   `Charts.FLEET_ORDER`).
+> - `METRIC_INFO.poorSignal` and `METRIC_INFO.unsynced` are dead (their only referents were the two
+>   removed KPI tiles), as is the `sync` entry in `ICONS`.
+>
+> **Verified:** 172 unit tests pass (`npm test`). `verify-before-deploy` passed the unit tier only —
+> the reconciliation tier skipped all 19 tests (`GOOGLE_APPLICATION_CREDENTIALS` unset), so nothing
+> was checked against live BigQuery; the change is client-side with no SQL touched. In the local
+> preview, against the post-`3b49fb4` `App.html`: all three Overview cards render `series[0].type
+> === 'treemap'`, both themes, tooltips (path + share + folded-tile note), click-to-filter (badge
+> 4→5), collapse/re-expand lazy render, zero console errors, no horizontal overflow.
+
 ### v5.48 / @77 (2026-08-19) — devices=Jira everywhere but CDM, Filters drawer redesign, cloud_devices removed from every non-CDM page
 
 > Catch-up deploy bundling everything accumulated since v5.47/@76. Built from commit `cd29dc6`.

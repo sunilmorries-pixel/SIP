@@ -570,6 +570,12 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 .flow-summary-text .card-title,
 .flow-summary-text .card-sub { display: block; }
 .flow-summary-text .card-sub { margin-top: 0; }
+/* Keeps setupMetricInfo()'s injected info dot on the same line as the title it
+   belongs to. Only bites in the collapsed 3-column state, where a two-word
+   title ("All tickets") plus the dot exceeds the column and orphans the dot
+   onto a line of its own. Safe to pin here — these three titles are the only
+   .card-title inside a .flow-summary and all are short. */
+.flow-summary-text .card-title { white-space: nowrap; }
 .flow-summary::after {
   content: ''; flex: none; width: 9px; height: 9px; margin-left: 4px;
   border-right: 2px solid var(--text-3); border-bottom: 2px solid var(--text-3);
@@ -580,10 +586,17 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
   font-family: var(--font-head); font-size: 32px; font-weight: 700;
   color: var(--secondary); font-variant-numeric: tabular-nums; flex: none;
 }
-/* Full page width buys height too, not just width — a wider tree still
-   wants room for its two-line rich-text labels and however many rows of
-   leaf nodes a branch stacks. */
-.chart-flow { min-height: 620px; padding: 0 var(--pad) var(--pad); animation: rise 320ms var(--ease-out) both; }
+/* One fixed height for every breakdown, set here rather than computed in JS.
+   The tree renderer had to size its container from the leaf count (72px a
+   leaf) because its layout grew with the data — three cards ran 432/720/504px
+   of canvas and the landing page came to 2,436px. A treemap subdivides
+   whatever box it is given, so the height is a design decision again: 340px
+   over the full card width leaves the smallest real category (ECHO, 2.7% of
+   customers) enough area to caption.
+
+   min-height, not height: `.chart` sets height: 280px further down this file
+   at equal specificity, so a `height` here would lose on source order. */
+.chart-flow { min-height: 340px; padding: 0 var(--pad) var(--pad); animation: rise 320ms var(--ease-out) both; }
 
 /* NOTE: mobile/tablet view intentionally removed for now — desktop only.
    When we add the mobile view, reintroduce breakpoint overrides here. */

@@ -24,9 +24,14 @@ var Charts = (function () {
     tooltipBg: '#0A2340', tooltipText: '#EAF1F8', sliceBorder: '#04182C'
   };
 
+  // Read by decompPalette_(), which needs to know the theme by name rather
+  // than infer it from a chrome color it happens to share a value with.
+  var THEME = 'dark';
+
   /** Repoints chart chrome colors for the given theme. */
   function applyTheme(theme) {
     var light = theme === 'light';
+    THEME = light ? 'light' : 'dark';
     C.text = light ? '#3E546B' : '#A2B4C8';
     C.textDim = light ? '#566A80' : '#869AB2';
     C.grid = light ? 'rgba(1,41,78,0.08)' : 'rgba(46,155,214,0.12)';
@@ -704,215 +709,246 @@ var Charts = (function () {
     }));
   }
 
-  /* ── Decomposition trees (Overview) ──────────────────────────── */
+  /* ── Decomposition treemaps (Overview) ───────────────────────── */
 
   /**
-   * Renders a top-down decomposition tree. `treeNode` is the exact
-   * {name, value, children, stats?, filterDim?, filterValue?, clearDims?,
-   * navTab?, navDeviceType?} shape OverviewFlow.js's tree builders return —
-   * the metadata fields ride along on ECharts' native node data untouched,
-   * so the click handler reads them straight off `params.data`.
+   * The treemap's two tones, per theme. Colour is deliberately NOT a data
+   * channel here: area already carries every value, so a per-node ramp would
+   * only restate what a rectangle's size says. (The old tree needed one
+   * because its fixed boxes had no size channel to spend.) Each theme gets
+   * exactly two tones — BAND, behind a parent's name strip, and TILE, which
+   * its children fill. BAND is always the higher-contrast tone against the
+   * card: lighter than the tile on navy, darker on white. That's what keeps
+   * "this strip labels the block below it" reading correctly in both themes
+   * without inverting the palette. Every text pair clears WCAG AA for normal
+   * text — dark 10.3 (band) / 4.7 (tile), light 9.5 / 4.7.
+   *
+   * The tone tracks a rectangle's ROLE, not its depth: band means "this is a
+   * label strip", tile means "this is data". That distinction matters for the
+   * level-1 nodes that have nothing drawn under them (the inert "Others"
+   * bucket, a source folded by decompPrepLevel1_) — styling those by depth
+   * made an 18% residual the heaviest block on the card while the 65% one sat
+   * lighter, so they take the tile tone like every other data rectangle and
+   * the band tone is left to mean one thing.
+   *
+   * Captions are single-tone. A faded second line was tried for the count
+   * under each name and dropped: white at 82% over either tile tone measures
+   * 3.7, and even 92% only reaches 4.2, so the hierarchy comes from weight
+   * and size instead. A count is data; it doesn't get to be hard to read.
    */
-  // Depth-based node color: a single hue (~199°, matching C.primary's own
-  // hue) that gets progressively lighter/more vivid with depth, so the tree
-  // reads as "getting radiant toward the leaves" instead of three flat,
-  // unrelated tones. `decompLightness_` is shared with decompStyleTree_'s
-  // per-node label-color decision below so the two never compute divergent
-  // numbers for the same node.
-  function decompLightness_(depth, maxDepth) {
-    maxDepth = maxDepth > 0 ? maxDepth : 2;
-    var t = Math.min(1, depth / maxDepth); // 0 at root, 1 at the deepest leaf
-    return 30 + t * 38; // 30% at root -> 68% at deepest leaves
+  function decompPalette_() {
+    return THEME === 'light'
+      ? { band: '#124A67', bandText: '#FFFFFF', tile: '#2E7BA6', tileText: '#FFFFFF' }
+      : { band: '#9BCBE4', bandText: '#04182C', tile: '#1F7AAE', tileText: '#FFFFFF' };
   }
-  function decompNodeColor_(depth, maxDepth) {
-    maxDepth = maxDepth > 0 ? maxDepth : 2;
-    var t = Math.min(1, depth / maxDepth);
-    var saturation = 75 + t * 5; // 75% -> 80%, stays vivid rather than washing out
-    return 'hsl(199, ' + saturation.toFixed(0) + '%, ' + decompLightness_(depth, maxDepth).toFixed(0) + '%)';
+
+  /** Minimal HTML escape for tooltip text built from raw BigQuery values
+   *  (ServiceWRK's `closure_type` reaches the label unprettified). */
+  function decompEsc_(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   /**
-   * Hard-wraps a node name onto multiple lines so it can never run past the
-   * box width into a neighbor's label. Some names are raw data values (e.g.
-   * ServiceWRK's closure_type, unprettified SCREAMING_SNAKE_CASE) with no
-   * whitespace to break at — ECharts rich-text `overflow`/`width` wrapping
-   * did not engage for tree-series node labels in testing, so this wraps by
-   * literal '\n' insertion instead of relying on that. Breaks preferentially
-   * at existing separators (space/underscore/hyphen); falls back to a hard
-   * character split for a single run longer than maxLen.
+   * A tile's two-line caption: name over count, anchored top-left. Top-left
+   * rather than centred so the caption stays put as a tile changes shape
+   * between filter states, and so it can't drift into the parent band above
+   * it. ECharts drops the whole label when the tile is too small to hold it,
+   * which is the intended fallback — the tooltip still carries the value.
    */
-  function decompWrapName_(name, maxLen) {
-    maxLen = maxLen || 10;
-    var text = String(name == null ? '' : name);
-    if (text.length <= maxLen) return text;
-    var parts = text.split(/([ _-])/); // split on separators, keep them as their own parts
-    var lines = [];
-    var cur = '';
-    parts.forEach(function (part) {
-      if (!part) return;
-      if ((cur + part).length <= maxLen) {
-        cur += part;
-        return;
+  function decompTileLabel_(color) {
+    return {
+      show: true, position: 'insideTopLeft', padding: [4, 6], overflow: 'truncate',
+      formatter: function (p) { return '{n|' + p.name + '}\n{v|' + FMT.format(p.value) + '}'; },
+      rich: {
+        n: { fontSize: 12, fontWeight: 700, color: color, lineHeight: 15, align: 'left' },
+        v: { fontSize: 11, fontWeight: 500, color: color, lineHeight: 14, align: 'left' }
       }
-      if (cur.trim()) lines.push(cur.trim());
-      cur = part;
-      while (cur.length > maxLen) {
-        lines.push(cur.slice(0, maxLen));
-        cur = cur.slice(maxLen);
-      }
-    });
-    if (cur.trim()) lines.push(cur.trim());
-    return lines.join('\n');
+    };
   }
+
+  /** `n` as a share of `total`, e.g. "12.4%" — "" when there's no total. */
+  function decompShare_(n, total) {
+    if (!total) return '';
+    var pct = (n / total) * 100;
+    return (pct >= 10 ? pct.toFixed(0) : pct.toFixed(1)) + '%';
+  }
+
+  // A level-1 block needs the 26px name band plus ~34px for one captioned
+  // child before its breakdown is worth drawing — about 60px of height, which
+  // in the 340px-tall canvas (see .chart-flow in Styles.html) means roughly a
+  // 5% share once ECharts' squarify has picked a shape for it.
+  var DECOMP_COLLAPSE_SHARE = 0.05;
+
   /**
-   * Counts leaf nodes (no children, or an empty children array) in a tree.
-   * Drives the chart container's dynamic height in decompTree — pure, no
-   * side effects, safe to call before styling/rendering.
+   * Prepares the level-1 row: flattens any child too small to host a readable
+   * breakdown into a single tile (recording on `__collapsed` how many children
+   * were folded), and repaints every childless child in the tile tone, since
+   * what it draws is a data rectangle rather than a label strip.
+   *
+   * Necessary because ECharts draws a non-leaf node's upperLabel band at its
+   * configured height whether or not the node is that tall: a 1%-share source
+   * (TOM, in the preview's mock) got a ~7px strip with a 26px band painted
+   * over it, clipped mid-glyph by the canvas edge. `childrenVisibleMin` looks
+   * like the fix and isn't — it stops the children rendering but the parent
+   * still lays out and labels as a parent, so the band still overflows
+   * (verified in the preview at 340/420/500px canvas heights). Removing the
+   * children in the DATA does work: ECharts then treats the node as the leaf
+   * it now is, and leaf labels are the kind it drops when they don't fit.
+   *
+   * Nothing is lost silently — the tooltip says what was folded, and every
+   * one of these nodes is already clickable into the same breakdown (a
+   * country/type click filters down to it; a ticket-source click opens that
+   * source's own page).
    */
-  function decompLeafCount_(node) {
-    if (!node) return 0;
-    if (!node.children || !node.children.length) return 1;
-    var total = 0;
-    node.children.forEach(function (c) { total += decompLeafCount_(c); });
-    return total;
-  }
-
-  /** Max depth of the tree (root = depth 0). Same shape as decompLeafCount_. */
-  function decompMaxDepth_(node, depth) {
-    depth = depth || 0;
-    if (!node || !node.children || !node.children.length) return depth;
-    var max = depth;
-    node.children.forEach(function (c) {
-      var d = decompMaxDepth_(c, depth + 1);
-      if (d > max) max = d;
+  function decompPrepLevel1_(children, total, P) {
+    return children.map(function (child) {
+      var kids = child.children || [];
+      var folding = kids.length && total && child.value / total < DECOMP_COLLAPSE_SHARE;
+      if (kids.length && !folding) return child;   // big enough to keep its band
+      var flat = Object.assign({}, child);
+      delete flat.children;
+      if (folding) flat.__collapsed = kids.length;
+      // Per-node, because the level's own colour still has a job to do: it
+      // fills the gaps between a parent's children, which is what makes them
+      // read as sitting inside their parent.
+      flat.itemStyle = { color: P.tile };
+      return flat;
     });
-    return max;
-  }
-
-  function decompStyleTree_(node, depth, maxDepth) {
-    // Per-node label color: once a node's own background lightness clears
-    // ~60%, white label text stops being legible on it, so every node
-    // carries its own `label.rich.*.color` override (merged over the
-    // series-level rich definitions below, which still own fontSize/
-    // fontWeight/lineHeight/align) computed from the SAME lightness value
-    // that picked its itemStyle color — not a second, possibly-divergent
-    // number. ECharts' tree series merges a per-data-item label.rich.*.color
-    // over the series-level rich config (confirmed in the live preview).
-    var lightness = decompLightness_(depth, maxDepth);
-    var dark = lightness >= 60;
-    var styled = Object.assign({}, node, {
-      // __depth drives symbolSize below too — deriving size from "has
-      // children" instead breaks when a depth-1 node happens to be a leaf
-      // (e.g. an inert "Others" bucket next to real branches), sizing it
-      // smaller than same-row siblings and overlapping them, since ECharts'
-      // tree layout assumes uniform slot widths per sibling row.
-      __depth: depth,
-      itemStyle: { color: decompNodeColor_(depth, maxDepth), borderColor: C.axis, borderWidth: 2 },
-      label: {
-        rich: {
-          name: { color: dark ? '#04182C' : '#fff' },
-          val: { color: dark ? 'rgba(4,24,44,0.72)' : 'rgba(255,255,255,0.82)' }
-        }
-      }
-    });
-    if (node.children && node.children.length) {
-      styled.children = node.children.map(function (c) { return decompStyleTree_(c, depth + 1, maxDepth); });
-    }
-    return styled;
   }
 
   /**
-   * `id`'s card expands to the full page width while open (see the
-   * .flow-card:has(details[open]) rule in Styles.html), which still helps
-   * the LR layout below breathe, but the structural fix for a lopsided tree
-   * (a thin sibling like an inert "Others" bucket next to a wide subtree
-   * like India's 7 segments) is the LR orientation + dynamic height right
-   * below: same-depth siblings stack vertically, so a wide branch just makes
-   * the (scrollable) page taller instead of squeezing thin siblings into
-   * whatever horizontal space is left over — width alone was tried and
-   * confirmed insufficient for this.
+   * Renders a two-level decomposition treemap: each of `treeNode`'s children
+   * gets a rectangle sized by its share of the total, subdivided in turn by
+   * that child's own children (country → segment, device type → age band,
+   * ticket source → outcome).
+   *
+   * `treeNode` is the exact {name, value, children, stats?, filterDim?,
+   * filterValue?, clearDims?, navTab?, navDeviceType?} shape
+   * OverviewFlow.js's builders return — the metadata fields ride along on
+   * ECharts' node data untouched, so handleTreeNodeClick_ still reads them
+   * straight off `params.data`. The server payload needed no change.
+   *
+   * Replaces the `tree`-series renderer this file shipped through @76. That
+   * series lays out by TOPOLOGY, not by value: every node drew at a fixed
+   * 88×52 / 70×48 box whatever its count, so magnitude lived only in the
+   * label text, and same-depth siblings split one span whether a branch held
+   * 3% or 65% of its parent. Six passes tried to buy the labels room (size by
+   * depth @69, hard-wrapped names @70, 8%→2% margins @72, TB→LR + depth
+   * colour ramp @76, 34px→72px leaf slots in c977a00) and each moved the
+   * collision instead of removing it, because the layout never consulted the
+   * numbers. Rectangles that partition their parent by share cannot collide:
+   * skew changes a rectangle's proportions, and the worst case is a tile too
+   * small to caption — its tooltip still carries the value — rather than a
+   * label overrunning its neighbour or a node clipped off the canvas edge.
+   * Two further things fall out of the swap: the root box is gone (it used to
+   * restate the total already printed in the card header), and the canvas
+   * fills whatever width it is given instead of needing a minimum, so a
+   * narrow viewport reshapes the tiles rather than cutting them off.
    */
-  function decompTree(id, treeNode, opts) {
+  function decompTreemap(id, treeNode, opts) {
     opts = opts || {};
     if (!treeNode || !treeNode.children || !treeNode.children.length) return showEmpty(id);
-    var maxDepth = decompMaxDepth_(treeNode);
-    var styledRoot = decompStyleTree_(treeNode, 0, maxDepth);
-    // LR orientation (below) stacks same-depth siblings vertically instead
-    // of horizontally, so a lopsided tree (e.g. a 7-segment branch next to
-    // 1-2-segment siblings) no longer fights for the same hard-capped
-    // viewport width — it just needs a taller container, and the page
-    // already scrolls. Height must be set on the container BEFORE
-    // render()/apply_() runs so echarts.init()/resize() picks up the
-    // correct size immediately rather than clipping until some later
-    // resize event.
-    // Per-leaf slot must clear the leaf node's own height (48px, see
-    // symbolSize below) plus a visible gap, or rows still touch/overlap
-    // regardless of orientation — confirmed live in production at 34px/leaf
-    // (India's 7-segment column rendered with zero gap between boxes).
-    // 72px/leaf leaves a ~24px gap.
-    var el = document.getElementById(id);
-    if (el) el.style.height = Math.max(420, decompLeafCount_(treeNode) * 72) + 'px';
+    var P = decompPalette_();
+    var total = treeNode.value || 0;
+
     render(id, base({
-      tooltip: Object.assign({
+      tooltip: {
+        trigger: 'item', confine: true,
         backgroundColor: C.tooltipBg, borderColor: C.axis,
-        textStyle: { color: C.tooltipText, fontSize: 13 }, confine: true
-      }, {
-        trigger: 'item', triggerOn: 'mousemove',
+        textStyle: { color: C.tooltipText, fontSize: 13 },
         formatter: function (info) {
-          var d = info.data;
-          var lines = ['<strong>' + d.name + '</strong>: ' + FMT.format(d.value)];
+          var d = info.data || {};
+          var value = d.value != null ? d.value : info.value;
+          // treePathInfo[0] is the series' own synthetic root (we pass the
+          // children as `data`, so the payload root is never a node); the
+          // rest is the real path, e.g. "India › SME".
+          var path = (info.treePathInfo || []).slice(1).map(function (n) { return n.name; });
+          var lines = ['<strong>' + decompEsc_(path.join(' › ') || d.name) + '</strong>: ' + FMT.format(value)];
+          var share = decompShare_(value, total);
+          if (share) lines.push(share + ' of ' + FMT.format(total));
           if (d.stats) {
             if (d.stats.devices != null) lines.push(FMT.format(d.stats.devices) + ' devices');
             if (d.stats.uptimePct != null) lines.push(d.stats.uptimePct + '% uptime');
             if (d.stats.openTickets != null) lines.push(FMT.format(d.stats.openTickets) + ' open tickets');
-            if (d.stats.topCity) lines.push('Top city: ' + d.stats.topCity);
+            if (d.stats.topCity) lines.push('Top city: ' + decompEsc_(d.stats.topCity));
+          }
+          if (d.__collapsed) {
+            lines.push('Too small to break out here · click to see its ' + d.__collapsed + ' sub-categories');
           }
           return lines.join('<br/>');
         }
-      }),
+      },
       series: [{
-        type: 'tree', data: [styledRoot],
-        orient: 'LR', layout: 'orthogonal',
-        top: '2%', bottom: '2%', left: '4%', right: '8%',
-        symbol: 'roundRect',
-        symbolSize: function (value, params) {
-          return params.data.__depth === 0 ? [88, 52] : [70, 48];
-        },
-        lineStyle: { color: C.axis, curveness: 0.3, width: 1.5 },
-        label: {
-          position: 'inside', fontFamily: "'Fira Sans', sans-serif",
-          formatter: function (info) {
-            return '{name|' + decompWrapName_(info.data.name) + '}\n{val|' + FMT.format(info.data.value) + '}';
+        type: 'treemap', data: decompPrepLevel1_(treeNode.children, total, P),
+        left: 0, top: 0, right: 0, bottom: 0,
+        // Clicks belong to onNodeClick (filter / tab switch) — the default
+        // 'zoomToNode' would swallow them and drill in instead.
+        nodeClick: false, roam: false, breadcrumb: { show: false },
+        // 0, not the default 10px²: a category small enough to fall under
+        // that threshold would vanish from the page with nothing to say it
+        // had been dropped. A one-pixel sliver is honest; a silent omission
+        // from a total the card header still counts is not.
+        visibleMin: 0,
+        itemStyle: { borderColor: C.sliceBorder, borderWidth: 0, gapWidth: 2 },
+        levels: [
+          {
+            // levels[0] is the SYNTHETIC ROOT, not the first row of data:
+            // passing an array as `data` makes ECharts wrap it in a root node
+            // of its own, and every levels[] index shifts down by one to
+            // match. Left unlabelled and uncoloured — the total is already in
+            // the card header, and giving this level an upperLabel reserves a
+            // 26px strip of empty band across the top of the whole chart.
+            itemStyle: { color: 'transparent', gapWidth: 0, borderWidth: 0 },
+            upperLabel: { show: false }, label: { show: false }
           },
-          rich: {
-            name: {
-              fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 15,
-              align: 'center'
+          {
+            // Level 1 (country / device type / ticket source). borderColor,
+            // not just color, carries the band tone: ECharts paints a
+            // parent's upperLabel strip out of its BORDER region, so a band
+            // left on the chrome colour renders as a dark empty bar over
+            // every block (seen in the preview before this line). color
+            // matters too — it's what shows through the gaps between this
+            // node's children, which is what makes them read as sitting
+            // inside their parent rather than merely next to each other.
+            itemStyle: { color: P.band, borderColor: P.band, borderWidth: 0, gapWidth: 3 },
+            upperLabel: {
+              show: true, height: 26, padding: [0, 8], align: 'left', overflow: 'truncate',
+              color: P.bandText, fontSize: 12, fontWeight: 700,
+              formatter: function (p) {
+                var share = decompShare_(p.value, total);
+                return p.name + '  ' + FMT.format(p.value) + (share ? '  ·  ' + share : '');
+              }
             },
-            val: {
-              fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.82)',
-              lineHeight: 14, align: 'center'
-            }
+            // Reached only by a level-1 node with nothing under it, which
+            // decompPrepLevel1_ has already repainted in the tile tone —
+            // ECharts picks label vs upperLabel per node, so the two cases
+            // are covered without branching on the data here.
+            label: decompTileLabel_(P.tileText)
+          },
+          {
+            // Level 2 (segment / age band / outcome). No band of its own —
+            // these are leaves — so borderWidth stays 0 and the 1px gaps show
+            // the parent's band tone through.
+            itemStyle: { color: P.tile, borderColor: P.band, borderWidth: 0, gapWidth: 1 },
+            label: decompTileLabel_(P.tileText)
           }
-        },
-        leaves: { label: { position: 'inside' } },
-        expandAndCollapse: true,
-        initialTreeDepth: -1,
-        animationDuration: 400
+        ]
       }]
     }));
+
     if (opts.onNodeClick) {
       onClick(id, function (params) {
         if (params.data) {
           // Explicitly tear down the tooltip on THIS instance before the click
           // handler (which mutates global filters and re-renders via
-          // renderOverviewFlow → Charts.decompTree → render()/apply_()) swaps
-          // the option out from under it — otherwise ECharts can still be
-          // mid-flight showing/moving the old tooltip when apply_() replaces
-          // the option, and throws trying to update a tooltip DOM node that no
-          // longer matches (TypeError: Cannot set properties of null (setting
-          // 'innerHTML'), confirmed reproducible via hover-then-click in the
-          // local preview).
+          // renderOverviewFlow → Charts.decompTreemap → render()/apply_())
+          // swaps the option out from under it — otherwise ECharts can still
+          // be mid-flight showing/moving the old tooltip when apply_()
+          // replaces the option, and throws trying to update a tooltip DOM
+          // node that no longer matches (TypeError: Cannot set properties of
+          // null (setting 'innerHTML'), confirmed reproducible via
+          // hover-then-click in the local preview).
           if (instances[id]) instances[id].dispatchAction({ type: 'hideTip' });
           opts.onNodeClick(params.data);
         }
@@ -924,7 +960,7 @@ var Charts = (function () {
     setLoading: setLoading,
     flushVisible: flushVisible,
     showEmpty: showEmpty,
-    decompTree: decompTree,
+    decompTreemap: decompTreemap,
     svcTatBands: svcTatBands,
     svcResolution: svcResolution,
     // Exported for the TOM monthly-volume chart; previously only used

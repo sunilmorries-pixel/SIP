@@ -1,0 +1,19 @@
+# Line endings. Every tracked text file is already stored LF in the index
+# (verified: `git ls-files --eol` shows i/lf for all 83), and this pins that
+# contract so a differently-configured clone can't start committing CRLF.
+# eol= is deliberately NOT set: this repo's Windows checkouts run with
+# core.autocrlf=true and rewriting every working copy to LF would be pure
+# churn. To stop the "LF will be replaced by CRLF" notices locally, set
+# core.autocrlf=input rather than adding eol= here.
+* text=auto
+
+# Binary — never diff, never line-ending-convert. Source spreadsheets are
+# gitignored (see .gitignore) but a force-added one must not be mangled.
+*.xlsx binary
+*.xls  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary

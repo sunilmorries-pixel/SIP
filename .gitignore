@@ -28,3 +28,9 @@ scratch/
 
 # Subagent-driven-development scratch ledger — session-local, not shared history
 .superpowers/
+
+# Source spreadsheets dropped into the repo root for reference (e.g. the SLA
+# sheet) — input data, not code. rootDir is src/, so these are never deployed
+# anyway; force-add with `git add -f` if one ever genuinely belongs in history.
+*.xlsx
+*.xls

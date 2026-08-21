@@ -63,8 +63,9 @@ var CONFIG = {
    * constraint as every other default in this file).
    *
    * deviceTypes is an INCLUDE list (empty = no restriction, same convention
-   * as every other filter dimension) — non-empty INITIAL value, same pattern
-   * as `statuses: ['ACTIVE']`.
+   * as every other filter dimension). Left EMPTY as of 2026-08-21 (per user) —
+   * every device type shows by default now; it previously defaulted to
+   * `['Connector', 'ECG Machine']` only, same pattern as `statuses: ['ACTIVE']`.
    *
    * deviceStatusExclude is an EXCLUDE list, deliberately not an include list:
    * only 'Decommissioned' is meant to be hidden by default, and every other
@@ -73,7 +74,7 @@ var CONFIG = {
    * first load, and a new status would silently default to hidden until this
    * list was updated) — exclude-by-name is both cleaner and safer here.
    */
-  JIRA_DEVICE_TYPE_DEFAULT: ['Connector', 'ECG Machine'],
+  JIRA_DEVICE_TYPE_DEFAULT: [],
   JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT: ['Decommissioned'],
 
   /** Zoho statuses that mean a ticket is no longer active. */

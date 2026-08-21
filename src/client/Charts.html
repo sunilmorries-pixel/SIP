@@ -341,7 +341,7 @@ var Charts = (function () {
     }));
   }
 
-  /** Device-age distribution (Jira fleet, Connector + ECG). rows = [{k,n}] in
+  /** Device-age distribution (Jira fleet). rows = [{k,n}] in
    *  band order; the 5y+ band (past the 5-yr expected life) is coloured danger. */
   function deviceAges(rows) {
     if (!rows || !rows.length) return showEmpty('chartDeviceAges');

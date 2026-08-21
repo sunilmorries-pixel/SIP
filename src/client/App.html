@@ -15,7 +15,7 @@
 
   // Mirrors CONFIG.JIRA_DEVICE_TYPE_DEFAULT / JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT
   // (Config.js) — server .js and client .html can't share a constant.
-  var JIRA_DEVICE_TYPE_DEFAULT = ['Connector', 'ECG Machine'];
+  var JIRA_DEVICE_TYPE_DEFAULT = [];
   var JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT = ['Decommissioned'];
 
   var state = {
@@ -3248,7 +3248,7 @@
       source: 'center_details.deploymentdate. True TRD dwell needs the Jira changelog — not yet in the sandbox.' },
     assetLifecycle: { name: 'Asset lifecycle / types',
       formula: 'Distinct Jira assets grouped by lifecycle status or hardware type — COUNT(DISTINCT issue_key).',
-      source: 'jira_data (BigQuery), Connector + ECG only, deduped by issue_key.' },
+      source: 'jira_data (BigQuery), deduped by issue_key.' },
     assetAge: { name: 'Asset lifecycle age',
       formula: 'Device age = today − Created (per device), averaged; 5y+ devices are past the expected life.',
       source: 'jira_data.ticket_created (BigQuery).' },

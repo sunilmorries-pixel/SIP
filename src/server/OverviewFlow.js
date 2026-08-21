@@ -176,10 +176,12 @@ function buildDevicesTree_(filters) {
 
   return {
     name: 'Total devices', value: devices.length,
-    // Not clearDims:['deviceTypes'] -> [] — an empty deviceTypes list means
-    // "no include-list filter", which would admit the housekeeping issue
-    // types CONFIG.JIRA_DEVICE_TYPE_DEFAULT deliberately excludes. resetSet
-    // restores the literal default array instead.
+    // resetSet restores CONFIG.JIRA_DEVICE_TYPE_DEFAULT (empty as of 2026-08-21,
+    // i.e. no restriction) rather than hardcoding clearDims:['deviceTypes'], so
+    // this stays correct if the default is ever narrowed again. Housekeeping
+    // issue types (Task/Epic/Test) are excluded unconditionally upstream by
+    // isTrackedJiraDeviceType_ (via filteredJiraDevices_), independent of
+    // whatever deviceTypes is set to — an empty include-list here never admits them.
     resetSet: { deviceTypes: CONFIG.JIRA_DEVICE_TYPE_DEFAULT },
     children: children
   };

@@ -1,36 +1,79 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-19 · **Live version:** 5.48 · **Status:** ✅ **Production deployed
-(@77/v5.48, built from commit `cd29dc6`) — git, GitHub, and production all agree.** Production
+**Last updated:** 2026-08-21 · **Live version:** 5.51 · **Status:** ⚠️ **Production deployed
+(@80/v5.51, built from commit `77c19d2`) — but git is 4 commits AHEAD of production.** Production
 (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always)
-serves Apps Script **@77 / v5.48**. Local `main`'s tip is `cd29dc6`, identical to `origin/main` —
-no deploy-vs-git gap, no unpushed commits. No tag cut for v5.27–v5.48; tags are not a reliable
-release index.
+serves Apps Script **@80 / v5.51**, deployed 2026-08-21 5:28 PM. Local `main`'s tip is `307285e`,
+identical to `origin/main` (0 ahead / 0 behind), working tree clean — nothing unpushed, but four
+commits are committed-and-pushed-yet-undeployed (see the **v5.52/@81** entry, first below). No tag
+cut for v5.27–v5.51; tags are not a reliable release index.
 
-⚠️ **Uncommitted working-tree changes exist as of this doc update** — the *other* concurrent
-session's in-progress work, not this session's: `Charts.html` (a 378-line diff) and `Styles.html`
-are mid-edit; `Config.js` matches HEAD (its stash-pop conflict, from isolating the @77 deploy below,
-was resolved in favor of the committed value). These three files were temporarily `git stash`-ed
-during the @77 deploy so `clasp push` — which uploads whatever's on disk, regardless of git state —
-didn't ship someone else's unfinished, unreviewed work, then restored after. See the v5.48/@77
-entry below for the full sequence. Do not treat the current Charts.html/Styles.html diff as
-finished or reviewable; re-check `git status`/`git diff` before assuming it's still in this state.
+⚠️ **A deploy IS needed, and `APP_VERSION` is already staged for it.** `Config.js` reads
+`APP_VERSION: '81'` (commit `307285e`) while production runs @80 — which is exactly what the rule
+in that file's comment block asks for ("the version THIS DEPLOY WILL CREATE"). The value had been
+sitting at `'80'`, i.e. equal to the live version, which is the @54-shipped-`'53'` failure mode
+again; it was corrected before any deploy, not after. **`APP_DEPLOYED_AT` is deliberately still
+@80's `'Aug 21, 2026, 5:28 PM'`** — it was not moved with the bump because the deploy hasn't
+happened and inventing a timestamp would put a false claim in the footer. Until @81 ships, the
+footer pairs v81 with @80's timestamp; **set `APP_DEPLOYED_AT` to the real deploy time in the same
+change as the `clasp deploy`.** Nothing else needs bumping.
 
-**This handoff was stale for ten deploys** (v5.38–v5.47) before this catch-up pass — it still cited
-`7ae7549`/v5.37 while `main` had moved 32 commits ahead, largely from a worktree-based feature
-branch (`worktree-overview-decomposition-trees`, merged at `7311b12`) that this doc never tracked
-mid-flight. Don't trust the "Last updated" date alone; if `git log <last-cited-commit>..HEAD`
-returns anything, this doc is behind reality by at least that much.
+**The `v5.x` label lives only in these docs.** There is no semantic-version constant anywhere in
+`src/` — `CONFIG.APP_VERSION` holds the Apps Script deployment number (`'81'`) and nothing else, so
+don't go hunting for a `5.51` string in the source. The @N → v5.x mapping is maintained here by
+hand: @78 = v5.49, @79 = v5.50, @80 = v5.51, so the pending deploy is **@81 = v5.52** — a docs-only
+label assigned in this pass.
 
-**Dangling worktree, not yet merged, likely superseded:** `.claude/worktrees/centers-360-reliability-merge`
-(branch `worktree-centers-360-reliability-merge`, tip `c622815`) diverged from `main` on 2026-07-30
-at commit `096e4d6` and has only 2 commits of its own — adding MTBF/Failures columns to Center 360.
-**`main` already has MTBF/Failures on Center 360** (`grep -rl MTBF src/` hits `App.html`,
-`EditionCD.js`, `Queries.js`) via a different, later effort, so this branch's `git diff --stat main`
-shows ~9,980 deleted lines — almost entirely files that didn't exist yet when it branched
-(`OverviewFlow.js`, `TomTickets.js`, `SlaRisk.js`, etc.), not real divergent work. **Before reviving
-or merging this branch, check whether its MTBF/Failures implementation actually differs from what's
-already on `main` — it may just be safe to delete the branch and worktree.**
+⚠️ **A concurrent session IS editing `src/client/App.html` — the main checkout is not clean.**
+`git status` was empty at `307285e` when this pass began, and `HANDOFF.md` is the only change this pass
+made, but `App.html` was rewritten at 18:26 by another session and is uncommitted. **`clasp push` from
+this directory would upload that in-flight edit**, so run `git status` yourself before any deploy
+rather than trusting this line. One stray untracked file also sits at the repo root, a scratch file written through a
+mangled Windows temp path (`UsersSUNILM~1AppData...scratchpadapp_script_check.js`) — a 219,156-byte
+extraction of `App.html`'s `<script>` block, written 18:20 by a `node --check` run whose temp path lost
+its separators. It carries session id `1116f-88f2-4bb0-9ff0-aab37eadbfbf`, i.e. it belongs to a session
+that was still live at the time — delete it once that session is done, not while it is running. Note it
+is a root-level `*.js` file, so a blanket `git add -A` would happily commit it. The previous header warned about an
+in-flight 378-line `Charts.html` diff from the other concurrent session — that work is committed and
+shipped (it went out as @78, see below), so the warning is retired. Two other worktrees still hold
+unmerged or uncommitted work; see the worktree note below.
+
+**This handoff was stale for three deploys again** (@78–@80) before this catch-up pass — its header
+still claimed `cd29dc6`/@77/v5.48 was live and that "git, GitHub, and production all agree", while
+`main` had moved 15 commits ahead and production had shipped three more versions. It had already
+been caught up once for the same reason at v5.48, when it sat **ten** deploys stale (v5.38–v5.47,
+citing `7ae7549`/v5.37 while `main` was 32 commits ahead, largely from the worktree branch
+`worktree-overview-decomposition-trees` merged at `7311b12` that this doc never tracked mid-flight).
+Don't trust the "Last updated" date alone; if `git log <last-cited-commit>..HEAD` returns anything,
+this doc is behind reality by at least that much. Note that the doc's *body* can be ahead of its
+*header*: the v5.49/@78 entry below was written while the header still said @77 was live.
+
+**Git/GitHub housekeeping (2026-08-21) — `origin` now has only `main`.** Three fully-merged remote
+branches were deleted from `origin`: `centers-tab-kpi-rebuild`,
+`integrate/2026-07-security-perf-fixes`, `worktree-raw-data-jira-filter`. The superseded local
+branch `qa-findings-stale` (`ffbce3a`) was deleted too — its one substantive change, the
+`active_deployments` center-grain fix, was verified already present on `main` at
+`src/server/EditionCD.js:172` (`COUNT(DISTINCT IF(deactivationdate IS NULL, CenterID, NULL))`), so
+nothing was lost. `git branch -r` is now just `origin/HEAD -> origin/main` and `origin/main`.
+
+**Two local worktrees deliberately left alone** (both still in `git worktree list`):
+- `.claude/worktrees/audit-data-correctness` (branch `worktree-audit-data-correctness`, tip
+  `f340a36`) — its 11 data-correctness fixes **are on `main` now, but they were re-applied inside
+  `35e1246`, not merged**, so `f340a36` is NOT an ancestor of `main` and `git branch --merged` will
+  never list it. Its working tree is clean; another session holds the checkout, so it was not
+  removed. Before deleting branch or worktree, diff it against `main` — the merge-base tells you
+  nothing here.
+- `.claude/worktrees/centers-360-reliability-merge` (branch `worktree-centers-360-reliability-merge`,
+  tip `c622815`) — ⚠️ **~99 lines of uncommitted DELETIONS sit in its working tree**:
+  `src/client/App.html` (−71), `Index.html` (−30), `Styles.html` (−1), nobody has said what they
+  are. Don't `clasp push` from that directory and don't assume that tree is safe to commit. On the
+  branch itself the earlier verdict still stands: it diverged from `main` on 2026-07-30 at `096e4d6`
+  with only 2 commits of its own (MTBF/Failures columns on Center 360), **`main` already has
+  MTBF/Failures on Center 360** (`grep -rl MTBF src/` hits `App.html`, `EditionCD.js`, `Queries.js`)
+  via a different, later effort, and its `git diff --stat main` shows ~9,980 deleted lines that are
+  almost entirely files which didn't exist when it branched (`OverviewFlow.js`, `TomTickets.js`,
+  `SlaRisk.js`, etc.), not real divergent work. Likely safe to delete branch + worktree — but
+  resolve the uncommitted deletions first.
 
 **`7d98b69` (2026-08-14, git only, not deployed):** local preview server switched from a
 hardcoded port 8765 to `autoPort` (`.claude/launch.json`) + reading `$env:PORT`
@@ -50,6 +93,12 @@ v5.28/@57** (this session, commit `6288f65`): `APP_VERSION: '57'` / `APP_DEPLOYE
 2026, 12:23 AM'`, deployed as @57 — footer now correctly matches. Don't copy the "just deploy,
 nothing changed" reasoning that caused the repeat — the rule applies even to a content-identical
 redeploy, because the NEXT deploy always creates a new `@N` regardless of what changed.
+**Near-miss #3, caught before shipping (2026-08-21):** `APP_VERSION` sat at `'80'` while @80 was
+live — the same equal-to-live mistake — and was corrected to `'81'` in `307285e` while the deploy
+was still pending, not after. Corollary learned there: the two fields move on **different**
+schedules when the bump lands ahead of the deploy. Bump `APP_VERSION` when you know the next `@N`;
+set `APP_DEPLOYED_AT` only at the moment `clasp deploy` actually runs (`b40a4ab` is the precedent —
+it set @78's timestamp two days after @78's version bump).
 
 **Two Claude Code sessions have been working this same directory concurrently** (confirmed by the
 user). Files were repeatedly modified on disk mid-edit, and one session's change was silently
@@ -75,12 +124,126 @@ reverted by the other's save at least once. Consequences to know:
   `APP_DEPLOYED_AT` line (both sessions had independently bumped `APP_VERSION` to the same
   `'77'`) — resolved in favor of the value that's actually live; the other session's version bump
   will need to move to `'78'` when they deploy. See the v5.48/@77 entry below.
+- **Recurred 2026-08-21, but coordinated and harmless** — two sessions again, this time with file
+  ownership agreed up front over a direct session-to-session message: one owned `src/server/Config.js`
+  (and committed the `'81'` bump, `307285e`), the other owned `HANDOFF.md` and touched nothing under
+  `src/`. No stash, no conflict, no lost edits. Worth copying: **claim files explicitly before
+  editing when a second session is live**, and re-verify the other session's claims against `git`
+  rather than transcribing them — the commit list quoted between sessions that day undercounted the
+  gap by eleven commits, and only `git log cd29dc6..HEAD` showed the real spread.
 
-### v5.49 / @78 (2026-08-19) — Overview trees become treemaps; Asset KPI strip goes Jira-only — COMMITTED, NOT DEPLOYED
+### v5.52 / @81 (2026-08-21) — 4 new global filters, 2 ID search endpoints, 11 data-correctness fixes, FTF chart rework — COMMITTED + PUSHED, NOT DEPLOYED
+
+> ⚠️ **This is the deploy gap.** `main` and `origin/main` are both at `307285e`; production is still
+> @80. `APP_VERSION` is staged at `'81'`, `APP_DEPLOYED_AT` is not (see the header). `v5.52` is a
+> docs-only label assigned here for the deploy that will carry these four commits.
+>
+> **`d36217a` — repo hygiene; no `src/` change, no deploy needed.** `*.xlsx`/`*.xls` are now
+> gitignored — `SLA sheet.xlsx` had been sitting untracked at the repo root, showing up in every
+> `git status`; it's input data, and `rootDir` is `src/`, so it was never deployable (force-add if
+> one ever genuinely belongs in history). Adds the `.gitattributes` this repo never had, pinning
+> `* text=auto`. That pins what was *already* true — `git ls-files --eol` reported `i/lf` for all 83
+> tracked text files — so a differently-configured clone can't start committing CRLF. `eol=` is
+> deliberately omitted: Windows checkouts here run `core.autocrlf=true`, and forcing LF working
+> copies would rewrite every file for no gain. Verified zero renormalisation — staging the two files
+> moved exactly their own 6 lines and touched nothing else.
+>
+> **`35e1246` — 4 new global filters + 2 server-side ID search endpoints + the parked audit fixes.**
+> New global filter dimensions — **billable, machine type, device ID, MAC/serial** — plumbed through
+> the whole stack: staged state and combo rendering in `App.html`, SQL conditions in `Queries.js`,
+> Jira-side filtering in `Numbers.js`, spec assembly in `EditionCD.js`, cache-warm key in `Warm.js`.
+> Device ID (~7,400 distinct values) and MAC/serial (~16,000) are **searched server-side instead of
+> shipped as option lists** — `apiSearchDeviceIdsCD` and `apiSearchMacSerialIdsCD`, with matching
+> preview mocks so the local harness exercises all three result modes. Bundled into the same commit:
+> the **11 data-correctness fixes** previously parked on `worktree-audit-data-correctness`
+> (`f340a36`) — row-grain vs center-grain counting, SQL literal escaping, filter-hash stability —
+> plus three new unit suites for helpers that had none (`bigquery-helpers`, `filter-hash`,
+> `sql-literal`) and more `jira-device-type` coverage of the device-type defaults. The two strands
+> landed together because they interleave in the same four files (`App.html`, `EditionCD.js`,
+> `Numbers.js`, `Queries.js`); splitting them would have meant cutting hunks apart mid-function —
+> tidier history, commits never tested in isolation. **Note the fixes were re-applied, not merged:**
+> `f340a36` is not an ancestor of `main` (see the worktree note in the header). Also here:
+> `topNPlusOther_` replaces `.slice(0, 8)` for the two asset charts, so the long tail folds into a
+> labelled "Other (n)" bucket instead of being dropped silently.
+>
+> **`4a0a30c` — FTF chart colour rework; Overview asset cards go `span-4`.** The FTF bar chart had
+> graded every bar blue/warn/danger by the same number the bar's own height already showed, so
+> colour carried no information. Two tiers now: red means the cohort has crossed the fleet watch
+> threshold (mean+5), and a dashed `markLine` draws that threshold so the red has a visible cause
+> instead of an unexplained cutoff. The Failures/device line moved to teal — it had been `C.accent`,
+> the brand red, putting it in the same hue as the flagged bars and making one colour stand for two
+> unrelated things in a single chart. Overview's three `jira_data` breakdowns (age / status / type)
+> are now `span-4` peers; device age had briefly held `span-12` as the last survivor of the old
+> 3-card row, which handed the least data on the page the widest card — five bars capped at 34px
+> left ~180px of ink in a ~1,000px plot. Status/type sub-labels now read "top 8 + Other", matching
+> the `topNPlusOther_` bucketing from the previous commit.
+>
+> **`307285e` — `APP_VERSION` `'80'` → `'81'`.** `'80'` had become wrong by `Config.js`'s own rule:
+> it equalled the live version. `APP_DEPLOYED_AT` intentionally untouched — see the header.
+>
+> **Verified:** `npm test` → **13 suites, 217 tests passing** (re-run at `307285e` during this doc
+> pass, not just quoted from the commit messages). `node --check` clean on the `App.html`/
+> `Charts.html`/`Index.html` script blocks. **Not** verified against live BigQuery, and this doc
+> pass did not walk the new filters in the local preview — do that before deploying @81.
+
+### v5.51 / @80 (2026-08-21) — map plots ungeocoded centers at a proxy location — CURRENT LIVE
+
+> Deployed 2026-08-21 5:28 PM (`APP_DEPLOYED_AT`), built from `77c19d2`.
+>
+> **`2168f6b`** — `apiGetMapDataCD` no longer excludes centers with no resolved coordinate. It
+> approximates their pin from the average of already-geocoded centers sharing their city, falling
+> back to their hub. These proxy markers render lighter/dashed and note "approx. location" in their
+> tooltip, so **the map's count now matches Customer 360** without silently misrepresenting an
+> approximation as an exact pin. Same family as the v5.20/@49 bug further below (Map KPIs summing a
+> geocoded-only array) — opposite fix: include the centers rather than drop them. Also removed the
+> `geoProgress` status line ("N pending — run `runGeocodeBatch()` in the editor") from Overview:
+> internal maintenance copy that didn't belong on a user-facing landing page.
+>
+> **`77c19d2`** — `APP_VERSION`/`APP_DEPLOYED_AT` bump for this deploy (`'79'` → `'80'`).
+>
+> Summarized from commit messages + `Config.js`; not independently re-verified in the preview by
+> this doc pass.
+
+### v5.50 / @79 (2026-08-21) — Map tab merged into Overview; filter dropdown escapes the drawer's clipping
+
+> Deployed 2026-08-21 2:43 PM, built from `4c28f9f`.
+>
+> **`e1b5c8e` — the standalone Map page is gone; its map card now lives on Overview.** Only the map
+> card carried over (search + legend ticket-bucket filtering intact); the Map page's separate KPI
+> tiles and 4 chart cards were dropped as not required, and `apiGetMapDataCD`'s payload was trimmed
+> to match (assets no longer carry type/category/age, `unlocatedCenters` removed). ⚠️ **The live nav
+> is now 10 tabs — Overview, Centers, Support, Service, TOM, Asset, CDM, Top Customers, Numbers, Raw
+> Data — with no Map tab.** Section 1 below still describes an eight-view app *including* a
+> standalone Map (it also predates Service/TOM/CDM); `src/client/Index.html`'s sidebar is the source
+> of truth.
+>
+> **`41a3cb9` — filter dropdown floats free of the drawer's scroll clipping.** `.filter-combo-list`
+> was `position:absolute` inside `.center-panel-body` (`overflow-y:auto`), so any field near the
+> bottom of an accordion group — e.g. Country, last in Location & Hub — opened a dropdown that was
+> clipped away entirely. Now `position:fixed` with JS-computed top/left/width from the input's own
+> rect, flipping upward when there isn't 200px of room below, and hiding the list when its input
+> scrolls out of the drawer's visible bounds.
+>
+> **`4c28f9f`** — `APP_VERSION`/`APP_DEPLOYED_AT` bump for this deploy (`'78'` → `'79'`).
+>
+> Summarized from commit messages + `Config.js`; not independently re-verified in the preview by
+> this doc pass.
+
+### v5.49 / @78 (2026-08-19 authored) — Overview trees become treemaps; Asset KPI strip goes Jira-only; Jira device-type default cleared — DEPLOYED 2026-08-21 1:45 PM
 
 > This is the work that was sitting uncommitted as the "378-line `Charts.html` diff" the @77 deploy
-> stashed (see the concurrent-sessions note above). `APP_VERSION` is bumped to `'78'` per that
-> note; **`APP_DEPLOYED_AT` still reads @77's timestamp and must be set when @78 actually ships.**
+> stashed (see the concurrent-sessions note above); it is committed as `3757d68`. **@78 shipped on
+> 2026-08-21 at 1:45 PM** — `4128bb6` (2026-08-20) bumped `APP_VERSION` to `'78'`, and `b40a4ab`
+> set `APP_DEPLOYED_AT` two days later when the deploy actually ran. Besides the treemaps, @78 also
+> carries `8c02469` (below), which was committed after the version bump but before the deploy.
+>
+> **`8c02469` — the default Device Type filter no longer restricts to Connector + ECG.** Per user:
+> `JIRA_DEVICE_TYPE_DEFAULT` was `['Connector', 'ECG Machine']`, so every Jira device count and
+> chart (Asset KPIs, device age, asset lifecycle/types, batch cohort, Overview's Devices node)
+> showed only those two types until a user cleared the filter chips. Now `[]` — no restriction, every
+> tracked device type shows by default, and users still narrow via the Filters drawer. Wording that
+> assumed the old restriction was updated too (two Asset chart subtitles, one metric-info tooltip)
+> plus stale comments referencing it.
 >
 > **Overview's three decomposition trees are now treemaps.** `Charts.decompTree` → a new
 > `Charts.decompTreemap`, and the five tree-only helpers (`decompWrapName_`, `decompLeafCount_`,
@@ -291,7 +454,7 @@ reverted by the other's save at least once. Consequences to know:
 > "SIP - Service Insights Platform". Follow-up commit fixed CSS specificity bugs introduced by the
 > new tagline layout.
 
-### @76 / v5.47 (2026-08-19) — decomposition trees go LR, radiant depth gradient — CURRENT LIVE
+### @76 / v5.47 (2026-08-19) — decomposition trees go LR, radiant depth gradient — SUPERSEDED (was live @76; four deploys back)
 
 > Commit `02d141f`. TB (top-to-bottom) orientation divided a hard-capped horizontal width among
 > same-depth siblings, so a lopsided branch (one dominant segment vs. several thin ones, e.g.
@@ -1503,12 +1666,18 @@ insights from the `magnaquest-sand-box.abi_team_sip_devtest_poc` BigQuery datase
 **Jira devices Google Sheet**, and a **CS-tracker Google Sheet**, for Tricog's device
 fleet / service operations.
 
+⚠️ **This list is stale and was NOT rewritten in the 2026-08-21 catch-up pass** — it predates the
+Service, TOM and CDM pages and still carries the standalone Map that @79 merged into Overview. The
+live nav is **10 tabs**: Overview, Centers, Support, Service, TOM, Asset, CDM, Top Customers,
+Numbers, Raw Data. Read `src/client/Index.html`'s `.sidebar` for the truth; the descriptions below
+are still broadly right per page.
+
 **Eight views (tabs), Overview is the landing page:**
 1. **Overview** — executive rollup: narrative hero band, avg-device-age ring, KPI strip, **Device status (Jira)** lifecycle donut, ticket-flow, "centers needing attention" + "reliability watchlist" tables, top-customer + geo charts. (Tab order note: Overview sits after Top Customers in the bar, but is still the landing page.)
 2. **Asset** (device-focused; tab sits after Support/CS) — device-age executive summary + **"Device age" chart**, device-status donut, firmware, Jira asset lifecycle/types, **asset health-score table (M-A6)**, **failure-analysis cohort (M-A3/M-A5)**, device explorer (search/sort/paginate/CSV). Center uptime/health moved to Centers (below); Device uptime/health is a deferred redefinition — no per-device downtime source yet.
 3. **Centers / Customers** (center-focused) — executive summary (center uptime/lifecycle/downtime/health), geo, deployment age (fixed to count all centers), segment breakdown (`hub_master_segment`), top hubs (by spoke count), **Center 360** table (+Jira devices/Lifecycle/Downtime/Uptime/Tickets columns, clickable rows → drawer with Open/All ticket toggle).
 4. **Support / CS** — Zoho KPIs, ticket flow, **SLA-compliance suite (within% + Tech/Non-Tech + breach-by-type)**, backlog, categories, priority, channel, segment; CS-sheet TAT/machines/issue-types/owners.
-5. **Map** — Leaflet map of all located centers, clustered, colored by open tickets, clickable legend ticket-bucket filter, click a marker → center drawer.
+5. ~~**Map**~~ — **REMOVED as a tab in v5.50/@79** (commit `e1b5c8e`). The Leaflet map card itself lives on **Overview** now — all located centers, clustered, colored by open tickets, clickable legend ticket-bucket filter, click a marker → center drawer, plus proxy pins for ungeocoded centers (v5.51/@80). The page's own KPI tiles and 4 chart cards were dropped.
 6. **Top Customers** — curated 27 "Top LE" hubs: KPIs, map, ranked bars, leaderboard (clickable → customer drawer).
 7. **Numbers** — source-reconciliation / raw counts: KPI cards + **raw `center_details` table** (paginated, Devices + Mapped columns), devices from the Jira sheet.
 8. **Raw Data** — every underlying data source (6 BQ tables + 2 Sheets) as a paginated, unfiltered table with pill-selector and full-table CSV export. **No site filters apply** (no F2P exclusion, no Active toggle, no hub/segment/search).
@@ -1626,13 +1795,13 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 1. **Enable the Sheets API** on GCP project **218180702013**:
    https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=218180702013 → Enable → wait ~2 min. Until then **devices fall back to the offline `JiraDump.js` snapshot** and the CS-tracker panels show empty states (both non-blocking). Also share both sheets (Viewer) with the deploying user.
 2. **DE reload: PARTIALLY DONE (2026-07-07)** — `center_details` arrived with `DeviceID`/`MacSerialID` ✅ (serial→center auto-activated). Still missing: **Zoho quality fields** (first-response & resolution in business hours, thread/reopen counts → unlock M-C2 Health Index, M-S1 FCR, M-S3 FRT) + **Jira changelog** (status-transition history → M-A4 Lifecycle Dwell). Ask DE to also **dedupe rows** (8,026 exact dupes + 368 centers with genuinely-different rows) and confirm whether `F2P_Customer` all-0 is correct or the flag just isn't populated yet.
-3. **Geocoding — REQUIRED for the Map, run it now** — the reload removed lat/long, so pins come only from the pin-geocode store. `runGeocodeBatch()` (server/Geo.js) now sources `center_details` and does **ACTIVE centers first**; the quota resets ~every 14h, so re-run each day until `geoStats().pending` = 0, then `clearDashboardCache()`.
+3. **Geocoding — still wanted for accurate pins, but no longer blocking (v5.51/@80)** — since `2168f6b` an ungeocoded center plots at a city-average (or hub) proxy position, marked "approx. location", so the map is complete but partly approximate until the backlog is geocoded. The map card is on **Overview** now, not a Map tab. The reload removed lat/long, so pins come only from the pin-geocode store. `runGeocodeBatch()` (server/Geo.js) now sources `center_details` and does **ACTIVE centers first**; the quota resets ~every 14h, so re-run each day until `geoStats().pending` = 0, then `clearDashboardCache()`.
 4. **Verify the Jira browse domain** — drawer KEY links use `https://tricog.atlassian.net/browse/` (const `JIRA_BROWSE` in App.html) — confirm this is correct.
 5. **Buildable-today enhancement (deferred by user 2026-07-07):** add per-account MRR to the Top-20 leaderboard (M-C3).
 6. **Downtime display** — cumulative (>100% possible). Open offer: cap at 100% / relabel "Service burden %", or keep with tooltip.
 7. **Device uptime / Device health (deferred, 2026-07-08)** — Asset page currently has no device-grain uptime metric (moved Center uptime/health to Centers page instead). Needs a fresh formula from the user before building — do not guess; the sandbox has no per-device downtime source today (candidate proxy: cloud_devices heartbeat recency, but that's a different definition and would only cover the ~11k devices with telemetry).
 8. **Asset KPI tiles still show the OLD tiles** (device-status donut, firmware, asset lifecycle/types, health-score table, cohort) — only the executive summary + a new "Device age" chart were added/changed on this page so far; the KPI strip itself (Poor signal / Unsynced ECG removal was applied, but no full KPI redesign) is not yet revisited metric-by-metric with the user.
-9. **Remaining pages not yet worked**: Support/CS, Map, Top Customers, Numbers, Raw Data, Overview — the page-by-page/metric-by-metric pass (started 2026-07-08 with Asset then Centers) has not reached these yet.
+9. **Remaining pages not yet worked**: Support/CS, Top Customers, Numbers, Raw Data — the page-by-page/metric-by-metric pass (started 2026-07-08 with Asset then Centers) has not reached these yet. (Map is no longer a page; Overview has been reworked repeatedly since — @67 through @81 — so it's off this list.)
 10. **Next up (queued, not started):** user has queued a batch of changes around filters and data extraction — requirements gathering (brainstorm/spec) has started but the change inventory has not yet been provided.
 11. **Test harness added (2026-07-28)** — a two-tier Jest suite now exists: `npm test` (fast unit tests, no credentials) and `npm run test:reconcile` (live-BigQuery reconciliation, needs `GOOGLE_APPLICATION_CREDENTIALS`); `npm run verify-before-deploy` runs both as a manual pre-deploy gate. CI (`.github/workflows/test.yml`) runs the unit tier on every push and the reconciliation tier on PRs into `main`. **Still open:** the `BQ_SERVICE_ACCOUNT_KEY` repo secret (base64-encoded `tricogde-dwh` service-account key) has not been added to GitHub yet, so the CI reconciliation job currently no-ops on every PR — see `docs/superpowers/specs/2026-07-28-testing-harness-design.md` for the full design and what's still uncovered.
 12. ~~**(from 2026-07-31 review) Fix global search's silent no-op**~~ — **DONE 2026-08-04**, commit `9657431` (not yet pushed/deployed): Overview/Numbers/Raw Data now disable the box with an explanation; Top Customers now actually filters; Support/CS is a CenterID/ticket-number lookup instead.
@@ -1644,6 +1813,8 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 18. **(v5.30) Confirm what TOM actually is.** The page is built as a CS issue tracker because `remarks` records outcomes, but the user was asked twice and did not answer, and `comments` hints at machine transfers. Still unanswered as of 2026-08-14. If it's really machine movement, re-frame the page's labels/KPIs around movements and turnaround — the underlying queries mostly survive.
 19. ~~**(v5.29/v5.30) `Charts.rankBar` x-axis labels collide in narrow `span-4` cards`~~ — **DONE, v5.32/@61 (2026-08-14), commit `678496f`.** Removed the redundant/overlapping value axis from all 12 `rankBar` instances (5 TOM, 3 Service, 3 Top Customers, 1 Overview) — the axis duplicated the value already printed as a bar-end label.
 20. **(2026-08-14 catch-up pass) `docs/SOURCES.md` and `docs/ARCHITECTURE.md` were 3 versions stale** (last touched at v5.13, missing every v5.14–v5.33 change: `tom_tickets`, `servicewrk_Tickets`, `hub_country`, the CDM page, the 7-dimension filter set, the zoho dedup/native-DATETIME fixes, the reversed ServiceWRK-uptime-swap decision). **Fixed in this pass** — both docs now reflect state through v5.33/@62. Re-verify they're still current before trusting them on anything past this point.
+21. ⚠️ **(2026-08-21) Deploy @81 — the only open action from this catch-up pass.** `main`/`origin/main` at `307285e` carry two undeployed `src/` changes (`35e1246` filters + audit fixes, `4a0a30c` FTF chart / `span-4` cards); `d36217a` and `307285e` need no deploy of their own. `APP_VERSION` is already `'81'`; **`APP_DEPLOYED_AT` is still @80's `'Aug 21, 2026, 5:28 PM'` and MUST be set to the real deploy time in the same change as the `clasp deploy`** — until then the footer pairs v81 with @80's timestamp. Before deploying: `npm test` (13 suites / 217 tests as of `307285e`), walk the four new filters + both ID searches in the local preview, and `git status` the *main* checkout — the `centers-360-reliability-merge` worktree has ~99 uncommitted deletions and `clasp push` uploads whatever is on disk in the directory you run it from. Then update this doc's header and add the v5.52/@81 deploy timestamp.
+22. **(2026-08-21) Section 1's view list was left stale on purpose** — it still says "Eight views" and predates Service/TOM/CDM plus the Map→Overview merge; a warning note now sits above it. Rewrite it page-by-page next time someone has the context to describe all 10 tabs accurately, and re-check `docs/SOURCES.md`/`docs/ARCHITECTURE.md` at the same time (item 20 above only brought them current to v5.33/@62; `8e9fbed`/`dfd1c28` later touched them for @77/@78, nothing since).
 
 ---
 

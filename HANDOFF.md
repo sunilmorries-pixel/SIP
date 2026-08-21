@@ -1,12 +1,28 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-21 · **Live version:** 5.51 · **Status:** ⚠️ **Production deployed
-(@80/v5.51, built from commit `77c19d2`) — but git is 4 commits AHEAD of production.** Production
-(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always)
-serves Apps Script **@80 / v5.51**, deployed 2026-08-21 5:28 PM. Local `main`'s tip is `307285e`,
-identical to `origin/main` (0 ahead / 0 behind), working tree clean — nothing unpushed, but four
-commits are committed-and-pushed-yet-undeployed (see the **v5.52/@81** entry, first below). No tag
-cut for v5.27–v5.51; tags are not a reliable release index.
+**Last updated:** 2026-08-21 · **Live version:** 5.51 · **Status:** ⚠️ **Production is @80/v5.51,
+built from `77c19d2`. Three deployable commits sit ahead of it, and one of them is a blocker — see
+item 21.** Production (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`,
+same URL as always) serves Apps Script **@80 / v5.51**, deployed 2026-08-21 5:28 PM.
+
+**There is deliberately no tip SHA and no commit count in this header.** Both kept going stale, twice
+because of commits that edited nothing but this file — any "N commits ahead of production" figure is
+falsified by the very commit that corrects it. Cite what a deploy would actually ship instead:
+
+```
+git log 77c19d2..HEAD -- src/
+```
+
+The `-- src/` pathspec is the point: `rootDir` is `src/`, so nothing outside it can reach production
+and doc commits never show up. As of this pass it returns three commits — `35e1246` (filters + audit
+fixes) and `4a0a30c` (FTF chart, `span-4` cards) change page behaviour, and `307285e` is the
+`APP_VERSION` bump that ships with them. `d36217a` (`.gitignore`/`.gitattributes`) and every
+HANDOFF-only commit fall outside `src/` and deploy nothing, which is why the raw gap reads larger
+than the deployable one.
+
+⚠️ **The working tree is NOT clean** — `src/client/App.html` carries an uncommitted edit; see the
+warning below before running anything that pushes. No tag cut for v5.27–v5.51;
+tags are not a reliable release index.
 
 ⚠️ **A deploy IS needed, and `APP_VERSION` is already staged for it.** `Config.js` reads
 `APP_VERSION: '81'` (commit `307285e`) while production runs @80 — which is exactly what the rule
@@ -1857,7 +1873,7 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 18. **(v5.30) Confirm what TOM actually is.** The page is built as a CS issue tracker because `remarks` records outcomes, but the user was asked twice and did not answer, and `comments` hints at machine transfers. Still unanswered as of 2026-08-14. If it's really machine movement, re-frame the page's labels/KPIs around movements and turnaround — the underlying queries mostly survive.
 19. ~~**(v5.29/v5.30) `Charts.rankBar` x-axis labels collide in narrow `span-4` cards`~~ — **DONE, v5.32/@61 (2026-08-14), commit `678496f`.** Removed the redundant/overlapping value axis from all 12 `rankBar` instances (5 TOM, 3 Service, 3 Top Customers, 1 Overview) — the axis duplicated the value already printed as a bar-end label.
 20. **(2026-08-14 catch-up pass) `docs/SOURCES.md` and `docs/ARCHITECTURE.md` were 3 versions stale** (last touched at v5.13, missing every v5.14–v5.33 change: `tom_tickets`, `servicewrk_Tickets`, `hub_country`, the CDM page, the 7-dimension filter set, the zoho dedup/native-DATETIME fixes, the reversed ServiceWRK-uptime-swap decision). **Fixed in this pass** — both docs now reflect state through v5.33/@62. Re-verify they're still current before trusting them on anything past this point.
-21. ⚠️ **(2026-08-21) Deploy @81 — the only open action from this catch-up pass.** `main`/`origin/main` at `52a868c` carry two undeployed `src/` changes (`35e1246` filters + audit fixes, `4a0a30c` FTF chart / `span-4` cards); `d36217a`, `307285e` and `52a868c` need no deploy of their own. ⚠️ **BLOCKER: do not deploy yet.** `35e1246`'s four new global filters are only partly wired on the client — the chips, active-count badge and `filtersEqual_` change detection are in an *uncommitted* `src/client/App.html` edit owned by another session (see the header). Deploying before it is committed ships the filters **silently inert**: `filtersEqual_` (the `$('filterApplyBtn')` handler's gate plus all nine per-tab checks — grep it rather than trusting a line number, which differs by 9 between HEAD and the working tree) cannot see the four new dims, so selecting one computes `changed === false` and nothing refetches — the user sees unfiltered numbers with no error. Not cosmetic; wrong data. Wait for that session, confirm `git status` is clean, then deploy. `APP_VERSION` is already `'81'`; **`APP_DEPLOYED_AT` is still @80's `'Aug 21, 2026, 5:28 PM'` and MUST be set to the real deploy time in the same change as the `clasp deploy`** — until then the footer pairs v81 with @80's timestamp. Before deploying: `npm test` (13 suites / 217 tests as of `307285e`), walk the four new filters + both ID searches in the local preview, and `git status` the *main* checkout — the `centers-360-reliability-merge` worktree has ~99 uncommitted deletions and `clasp push` uploads whatever is on disk in the directory you run it from. Then update this doc's header and add the v5.52/@81 deploy timestamp.
+21. ⚠️ **(2026-08-21) Deploy @81 — the only open action from this catch-up pass.** The deployable gap since @80 — `git log 77c19d2..HEAD -- src/` — is two page-behaviour changes (`35e1246` filters + audit fixes, `4a0a30c` FTF chart / `span-4` cards) plus `307285e`, the `APP_VERSION` bump that ships with them. `d36217a` and every HANDOFF-only commit are outside `src/` and deploy nothing, so don't count them. ⚠️ **BLOCKER: do not deploy yet.** `35e1246`'s four new global filters are only partly wired on the client — the chips, active-count badge and `filtersEqual_` change detection are in an *uncommitted* `src/client/App.html` edit owned by another session (see the header). Deploying before it is committed ships the filters **silently inert**: `filtersEqual_` (the `$('filterApplyBtn')` handler's gate plus all nine per-tab checks — grep it rather than trusting a line number, which differs by 9 between HEAD and the working tree) cannot see the four new dims, so selecting one computes `changed === false` and nothing refetches — the user sees unfiltered numbers with no error. Not cosmetic; wrong data. Wait for that session, confirm `git status` is clean, then deploy. `APP_VERSION` is already `'81'`; **`APP_DEPLOYED_AT` is still @80's `'Aug 21, 2026, 5:28 PM'` and MUST be set to the real deploy time in the same change as the `clasp deploy`** — until then the footer pairs v81 with @80's timestamp. Before deploying: `npm test` (13 suites / 217 tests as of `307285e`), walk the four new filters + both ID searches in the local preview, and `git status` the *main* checkout — the `centers-360-reliability-merge` worktree has ~99 uncommitted deletions and `clasp push` uploads whatever is on disk in the directory you run it from. Then update this doc's header and add the v5.52/@81 deploy timestamp.
 22. **(2026-08-21) Section 1's view list was left stale on purpose** — it still says "Eight views" and predates Service/TOM/CDM plus the Map→Overview merge; a warning note now sits above it. Rewrite it page-by-page next time someone has the context to describe all 10 tabs accurately, and re-check `docs/SOURCES.md`/`docs/ARCHITECTURE.md` at the same time (item 20 above only brought them current to v5.33/@62; `8e9fbed`/`dfd1c28` later touched them for @77/@78, nothing since).
 
 ---

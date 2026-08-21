@@ -614,15 +614,36 @@ var Charts = (function () {
           name: 'FTF rate', type: 'bar', barMaxWidth: 34,
           // value labels shown by default so the metric never depends on colour/hover alone
           label: { show: true, position: 'top', formatter: '{c}%', color: C.textDim, fontSize: 11, fontWeight: 600 },
+          // Two tiers, not three. The old blue/warn/danger ramp graded every
+          // bar by the same number its own height already showed, so colour
+          // carried nothing new. Red is now reserved for the one thing height
+          // can't tell you: that a cohort has crossed the fleet's watch
+          // threshold, which is mean+5 and derived from the data rather than
+          // fixed. The markLine below draws that threshold so the red has a
+          // visible cause instead of an unexplained cutoff.
+          markLine: {
+            silent: true, symbol: 'none',
+            lineStyle: { color: C.danger, type: 'dashed', width: 1.5, opacity: 0.7 },
+            label: {
+              formatter: 'watch threshold', position: 'insideEndTop',
+              color: C.textDim, fontSize: 10
+            },
+            data: [{ yAxis: Math.round((mean + 5) * 10) / 10 }]
+          },
           data: rows.map(function (r) {
             var v = r.ftf_rate_pct || 0;
-            var col = v >= mean + 5 ? C.danger : (v >= mean ? C.warn : C.primary);
-            return { value: v, itemStyle: { borderRadius: [6, 6, 0, 0], color: col } };
+            return {
+              value: v,
+              itemStyle: { borderRadius: [6, 6, 0, 0], color: v >= mean + 5 ? C.danger : C.primary }
+            };
           })
         },
         {
+          // Teal, not C.accent: C.accent is the brand red, which put this line
+          // in the same hue as the flagged bars above — one colour standing for
+          // two unrelated things in a single chart.
           name: 'Failures/device', type: 'line', yAxisIndex: 1, smooth: true, symbolSize: 7,
-          lineStyle: { width: 2.5, color: C.accent }, itemStyle: { color: C.accent },
+          lineStyle: { width: 2.5, color: C.teal }, itemStyle: { color: C.teal },
           data: rows.map(function (r) { return r.avg_failures; })
         }
       ]

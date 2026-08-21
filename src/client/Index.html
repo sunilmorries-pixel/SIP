@@ -227,10 +227,16 @@
     <div class="card-grid">
       <!-- Device status (donut) and Firmware spread were removed 2026-08-19:
            both were cloud_devices telemetry with no Jira equivalent, and
-           cloud_devices data is CDM/Numbers/Raw-Data only now. Device age
-           (jira_data) is the only survivor of the old 3-card row, so it now
-           spans the full row instead of sitting alone at span-4. -->
-      <article class="card span-12">
+           cloud_devices data is CDM/Numbers/Raw-Data only now.
+
+           These three are one row of span-4 peers: they are the page's three
+           jira_data breakdowns of the same fleet, cut by age / status / type.
+           Device age briefly held span-12 as the last survivor of the old
+           3-card row, which gave the least data on the page the widest card —
+           five bars capped at 36px wide left ~180px of ink in a ~1,000px plot.
+           A 5-band vertical distribution needs no more width than a ranked
+           bar list does. -->
+      <article class="card span-4">
         <header class="card-head">
           <h2 class="card-title">Device age</h2>
           <p class="card-sub">Devices by age (today − Created); 5y+ past expected life</p>
@@ -239,22 +245,19 @@
              aria-label="Bar chart of devices grouped by age band"></div>
       </article>
 
-      <!-- span-6 pair, not span-4: five span-4 cards packed 3 + 2, leaving a
-           third of the second row empty. 3 device cards above, these 2 asset
-           cards filling their own row, splits on the real semantic boundary. -->
-      <article class="card span-6">
+      <article class="card span-4">
         <header class="card-head">
           <h2 class="card-title">Asset lifecycle</h2>
-          <p class="card-sub">jira_data-tracked devices by status</p>
+          <p class="card-sub">jira_data-tracked devices by status · top 8 + Other</p>
         </header>
         <div id="chartAssetStatus" class="chart" role="img"
              aria-label="Bar chart of assets by lifecycle status"></div>
       </article>
 
-      <article class="card span-6">
+      <article class="card span-4">
         <header class="card-head">
           <h2 class="card-title">Asset types</h2>
-          <p class="card-sub">Hardware categories under management</p>
+          <p class="card-sub">Hardware categories under management · top 8 + Other</p>
         </header>
         <div id="chartAssetTypes" class="chart" role="img"
              aria-label="Horizontal bar chart of assets by hardware type"></div>
@@ -1100,6 +1103,34 @@
             <div id="filterDeviceStatus" class="filter-combo" data-dim="deviceStatusExclude"></div>
             <p class="filter-note">Selected statuses are HIDDEN, not shown — the opposite of every other filter above.</p>
           </section>
+        </div>
+      </details>
+
+      <details class="filter-group" id="fgHardware">
+        <summary class="filter-group-head">
+          <svg class="filter-group-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="18" cy="17" r="2" stroke="currentColor" stroke-width="2"/></svg>
+          <span class="filter-group-title">Hardware (Centers)</span>
+          <span class="filter-group-count" id="fgCountHardware" hidden>0</span>
+          <svg class="filter-group-chevron" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </summary>
+        <div class="filter-group-body">
+          <section class="filter-section">
+            <h3 class="filter-section-title">Billable</h3>
+            <div id="filterBillable" class="filter-combo" data-dim="billable"></div>
+          </section>
+          <section class="filter-section">
+            <h3 class="filter-section-title">Machine Type</h3>
+            <div id="filterMachineType" class="filter-combo" data-dim="machineTypes"></div>
+          </section>
+          <section class="filter-section">
+            <h3 class="filter-section-title">Device ID</h3>
+            <div id="filterDeviceId" class="filter-combo" data-dim="deviceIds"></div>
+          </section>
+          <section class="filter-section">
+            <h3 class="filter-section-title">Mac Serial ID</h3>
+            <div id="filterMacSerialId" class="filter-combo" data-dim="macSerialIds"></div>
+          </section>
+          <p class="filter-note">All four come from <code>center_details</code>, same as State/Hub/City/Country above.</p>
         </div>
       </details>
 

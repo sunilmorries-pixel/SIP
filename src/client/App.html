@@ -479,7 +479,7 @@
       }
       return Promise.resolve({
         centers: pts, assets: asset,
-        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' }
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], billable: [], machineTypes: [], deviceIds: [], macSerialIds: [], dateFrom: '', dateTo: '' }
       });
     }
     if (fn === 'apiGetOverviewFlow') {
@@ -546,7 +546,7 @@
         }
       });
       return Promise.resolve({ customers: custs, mapCenters: mapc, totals: totals,
-        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' } });
+        filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], billable: [], machineTypes: [], deviceIds: [], macSerialIds: [], dateFrom: '', dateTo: '' } });
     }
     if (fn === 'apiGetCenterDetail') {
       return Promise.resolve({
@@ -615,7 +615,7 @@
       // tricogde-dwh). devices/cities/active_deployments dropped: dead since
       // the Centers KPI rebuild removed their tiles, nothing reads them.
       centerKpis: [{ centers: 28482, centers_with_open_tickets: 187 }],
-      filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' },
+      filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], billable: [], machineTypes: [], deviceIds: [], macSerialIds: [], dateFrom: '', dateTo: '' },
       geo: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Kerala', 'Delhi'].map(function (s) { return { state: s, devices: rnd(300, 2600) }; }),
       // Customers page's own state/city breakdown (see EditionCD.js's
       // geoCustomers spec) — the mock doesn't branch on filters like the
@@ -1997,6 +1997,8 @@
       arrEq(a.cities, b.cities) && arrEq(a.countries, b.countries) &&
       arrEq(a.centers || [], b.centers || []) &&
       arrEq(a.deviceTypes, b.deviceTypes) && arrEq(a.deviceStatusExclude, b.deviceStatusExclude) &&
+      arrEq(a.billable || [], b.billable || []) && arrEq(a.machineTypes || [], b.machineTypes || []) &&
+      arrEq(a.deviceIds || [], b.deviceIds || []) && arrEq(a.macSerialIds || [], b.macSerialIds || []) &&
       a.dateFrom === b.dateFrom && a.dateTo === b.dateTo;
   }
 
@@ -2004,6 +2006,8 @@
     return f.segments.length + f.statuses.length + f.states.length + f.hubs.length +
       f.cities.length + f.countries.length + (f.centers || []).length +
       f.deviceTypes.length + f.deviceStatusExclude.length +
+      (f.billable || []).length + (f.machineTypes || []).length +
+      (f.deviceIds || []).length + (f.macSerialIds || []).length +
       (f.dateFrom ? 1 : 0) + (f.dateTo ? 1 : 0);
   }
 
@@ -2028,6 +2032,10 @@
     (f.centers || []).forEach(function (v) { chips.push({ dim: 'centers', label: 'Center: ' + filterLabelFor_('centers', v), value: v }); });
     f.deviceTypes.forEach(function (v) { chips.push({ dim: 'deviceTypes', label: 'Device type: ' + v, value: v }); });
     f.deviceStatusExclude.forEach(function (v) { chips.push({ dim: 'deviceStatusExclude', label: 'Hides: ' + v, value: v }); });
+    (f.billable || []).forEach(function (v) { chips.push({ dim: 'billable', label: 'Billable: ' + v, value: v }); });
+    (f.machineTypes || []).forEach(function (v) { chips.push({ dim: 'machineTypes', label: 'Machine type: ' + v, value: v }); });
+    (f.deviceIds || []).forEach(function (v) { chips.push({ dim: 'deviceIds', label: 'Device ID: ' + v, value: v }); });
+    (f.macSerialIds || []).forEach(function (v) { chips.push({ dim: 'macSerialIds', label: 'Mac Serial ID: ' + v, value: v }); });
     if (f.dateFrom || f.dateTo) chips.push({ dim: 'date', label: 'Date: ' + (f.dateFrom || '…') + '–' + (f.dateTo || '…'), value: null });
 
     $('filterChips').innerHTML = chips.map(function (c, i) {
@@ -2056,7 +2064,8 @@
   }
 
   var FILTER_DIM_LABELS = { segments: 'segment', statuses: 'status', states: 'state', hubs: 'hub', cities: 'city', countries: 'country',
-    centers: 'center', deviceTypes: 'device type', deviceStatusExclude: 'device status' };
+    centers: 'center', deviceTypes: 'device type', deviceStatusExclude: 'device status',
+    billable: 'billable', machineTypes: 'machine type', deviceIds: 'device ID', macSerialIds: 'MAC serial ID' };
   // Plain "+ 's'" mispluralizes status -> statuss and city -> citys; the only
   // two dimensions that need their own irregular plural (the others already
   // end cleanly in a consonant).

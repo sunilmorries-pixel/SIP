@@ -29,13 +29,28 @@ label assigned in this pass.
 but `App.html` has carried an uncommitted edit from another session since 18:26 and is still growing
 (+10/−1 at 18:29, +13/−4 at 18:30) — treat any figure quoted here as stale and run
 `git diff --stat src/client/App.html` for the live number. **Size is not the point.** That edit is the
-client-side completion of the four new global filters committed in `35e1246`: it adds the filter chips
-(`renderFilterChips_`), the active-count badge (`filterActiveCount_`), the drawer's change detection
-(`filtersEqual_`) and the preview-mock filter defaults, for `billable` / `machineTypes` / `deviceIds` /
-`macSerialIds`. `35e1246` shipped the `filterLabelFor_` label map but **none** of those — verified by
-grepping `35e1246:src/client/App.html`. So **@81 must not ship until this edit lands**, or the four
-filters deploy with no chips, an undercounted badge, and a `filtersEqual_` blind to them (the drawer
-would not notice those four dims changing). **`clasp push` from this directory would upload the
+client-side completion of the four new global filters committed in `35e1246` — 7 hunks, of which only
+4 reach production (the other 3 are `filters` defaults inside `mockCall` payloads, and `mockCall` runs
+only when `google.script` is unavailable, App.html:114).
+
+**`35e1246` wired the drawer's INPUT path but not its change-detection and display path.** It already
+has the staged/applied state defaults, the `fgHardware` group (2083), all four `renderFilterCombo_`
+calls including both search-backed ones (2144–2147), both search endpoints and their preview mocks, and
+`FILTER_DIM_PLURAL` (2065). What it lacks is the four consumers of that state: `filtersEqual_`,
+`filterActiveCount_`, `renderFilterChips_` and the `FILTER_DIM_LABELS` entries (2058). Beware the
+two-map trap: `FILTER_DIM_PLURAL` *does* carry all four dims, so grepping for `billable: 'billable'`
+reads as a false positive — `FILTER_DIM_LABELS`, the singular map next to it, is the one missing them.
+A reviewer should check those four consumers, not re-audit the drawer.
+
+⚠️ **The consequence is silently wrong data, not a cosmetic glitch.** `filtersEqual_` is the app's
+staleness gate, not a chip helper: it guards the Apply path (`var changed = !filtersEqual_(...)`,
+App.html:3631) and every per-tab refetch check (2974–3036 — overviewFlow, service, tom, numbers,
+rawData, the shared dashboard payload, centers, cdm, slaRisk). Its committed body compares 11 keys and
+none of the four new dims. So selecting only a device ID and pressing Apply computes
+`changed === false`; `state.globalFilters` is still reassigned, but `commitGlobalFilters_()` never
+runs, so nothing refetches and the page keeps showing unfiltered numbers with no error. Switching tabs
+does not rescue it — the per-tab checks call the same blind comparison. This is the exact failure class
+this dashboard has spent the month fixing. **`clasp push` from this directory would upload the
 in-flight edit**, so run `git status` yourself before any deploy rather than trusting any line in this
 doc, including this one. One stray untracked file also sits at the repo
 root, a scratch file written through a mangled Windows temp path
@@ -1824,7 +1839,7 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 18. **(v5.30) Confirm what TOM actually is.** The page is built as a CS issue tracker because `remarks` records outcomes, but the user was asked twice and did not answer, and `comments` hints at machine transfers. Still unanswered as of 2026-08-14. If it's really machine movement, re-frame the page's labels/KPIs around movements and turnaround — the underlying queries mostly survive.
 19. ~~**(v5.29/v5.30) `Charts.rankBar` x-axis labels collide in narrow `span-4` cards`~~ — **DONE, v5.32/@61 (2026-08-14), commit `678496f`.** Removed the redundant/overlapping value axis from all 12 `rankBar` instances (5 TOM, 3 Service, 3 Top Customers, 1 Overview) — the axis duplicated the value already printed as a bar-end label.
 20. **(2026-08-14 catch-up pass) `docs/SOURCES.md` and `docs/ARCHITECTURE.md` were 3 versions stale** (last touched at v5.13, missing every v5.14–v5.33 change: `tom_tickets`, `servicewrk_Tickets`, `hub_country`, the CDM page, the 7-dimension filter set, the zoho dedup/native-DATETIME fixes, the reversed ServiceWRK-uptime-swap decision). **Fixed in this pass** — both docs now reflect state through v5.33/@62. Re-verify they're still current before trusting them on anything past this point.
-21. ⚠️ **(2026-08-21) Deploy @81 — the only open action from this catch-up pass.** `main`/`origin/main` at `52a868c` carry two undeployed `src/` changes (`35e1246` filters + audit fixes, `4a0a30c` FTF chart / `span-4` cards); `d36217a`, `307285e` and `52a868c` need no deploy of their own. ⚠️ **BLOCKER: do not deploy yet.** `35e1246`'s four new global filters are only partly wired on the client — the chips, active-count badge and `filtersEqual_` change detection are in an *uncommitted* `src/client/App.html` edit owned by another session (see the header). Deploying before it is committed ships the filters visibly broken. Wait for that session, confirm `git status` is clean, then deploy. `APP_VERSION` is already `'81'`; **`APP_DEPLOYED_AT` is still @80's `'Aug 21, 2026, 5:28 PM'` and MUST be set to the real deploy time in the same change as the `clasp deploy`** — until then the footer pairs v81 with @80's timestamp. Before deploying: `npm test` (13 suites / 217 tests as of `307285e`), walk the four new filters + both ID searches in the local preview, and `git status` the *main* checkout — the `centers-360-reliability-merge` worktree has ~99 uncommitted deletions and `clasp push` uploads whatever is on disk in the directory you run it from. Then update this doc's header and add the v5.52/@81 deploy timestamp.
+21. ⚠️ **(2026-08-21) Deploy @81 — the only open action from this catch-up pass.** `main`/`origin/main` at `52a868c` carry two undeployed `src/` changes (`35e1246` filters + audit fixes, `4a0a30c` FTF chart / `span-4` cards); `d36217a`, `307285e` and `52a868c` need no deploy of their own. ⚠️ **BLOCKER: do not deploy yet.** `35e1246`'s four new global filters are only partly wired on the client — the chips, active-count badge and `filtersEqual_` change detection are in an *uncommitted* `src/client/App.html` edit owned by another session (see the header). Deploying before it is committed ships the filters **silently inert**: `filtersEqual_` (App.html:3631 Apply gate, 2974–3036 per-tab checks) cannot see the four new dims, so selecting one computes `changed === false` and nothing refetches — the user sees unfiltered numbers with no error. Not cosmetic; wrong data. Wait for that session, confirm `git status` is clean, then deploy. `APP_VERSION` is already `'81'`; **`APP_DEPLOYED_AT` is still @80's `'Aug 21, 2026, 5:28 PM'` and MUST be set to the real deploy time in the same change as the `clasp deploy`** — until then the footer pairs v81 with @80's timestamp. Before deploying: `npm test` (13 suites / 217 tests as of `307285e`), walk the four new filters + both ID searches in the local preview, and `git status` the *main* checkout — the `centers-360-reliability-merge` worktree has ~99 uncommitted deletions and `clasp push` uploads whatever is on disk in the directory you run it from. Then update this doc's header and add the v5.52/@81 deploy timestamp.
 22. **(2026-08-21) Section 1's view list was left stale on purpose** — it still says "Eight views" and predates Service/TOM/CDM plus the Map→Overview merge; a warning note now sits above it. Rewrite it page-by-page next time someone has the context to describe all 10 tabs accurately, and re-check `docs/SOURCES.md`/`docs/ARCHITECTURE.md` at the same time (item 20 above only brought them current to v5.33/@62; `8e9fbed`/`dfd1c28` later touched them for @77/@78, nothing since).
 
 ---

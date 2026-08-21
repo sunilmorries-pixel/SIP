@@ -578,31 +578,6 @@ var Charts = (function () {
     }));
   }
 
-  function assetByType(rows)     { verticalBar('chartAssetByType', rows, 'label', 'cnt', C.primary, 'No assets match'); }
-  function assetByCategory(rows) { horizontalBar('chartAssetByCat', rows, 'label', 'cnt', C.violet); }
-  function centersByState(rows)  { horizontalBar('chartCentersByState', rows, 'label', 'cnt', C.info); }
-
-  var ASSET_AGE_ORDER = ['<6 mo', '6-12 mo', '1-2 yr', '2-3 yr', '3-5 yr', '5+ yr'];
-  function assetAge(rows) {
-    if (!rows || !rows.length) return showEmpty('chartAssetAge', 'No assets match');
-    var by = {}; rows.forEach(function (r) { by[r.label] = r.cnt; });
-    var cats = ASSET_AGE_ORDER.filter(function (b) { return by[b]; });
-    render('chartAssetAge', base({
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      xAxis: catAxis({ data: cats }),
-      yAxis: valAxis(),
-      series: [{
-        type: 'bar', barMaxWidth: 40,
-        itemStyle: {
-          borderRadius: [6, 6, 0, 0],
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: C.accent }, { offset: 1, color: 'rgba(229,52,79,0.3)' }])
-        },
-        data: cats.map(function (b) { return by[b]; })
-      }]
-    }));
-  }
-
   /**
    * Batch-cohort failure combo (M-A3 + M-A5): FTF rate % bars (coloured by
    * severity vs the fleet mean) + failures/device line on a second axis.
@@ -969,10 +944,6 @@ var Charts = (function () {
     cohort: cohort,
     applyTheme: applyTheme,
     rankBar: rankBar,
-    assetByType: assetByType,
-    assetByCategory: assetByCategory,
-    assetAge: assetAge,
-    centersByState: centersByState,
     fleetStatus: fleetStatus,
     jiraStatus: jiraStatus,
     geo: geo,

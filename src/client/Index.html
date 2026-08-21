@@ -36,10 +36,6 @@
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14 0M8.53 16.11a6 6 0 0 1 6.95 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="20" r="1.4" fill="currentColor"/></svg>
       <span class="nav-label">CDM</span>
     </button>
-    <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" tabindex="-1">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="3" stroke="currentColor" stroke-width="2"/></svg>
-      <span class="nav-label">Map</span>
-    </button>
     <button class="tab" id="tab-topcust" role="tab" aria-selected="false" aria-controls="panel-topcust" tabindex="-1">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
       <span class="nav-label">Top Customers</span>
@@ -199,6 +195,23 @@
                aria-label="Treemap of tickets by source system and outcome, sized by share of the total"></div>
         </details>
       </article>
+    </div>
+
+    <!-- Center map — moved here from its own tab (2026-08-21, per user): only
+         the map itself carried over, the old Map page's KPI tiles and 4 chart
+         cards were dropped as not required. -->
+    <div id="geoProgress" class="geo-progress" role="status" aria-live="polite" style="margin-top:var(--gap);margin-bottom:var(--gap)">Loading map data…</div>
+
+    <div class="map-wrap card">
+      <div id="assetMap" role="application"
+           aria-label="Map of centers. Click a marker to see center and asset details."></div>
+
+      <div class="map-legend" role="group" aria-label="Filter map by open tickets">
+        <button class="legend-filter" type="button" data-bucket="none" aria-pressed="false"><span class="legend-dot" style="background:#34D399"></span>No open tickets</button>
+        <button class="legend-filter" type="button" data-bucket="low" aria-pressed="false"><span class="legend-dot" style="background:#FBBF24"></span>1–3 open</button>
+        <button class="legend-filter" type="button" data-bucket="high" aria-pressed="false"><span class="legend-dot" style="background:#F87171"></span>4+ open</button>
+        <span class="legend-note">size = devices · click to filter</span>
+      </div>
     </div>
   </section>
 
@@ -767,63 +780,6 @@
     </div>
   </section>
 
-  <!-- ══════════════ VIEW 6 · MAP (Assets & Centers) ══════════════ -->
-  <section id="panel-map" class="panel" role="tabpanel" aria-labelledby="tab-map" hidden>
-    <div id="mapKpiGrid" class="kpi-grid kpi-grid-4"></div>
-
-    <div id="geoProgress" class="geo-progress" role="status" aria-live="polite" style="margin-bottom:var(--gap)">Open this tab to load the map…</div>
-
-    <div class="map-wrap card">
-      <div id="assetMap" role="application"
-           aria-label="Map of centers. Click a marker to see center and asset details."></div>
-
-      <div class="map-legend" role="group" aria-label="Filter map by open tickets">
-        <button class="legend-filter" type="button" data-bucket="none" aria-pressed="false"><span class="legend-dot" style="background:#34D399"></span>No open tickets</button>
-        <button class="legend-filter" type="button" data-bucket="low" aria-pressed="false"><span class="legend-dot" style="background:#FBBF24"></span>1–3 open</button>
-        <button class="legend-filter" type="button" data-bucket="high" aria-pressed="false"><span class="legend-dot" style="background:#F87171"></span>4+ open</button>
-        <span class="legend-note">size = devices · click to filter</span>
-      </div>
-    </div>
-
-    <div class="card-grid" style="margin-top:var(--gap)">
-      <article class="card span-6">
-        <header class="card-head">
-          <h2 class="card-title">Assets by machine type</h2>
-          <p class="card-sub">Parsed from Jira · matches current filters</p>
-        </header>
-        <div id="chartAssetByType" class="chart chart-tall" role="img"
-             aria-label="Bar chart of assets by machine type"></div>
-      </article>
-
-      <article class="card span-6">
-        <header class="card-head">
-          <h2 class="card-title">Asset lifecycle age</h2>
-          <p class="card-sub">Days since first Jira record (birthday)</p>
-        </header>
-        <div id="chartAssetAge" class="chart chart-tall" role="img"
-             aria-label="Bar chart of assets by age band"></div>
-      </article>
-
-      <article class="card span-6">
-        <header class="card-head">
-          <h2 class="card-title">Assets by category</h2>
-          <p class="card-sub">Jira issue type</p>
-        </header>
-        <div id="chartAssetByCat" class="chart chart-tall" role="img"
-             aria-label="Horizontal bar chart of assets by category"></div>
-      </article>
-
-      <article class="card span-6">
-        <header class="card-head">
-          <h2 class="card-title">Centers by state</h2>
-          <p class="card-sub">Located centers matching current filters</p>
-        </header>
-        <div id="chartCentersByState" class="chart chart-tall" role="img"
-             aria-label="Horizontal bar chart of centers per state"></div>
-      </article>
-    </div>
-  </section>
-
   <!-- ══════════════ VIEW 7 · TOP CUSTOMERS ══════════════ -->
   <section id="panel-topcust" class="panel" role="tabpanel" aria-labelledby="tab-topcust" hidden>
     <div id="tcKpiGrid" class="kpi-grid"></div>
@@ -1161,7 +1117,7 @@
             </div>
             <details class="filter-scope-note">
               <summary>Which pages use these filters?</summary>
-              <p class="filter-note">Customers/Map/Numbers: deployment date · Support: ticket created date · Asset: Jira created date · Top Customers: Segment/Status/State/Hub only, no date · Overview: Customers tree honours every dimension above plus the date range (deployment date); Devices tree honours device-type/status; Tickets tree's Zoho/ServiceWRK/TOM branches each honour their own created/received date · Raw Data: date range applies to Zoho Tickets (created) and Jira Devices (created) only, per-source (see the Raw Data page for details).</p>
+              <p class="filter-note">Customers/Numbers: deployment date · Support: ticket created date · Asset: Jira created date · Top Customers: Segment/Status/State/Hub only, no date · Overview: Customers tree honours every dimension above plus the date range (deployment date); Devices tree honours device-type/status; Tickets tree's Zoho/ServiceWRK/TOM branches each honour their own created/received date; the map card honours deployment date like Customers · Raw Data: date range applies to Zoho Tickets (created) and Jira Devices (created) only, per-source (see the Raw Data page for details).</p>
               <p class="filter-note"><strong>Service</strong> reads ServiceWRK, which carries its own Segment/State/City but no Hub, Centre, Status or Device dimension — those four are ignored there. <strong>TOM</strong> carries only Centre, so every other dimension is ignored on that page. Both use their own created/received date for the range.</p>
             </details>
           </section>

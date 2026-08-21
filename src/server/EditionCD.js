@@ -868,7 +868,11 @@ function apiGetMapDataCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    var cacheKey = 'mapcd_v11_' + getCacheEpoch_() + '_' + filterHash_(filters); // v11: dropped cloud_devices online (per user, 2026-08-19)
+    // v12: map merged into the Overview page (2026-08-21, per user) — its KPI
+    // tiles and 4 chart cards were dropped as not required, so assets no
+    // longer carry type/category/age (only the serial search still needs
+    // them), and the KPI-only unlocatedCenters count is gone too.
+    var cacheKey = 'mapcd_v12_' + getCacheEpoch_() + '_' + filterHash_(filters);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -883,7 +887,7 @@ function apiGetMapDataCD(options) {
       if (a.center_id !== null) assetCount[a.center_id] = (assetCount[a.center_id] || 0) + 1;
     });
 
-    var locatedIds = {}, located = [], unlocated = 0;
+    var locatedIds = {}, located = [];
     centers.forEach(function (row) {
       var c = coordsForCD_(row, geoStore);
       if (c) {
@@ -902,27 +906,19 @@ function apiGetMapDataCD(options) {
           row.hub || '', row.hub_id != null ? row.hub_id : '',
           row.segment || '', row.state || ''
         ]);
-      } else { unlocated++; }
+      }
     });
 
-    var typeDict = [], catDict = [], typeIdx = {}, catIdx = {};
-    function intern_(dict, index, value) {
-      var v = value || 'Other';
-      if (!(v in index)) { index[v] = dict.length; dict.push(v); }
-      return index[v];
-    }
+    // [center_id, serial] only — the map's serial search is the sole
+    // remaining consumer now that the chart cards are gone.
     var assetRows = [];
     assets.forEach(function (asset) {
       if (asset.center_id === null || !locatedIds[asset.center_id]) return;
-      assetRows.push([asset.center_id, intern_(typeDict, typeIdx, asset.type),
-        intern_(catDict, catIdx, asset.category),
-        asset.age_days == null ? null : asset.age_days, asset.serial || '']);
+      assetRows.push([asset.center_id, asset.serial || '']);
     });
 
     var payload = {
-      centers: located, assets: assetRows, assetTypes: typeDict, assetCats: catDict,
-      unlocatedCenters: unlocated, geo: geoStats(),
-      matchedAssets: Object.keys(assetCount).length,
+      centers: located, assets: assetRows, geo: geoStats(),
       edition: 'center_details', flags: FLAGS_CD
     };
     cachePutLarge(cacheKey, payload, 1800); // outlives the 10-min warm interval

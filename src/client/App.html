@@ -433,7 +433,6 @@
       var segs = ['Enterprise', 'SMB', 'Government', 'Distributor', 'Direct'];
       var states = ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Haryana', 'Delhi', 'Kerala'];
       var types = ['VCARDIA', 'HE', 'H4', 'T4', 'SIM'];
-      var cats = ['ECG Machine', 'Connector', 'SIM Card', 'UPS', 'Printer'];
       var pts = [], asset = [];
       for (var p = 0; p < 240; p++) {
         var inEthiopia = p % 40 === 0;
@@ -448,14 +447,14 @@
           hubs[p % hubs.length], 40 + (p % hubs.length),
           segs[p % segs.length], states[p % states.length]
         ]);
+        // [center_id, serial] — trimmed 2026-08-21 to match apiGetMapDataCD
+        // once the Map page's charts (which needed type/category/age) were removed.
         for (var a = 0; a < nAssets; a++) {
-          asset.push([10000 + p, rnd(0, types.length), rnd(0, cats.length), rnd(30, 2000),
-            types[rnd(0, types.length)] + '-DEMO' + rnd(1000, 9999)]);
+          asset.push([10000 + p, types[rnd(0, types.length)] + '-DEMO' + rnd(1000, 9999)]);
         }
       }
       return Promise.resolve({
-        centers: pts, assets: asset, assetTypes: types, assetCats: cats,
-        unlocatedCenters: 2412, matchedAssets: 1430,
+        centers: pts, assets: asset,
         geo: { located: 5210, failed: 64, pending: 2790, total: 8064 },
         filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' }
       });
@@ -758,11 +757,6 @@
       kpiTile('kpiCdmSignal', 'signal', 'var(--info)', 'Avg signal', 'CSQ, higher = better') +
       kpiTile('kpiCdmBattery', 'battery', 'var(--warn)', 'Low battery', '< 20% charge') +
       kpiTile('kpiCdmHwMismatch', 'wrench', 'var(--violet)', 'HW version mismatch', 'cloud vs. device record');
-    $('mapKpiGrid').innerHTML =
-      kpiTile('mapCenters', 'building', 'var(--secondary)', 'Centers', 'matching filters') +
-      kpiTile('mapDevices', 'fleet', 'var(--info)', 'Devices', 'at shown centers') +
-      kpiTile('mapTickets', 'inbox', 'var(--danger)', 'Open tickets', 'shown centers') +
-      kpiTile('mapAssets', 'layers', 'var(--violet)', 'Assets', 'Jira assets shown');
     $('tcKpiGrid').innerHTML =
       kpiTile('tcCustomers', 'building', 'var(--accent)', 'Top customers', 'Top LE accounts') +
       kpiTile('tcCenters', 'map', 'var(--secondary)', 'Centers', 'across top accounts') +
@@ -1862,8 +1856,10 @@
 
   // Compact center array indices (must match EditionCD.js apiGetMapDataCD).
   var CI = { id: 0, name: 1, lat: 2, lng: 3, devices: 4, online: 5, tickets: 6, assets: 7, hub: 8, hubId: 9, segment: 10, state: 11 };
-  // Compact asset array indices.
-  var AI = { center: 0, type: 1, cat: 2, age: 3, serial: 4 };
+  // Compact asset array indices (must match EditionCD.js apiGetMapDataCD) —
+  // trimmed to just what the map's serial search needs (2026-08-21): type/
+  // category/age only fed the Map page's now-removed charts.
+  var AI = { center: 0, serial: 1 };
 
   function loadMapData() {
     $('geoProgress').textContent = 'Loading map data…';
@@ -2309,13 +2305,12 @@
     if (state.activeTab === 'tab-centers') { state.centers.page = 0; loadCenters(); }
     var sharesPayload = ['tab-asset', 'tab-centers', 'tab-support', 'tab-service'].indexOf(state.activeTab) !== -1;
     if (sharesPayload) loadDashboard(false);
-    if (state.activeTab === 'tab-map') { state.mapLoaded = false; loadMapData(); }
     if (state.activeTab === 'tab-topcust') { state.topLoaded = false; loadTopCustomers(); }
     if (state.activeTab === 'tab-cdm') {
       state.cdmLoaded = false; state.cdmDevices.page = 0;
       loadCdmData(); loadCdmDevices();
     }
-    if (state.activeTab === 'tab-overview') loadOverviewFlow();
+    if (state.activeTab === 'tab-overview') { loadOverviewFlow(); state.mapLoaded = false; loadMapData(); }
     if (state.activeTab === 'tab-numbers') { loadNumbers(); loadCdRaw(); }
     if (state.activeTab === 'tab-rawdata') { state.rawData.page = 0; loadRawTable(); }
     // The SLA-risk worklist rides on the Support page but fetches its own rows,
@@ -2354,70 +2349,7 @@
       return true;
     });
 
-    var keepIds = {};
-    centers.forEach(function (c) { keepIds[c[CI.id]] = true; });
-    var assets = state.mapBundle.assets.filter(function (a) { return keepIds[a[AI.center]]; });
-
     mainMap.setData(centers, CenterDetail.open);
-    renderMapKpis(centers, assets);
-    renderMapCharts(centers, assets);
-  }
-
-  function renderMapKpis(centers, assets) {
-    var devices = 0, tickets = 0;
-    centers.forEach(function (c) { devices += c[CI.devices]; tickets += c[CI.tickets]; });
-    // "Centers" undercounted vs every other page's Centers KPI: `centers` here
-    // is pins only (apiGetMapDataCD drops any center without a geocoded
-    // location entirely — coordsForCD_ returning null), so plain centers.length
-    // silently excluded every not-yet-geocoded center from the total, not just
-    // from the map. The true filtered count is centers.length + unlocatedCenters
-    // (both already shipped in the payload — unlocatedCenters just had no
-    // reader). Only apply that correction with NO local narrowing active
-    // (ticket-bucket legend / search): once the user narrows to what's actually
-    // plotted, matching the pins on screen is the more useful number.
-    var noNarrowing = !state.ticketBucket && !state.search.trim();
-    var totalCenters = (noNarrowing && state.mapBundle && state.mapBundle.unlocatedCenters != null)
-      ? centers.length + state.mapBundle.unlocatedCenters
-      : centers.length;
-    setKpi('mapCenters', totalCenters, 'matching filters');
-    setKpi('mapDevices', devices);
-    setKpi('mapTickets', tickets, 'open across shown centers');
-    setKpi('mapAssets', assets.length, 'Jira assets on shown centers');
-  }
-
-  function renderMapCharts(centers, assets) {
-    var types = state.mapBundle.assetTypes, cats = state.mapBundle.assetCats;
-    Charts.assetByType(topCounts(assets, function (a) { return types[a[AI.type]]; }, 10));
-    Charts.assetByCategory(topCounts(assets, function (a) { return cats[a[AI.cat]]; }, 10));
-    Charts.assetAge(bandCounts(assets, function (a) { return ageBand(a[AI.age]); }, Charts));
-    Charts.centersByState(topCounts(centers, function (c) { return c[CI.state] || 'Unknown'; }, 12));
-  }
-
-  function ageBand(days) {
-    if (days == null) return 'Unknown';
-    if (days < 182) return '<6 mo';
-    if (days < 365) return '6-12 mo';
-    if (days < 730) return '1-2 yr';
-    if (days < 1095) return '2-3 yr';
-    if (days < 1825) return '3-5 yr';
-    return '5+ yr';
-  }
-
-  /** Aggregate rows by a key function → sorted [{label,cnt}] top-N. */
-  function topCounts(rows, keyFn, limit) {
-    var map = {};
-    rows.forEach(function (r) { var k = keyFn(r) || 'Other'; map[k] = (map[k] || 0) + 1; });
-    return Object.keys(map)
-      .map(function (k) { return { label: k, cnt: map[k] }; })
-      .sort(function (a, b) { return b.cnt - a.cnt; })
-      .slice(0, limit);
-  }
-
-  /** Like topCounts but keeps every band (no top-N, no sort by count). */
-  function bandCounts(rows, keyFn) {
-    var map = {};
-    rows.forEach(function (r) { var k = keyFn(r); map[k] = (map[k] || 0) + 1; });
-    return Object.keys(map).map(function (k) { return { label: k, cnt: map[k] }; });
   }
 
   function statBox_(value, label) {
@@ -2874,7 +2806,7 @@
   }
 
   /* ── tabs ────────────────────────────────────────────────────── */
-  var TAB_IDS = ['tab-overview', 'tab-asset', 'tab-centers', 'tab-support', 'tab-service', 'tab-tom', 'tab-cdm', 'tab-map', 'tab-topcust', 'tab-numbers', 'tab-rawdata'];
+  var TAB_IDS = ['tab-overview', 'tab-asset', 'tab-centers', 'tab-support', 'tab-service', 'tab-tom', 'tab-cdm', 'tab-topcust', 'tab-numbers', 'tab-rawdata'];
 
   /* ── hash routing (#overview, #asset, …) ─────────────────────── */
   function pageOf(tabId) { return tabId.replace('tab-', ''); }
@@ -2911,13 +2843,13 @@
     Charts.flushVisible();
     updateSearchPlaceholder();
     var overviewFlowStale = state.overviewFlowFilters && !filtersEqual_(state.overviewFlowFilters, state.globalFilters);
-    if (tabId === 'tab-overview' && (!state.overviewFlowLoaded || overviewFlowStale)) loadOverviewFlow();
-    if (tabId === 'tab-map') {
+    if (tabId === 'tab-overview') {
+      if (!state.overviewFlowLoaded || overviewFlowStale) loadOverviewFlow();
       if (!mainMap.ensureMap()) {
         $('geoProgress').textContent = 'Map library failed to load — check your network and refresh.';
-        return;
+      } else if (!state.mapLoaded) {
+        loadMapData();
       }
-      if (!state.mapLoaded) loadMapData();
     }
     if (tabId === 'tab-topcust') {
       tcMap.ensureMap();
@@ -3188,11 +3120,15 @@
     // URL to force applyHashRoute → activateTab). Matches the pre-existing
     // unconditional loadExec() this replaces.
     loadOverviewFlow();
+    // Same reasoning as loadOverviewFlow() above — the map now lives on the
+    // Overview landing page (merged in 2026-08-21, was its own "Map" tab), so
+    // it needs the same unconditional cold-load treatment, not the
+    // state.xLoaded gating the still-lazy tabs below use.
+    if (mainMap.ensureMap()) loadMapData();
     loadDashboard(bypassCache);
     loadCenters();
     if (state.serviceLoaded) loadService();
     if (state.tomLoaded) loadTom();
-    if (state.mapLoaded) loadMapData();
     if (state.topLoaded) loadTopCustomers();
     // Numbers page (incl. the Google-Sheet devices count) — only when it's in play.
     if (state.numbersLoaded || state.activeTab === 'tab-numbers') {
@@ -3376,9 +3312,9 @@
     // ("today − Created, per device") describes the Asset page's kpiAvgAge and
     // would have cited the wrong source in the popover.
     exAvgAge: 'deployAge', kpiUptime: 'uptime',
-    exActive: 'devicesCount', kpiTotal: 'devicesCount', mapDevices: 'devicesCount', tcDevices: 'devicesCount',
-    exCenters: 'centersCount', kpiCenters: 'customersCount', mapCenters: 'centersCount', tcCenters: 'centersCount',
-    exTickets: 'openTickets', kpiZOpen: 'openTickets', mapTickets: 'openTickets',
+    exActive: 'devicesCount', kpiTotal: 'devicesCount', tcDevices: 'devicesCount',
+    exCenters: 'centersCount', kpiCenters: 'customersCount', tcCenters: 'centersCount',
+    exTickets: 'openTickets', kpiZOpen: 'openTickets',
     // kpiSvcOpen counts ServiceWRK tickets, not Zoho — it must NOT share the
     // openTickets entry, or the popover would cite the wrong table.
     kpiSvcOpen: 'svcOpen', kpiSvcTat: 'svcTat',
@@ -3392,7 +3328,7 @@
     kpiStates: 'openTicketCustomers', kpiMtbf: 'mtbf',
     kpiZIn: 'created7d', kpiZOut: 'closed7d', kpiZAge: 'openAge',
     kpiSvcIn: 'created7d', kpiSvcOut: 'closed7d', kpiSvcAge: 'openAge',
-    mapAssets: 'assetLifecycle', tcAssets: 'assetLifecycle'
+    tcAssets: 'assetLifecycle'
   };
 
   // normalized card-title text → metric key
@@ -3406,13 +3342,11 @@
     'batch signal': 'batch', 'batch cohort detail': 'ftf',
     'devices by state': 'geo', 'deployment age': 'deployAge', 'deployment status': 'deployStatus',
     // Customers page titles now read "Customer(s)…"; the "centers…" keys stay
-    // for the Map/Numbers cards that still use the center wording.
+    // for the Numbers cards that still use the center wording.
     'customer 360': 'center360', 'center 360': 'center360',
     'sla compliance': 'sla', 'sla breach by issue type': 'slaType',
     'active backlog': 'backlog', 'top issue categories': 'categories',
     'open ticket age': 'openAgeBuckets', 'tickets by customer segment': 'segment',
-    'assets by machine type': 'assetLifecycle', 'asset lifecycle age': 'assetAge',
-    'assets by category': 'assetLifecycle', 'centers by state': 'geo',
     'customers by state': 'geo',
     'service ticket flow': 'svcFlow', 'turnaround time': 'svcTat',
     'resolution mix': 'svcRemote',
@@ -3705,7 +3639,7 @@
     if (state.activeTab === 'tab-centers') { state.centers.page = 0; loadCenters(); }
     else if (state.activeTab === 'tab-service') { state.service.page = 0; loadServiceTickets(); }
     else if (state.activeTab === 'tab-tom') { state.tom.page = 0; loadTomTickets(); }
-    else if (state.activeTab === 'tab-map') applyMapFilters();
+    else if (state.activeTab === 'tab-overview') applyMapFilters();
     else if (state.activeTab === 'tab-topcust') renderTcTable(topCustFilteredRows());
     else if (state.activeTab === 'tab-cdm') { state.cdmDevices.page = 0; loadCdmDevices(); }
   }
@@ -3713,19 +3647,21 @@
   /**
    * Per-tab behaviour of the one global search box. Most tabs filter a list;
    * Support/CS repurposes it as a center/ticket lookup (see supportSearchLookup_);
-   * Overview/Numbers/Raw Data have no per-row list (or are deliberately exempt
-   * from every other site filter) so the box is disabled there instead of
+   * Overview filters the map card it now hosts (applyMapFilters, via
+   * reloadActiveList above); Numbers/Raw Data have no per-row list (or are
+   * deliberately exempt from every other site filter) so the box is disabled there instead of
    * silently accepting input that does nothing.
    */
   var SEARCH_TAB_INFO = {
-    'tab-overview': { disabled: true, placeholder: "Search isn't available on this page" },
+    // Filters the map card (merged in from the old Map tab, 2026-08-21); the
+    // Customers/Devices/Tickets treemaps above it aren't searchable.
+    'tab-overview': { placeholder: 'Search the map: center, hub, device or serial…' },
     'tab-asset': { disabled: true, placeholder: "Search isn't available on this page" },
     'tab-cdm': { placeholder: 'Search communicators by ID, center or hub…' },
     'tab-centers': { placeholder: 'Search customers by name, ID, hub or state…' },
     'tab-support': { placeholder: 'Search by center ID or ticket number…' },
     'tab-service': { placeholder: 'Search service tickets by id, contact or engineer…' },
     'tab-tom': { placeholder: 'Search TOM issues by customer, Zoho id or issue…' },
-    'tab-map': { placeholder: 'Search the map: center, hub, device or serial…' },
     'tab-topcust': { placeholder: 'Search customers by name or hub ID…' },
     'tab-numbers': { disabled: true, placeholder: "Search isn't available on this page" },
     'tab-rawdata': { disabled: true, placeholder: "Search isn't available on this page" }

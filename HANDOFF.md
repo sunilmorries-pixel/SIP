@@ -25,15 +25,26 @@ hand: @78 = v5.49, @79 = v5.50, @80 = v5.51, so the pending deploy is **@81 = v5
 label assigned in this pass.
 
 ⚠️ **A concurrent session IS editing `src/client/App.html` — the main checkout is not clean.**
-`git status` was empty at `307285e` when this pass began, and `HANDOFF.md` is the only change this pass
-made, but `App.html` was rewritten at 18:26 by another session and is uncommitted. **`clasp push` from
-this directory would upload that in-flight edit**, so run `git status` yourself before any deploy
-rather than trusting this line. One stray untracked file also sits at the repo root, a scratch file written through a
-mangled Windows temp path (`UsersSUNILM~1AppData...scratchpadapp_script_check.js`) — a 219,156-byte
-extraction of `App.html`'s `<script>` block, written 18:20 by a `node --check` run whose temp path lost
-its separators. It carries session id `1116f-88f2-4bb0-9ff0-aab37eadbfbf`, i.e. it belongs to a session
-that was still live at the time — delete it once that session is done, not while it is running. Note it
-is a root-level `*.js` file, so a blanket `git add -A` would happily commit it. The previous header warned about an
+`git status` was empty at `307285e` when this pass began and `HANDOFF.md` was the only file it changed,
+but `App.html` has carried an uncommitted edit from another session since 18:26 and is still growing
+(+10/−1 at 18:29, +13/−4 at 18:30) — treat any figure quoted here as stale and run
+`git diff --stat src/client/App.html` for the live number. **Size is not the point.** That edit is the
+client-side completion of the four new global filters committed in `35e1246`: it adds the filter chips
+(`renderFilterChips_`), the active-count badge (`filterActiveCount_`), the drawer's change detection
+(`filtersEqual_`) and the preview-mock filter defaults, for `billable` / `machineTypes` / `deviceIds` /
+`macSerialIds`. `35e1246` shipped the `filterLabelFor_` label map but **none** of those — verified by
+grepping `35e1246:src/client/App.html`. So **@81 must not ship until this edit lands**, or the four
+filters deploy with no chips, an undercounted badge, and a `filtersEqual_` blind to them (the drawer
+would not notice those four dims changing). **`clasp push` from this directory would upload the
+in-flight edit**, so run `git status` yourself before any deploy rather than trusting any line in this
+doc, including this one. One stray untracked file also sits at the repo
+root, a scratch file written through a mangled Windows temp path
+(`UsersSUNILM~1AppData...scratchpadapp_script_check.js`) — a 219,156-byte extraction of `App.html`'s
+`<script>` block, written 18:20 by a `node --check` run whose temp path lost its separators. It carries
+session id `1116f-88f2-4bb0-9ff0-aab37eadbfbf` — neither of the two sessions writing this doc — so it
+belongs to whichever session is editing `App.html` and was live at the time: delete it once that
+session is done, not while it is running. Note it is a root-level `*.js` file, so a blanket
+`git add -A` would happily commit it. The previous header warned about an
 in-flight 378-line `Charts.html` diff from the other concurrent session — that work is committed and
 shipped (it went out as @78, see below), so the warning is retired. Two other worktrees still hold
 unmerged or uncommitted work; see the worktree note below.
@@ -1813,7 +1824,7 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 18. **(v5.30) Confirm what TOM actually is.** The page is built as a CS issue tracker because `remarks` records outcomes, but the user was asked twice and did not answer, and `comments` hints at machine transfers. Still unanswered as of 2026-08-14. If it's really machine movement, re-frame the page's labels/KPIs around movements and turnaround — the underlying queries mostly survive.
 19. ~~**(v5.29/v5.30) `Charts.rankBar` x-axis labels collide in narrow `span-4` cards`~~ — **DONE, v5.32/@61 (2026-08-14), commit `678496f`.** Removed the redundant/overlapping value axis from all 12 `rankBar` instances (5 TOM, 3 Service, 3 Top Customers, 1 Overview) — the axis duplicated the value already printed as a bar-end label.
 20. **(2026-08-14 catch-up pass) `docs/SOURCES.md` and `docs/ARCHITECTURE.md` were 3 versions stale** (last touched at v5.13, missing every v5.14–v5.33 change: `tom_tickets`, `servicewrk_Tickets`, `hub_country`, the CDM page, the 7-dimension filter set, the zoho dedup/native-DATETIME fixes, the reversed ServiceWRK-uptime-swap decision). **Fixed in this pass** — both docs now reflect state through v5.33/@62. Re-verify they're still current before trusting them on anything past this point.
-21. ⚠️ **(2026-08-21) Deploy @81 — the only open action from this catch-up pass.** `main`/`origin/main` at `307285e` carry two undeployed `src/` changes (`35e1246` filters + audit fixes, `4a0a30c` FTF chart / `span-4` cards); `d36217a` and `307285e` need no deploy of their own. `APP_VERSION` is already `'81'`; **`APP_DEPLOYED_AT` is still @80's `'Aug 21, 2026, 5:28 PM'` and MUST be set to the real deploy time in the same change as the `clasp deploy`** — until then the footer pairs v81 with @80's timestamp. Before deploying: `npm test` (13 suites / 217 tests as of `307285e`), walk the four new filters + both ID searches in the local preview, and `git status` the *main* checkout — the `centers-360-reliability-merge` worktree has ~99 uncommitted deletions and `clasp push` uploads whatever is on disk in the directory you run it from. Then update this doc's header and add the v5.52/@81 deploy timestamp.
+21. ⚠️ **(2026-08-21) Deploy @81 — the only open action from this catch-up pass.** `main`/`origin/main` at `52a868c` carry two undeployed `src/` changes (`35e1246` filters + audit fixes, `4a0a30c` FTF chart / `span-4` cards); `d36217a`, `307285e` and `52a868c` need no deploy of their own. ⚠️ **BLOCKER: do not deploy yet.** `35e1246`'s four new global filters are only partly wired on the client — the chips, active-count badge and `filtersEqual_` change detection are in an *uncommitted* `src/client/App.html` edit owned by another session (see the header). Deploying before it is committed ships the filters visibly broken. Wait for that session, confirm `git status` is clean, then deploy. `APP_VERSION` is already `'81'`; **`APP_DEPLOYED_AT` is still @80's `'Aug 21, 2026, 5:28 PM'` and MUST be set to the real deploy time in the same change as the `clasp deploy`** — until then the footer pairs v81 with @80's timestamp. Before deploying: `npm test` (13 suites / 217 tests as of `307285e`), walk the four new filters + both ID searches in the local preview, and `git status` the *main* checkout — the `centers-360-reliability-merge` worktree has ~99 uncommitted deletions and `clasp push` uploads whatever is on disk in the directory you run it from. Then update this doc's header and add the v5.52/@81 deploy timestamp.
 22. **(2026-08-21) Section 1's view list was left stale on purpose** — it still says "Eight views" and predates Service/TOM/CDM plus the Map→Overview merge; a warning note now sits above it. Rewrite it page-by-page next time someone has the context to describe all 10 tabs accurately, and re-check `docs/SOURCES.md`/`docs/ARCHITECTURE.md` at the same time (item 20 above only brought them current to v5.33/@62; `8e9fbed`/`dfd1c28` later touched them for @77/@78, nothing since).
 
 ---

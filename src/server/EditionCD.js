@@ -89,7 +89,13 @@ function centerAttrCond_(filters) {
     // center_details, so a name-keyed filter would match unrelated centers.
     // CAST so the numeric column compares against the string values the client
     // sends (multiCond_ emits quoted literals).
-    multiCond_('CAST(CenterID AS STRING)', f.centers);
+    multiCond_('CAST(CenterID AS STRING)', f.centers) +
+    // Billable/MachineType/DeviceID/MacSerialID (per user, 2026-08-21) — 4 more
+    // center_details columns, same include-list treatment as everything above.
+    multiCond_('Billable', f.billable) +
+    multiCond_('MachineType', f.machineTypes) +
+    multiCond_('DeviceID', f.deviceIds) +
+    multiCond_('MacSerialID', f.macSerialIds);
 }
 
 /* ═══════════════ Uptime / MTBF / Health (birth = deploymentdate) ═════════ */
@@ -117,7 +123,13 @@ function centerUptimeSqlCD_(tailSelect, filters) {
     "  MAX(e) OVER (PARTITION BY center_id ORDER BY s ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS pe FROM tix), " +
     "islands AS (SELECT center_id, s, e, " +
     "  COUNTIF(pe IS NULL OR s > pe) OVER (PARTITION BY center_id ORDER BY s ROWS UNBOUNDED PRECEDING) AS grp FROM flagged), " +
-    "dt AS (SELECT center_id, SUM(DATETIME_DIFF(se, ss, HOUR)) AS downtime_hrs " +
+    // GREATEST(0, …) per island: an interval can end before it starts when
+    // ClosedAt < CreatedAt in the source data, or when an OPEN ticket's end
+    // (CURRENT_DATETIME(), UTC) precedes its own IST-stamped CreatedAt. A
+    // negative summand SUBTRACTS from downtime, and uptime_pct's 0–100 clamp
+    // then hides it — so the clamp was doing structural work rather than
+    // rounding work, while downtime_days reached the Customers table negative.
+    "dt AS (SELECT center_id, SUM(GREATEST(0, DATETIME_DIFF(se, ss, HOUR))) AS downtime_hrs " +
     "  FROM (SELECT center_id, grp, MIN(s) ss, MAX(e) se FROM islands GROUP BY center_id, grp) GROUP BY center_id), " +
     "fail AS (SELECT center_id, COUNT(*) AS failures FROM tix GROUP BY center_id), " +
     "base AS (SELECT b.center_id, " +
@@ -291,6 +303,17 @@ function buildDashboardQuerySpecsCD(hub, filters) {
     sql: "SELECT DISTINCT TRIM(hub_country) AS country FROM " + CD +
       " WHERE " + F + " AND NULLIF(TRIM(hub_country), '') IS NOT NULL ORDER BY country"
   });
+  specs.push({
+    // Small (18 distinct real MachineType values on the sandbox) — shipped
+    // whole, same as Segment/Country. Billable has no equivalent spec: it's
+    // a fixed 2-value (YES/NO) dimension, hardcoded client-side like Status.
+    // DeviceID/MacSerialID are NOT here — 7.4k/16k distinct values is Hub-scale,
+    // so those two are server-searched instead (apiSearchDeviceIdsCD/
+    // apiSearchMacSerialIdsCD), never shipped as a static list.
+    key: 'machineTypeOptions', maxRows: 200,
+    sql: "SELECT DISTINCT TRIM(MachineType) AS machineType FROM " + CD +
+      " WHERE " + F + " AND NULLIF(TRIM(MachineType), '') IS NOT NULL ORDER BY machineType"
+  });
   // Per-center Zoho failure aggregate (Zoho only — no jira) feeding the JS cohort.
   specs.push({
     key: 'zohoFailByCenter', maxRows: 60000,
@@ -418,6 +441,13 @@ function centerBaseSpecCD_() {
       " IFNULL(TRIM(hub_country), '') AS country, " +
       " " + segmentGroupSql_('hub_master_segment') + " AS segment, " +   // segment = hub_master_segment, SME/LE variants merged (per user)
       " IFNULL(TRIM(Status), '') AS status, " +                // NEW: needed for the global Status filter
+      // Billable/MachineType/DeviceID/MacSerialID (per user, 2026-08-21) — 4
+      // more center_details filter dimensions. TRIM'd for the same SQL-vs-JS
+      // agreement reason as state/hub/city/country above.
+      " IFNULL(TRIM(Billable), '') AS billable, " +
+      " IFNULL(TRIM(MachineType), '') AS machine_type, " +
+      " IFNULL(TRIM(DeviceID), '') AS device_id, " +
+      " IFNULL(TRIM(MacSerialID), '') AS mac_serial_id, " +
       " CAST(NULL AS FLOAT64) AS lat, CAST(NULL AS FLOAT64) AS lng, " +
       " CAST(deploymentdate AS STRING) AS deployment_date " +
       "FROM " + T('center_details') + " WHERE " + cdFilter_()
@@ -429,7 +459,16 @@ function centerBaseSpecCD_() {
  * @param {boolean=} bypassCache force a rebuild (used by the warm trigger)
  */
 function getCenter360RowsCD_(bypassCache) {
-  var ckey = 'ctr360cd_v12'; // v12: centerTickets carries swapped (Customer 360 "Swapped" column)
+  // Epoch folded in (2026-08-21) so clearDashboardCache() actually reaches this
+  // cache, matching every sibling key in this file. It previously carried no
+  // epoch AND the clearer named a dead prefix ('ctr360cd_v9', last written at
+  // v9), so an explicit clear left these rows untouched for their full 1800s
+  // TTL — every other cache recomputed against stale center dimension, geo,
+  // telemetry, ticket and uptime columns. That is worse than a no-op: the
+  // operator sees each KPI move and concludes the app is current, while the
+  // Customers table, both maps, the Overview Customers tree and Top Customers
+  // are still serving pre-reload rows.
+  var ckey = 'ctr360cd_v13_' + getCacheEpoch_(); // v13: centerBase carries billable/machine_type/device_id/mac_serial_id (per user, 2026-08-21)
   if (bypassCache !== true) {
     var cached = cacheGetLarge(ckey);
     if (cached) return cached;
@@ -450,6 +489,8 @@ function getCenter360RowsCD_(bypassCache) {
         state: base.state || '', pin: base.pin || '', country: base.country || '',
         segment: base.segment || '', // from center_details, not Zoho tickets
         status: base.status || '',
+        billable: base.billable || '', machine_type: base.machine_type || '',
+        device_id: base.device_id || '', mac_serial_id: base.mac_serial_id || '',
         lat: base.lat, lng: base.lng, deployment_date: base.deployment_date || '',
         devices: tel ? tel.devices : 0, online: tel ? tel.online : 0,
         last_seen: (tel && tel.last_seen) || '',
@@ -484,7 +525,7 @@ function getCenter360RowsCD_(bypassCache) {
   var uptimeByCenter = {};
   uptimeRows.forEach(function (r) { uptimeByCenter[r.center_id] = r; });
 
-  // Jira device count per center (Connector + ECG, from the Sheet — see getAssetIndex_).
+  // Jira device count per center, unfiltered by device type (see getAssetIndex_).
   var jiraCountByCenter = {};
   getAssetIndex_().forEach(function (a) {
     if (a.center_id != null) jiraCountByCenter[a.center_id] = (jiraCountByCenter[a.center_id] || 0) + 1;
@@ -532,12 +573,23 @@ function distinctValues_(rows, field) {
   return out.sort();
 }
 
-/** center_id → {segment, status, state, hub, city, country} from the cached Center-360 rows. */
+/** center_id → {segment, status, state, hub, city, country, billable, machine_type, device_id, mac_serial_id} from the cached Center-360 rows. */
 function centerFilterMap_() {
   var m = {};
   getCenter360RowsCD_().forEach(function (r) {
+    // center_id and deployment_date are NOT optional extras: centerPassesFilters_
+    // reads all these. While the map supplied only the first six, the
+    // predicate's `centers` branch compared f.centers against
+    // String(undefined) === "undefined" (never matches, so a Center selection
+    // returned nothing) and its date branch hit `!d` on an empty string (so ANY
+    // date range rejected every row, and the whole device fleet read 0). The
+    // same omission bug would hit billable/machineTypes/deviceIds/macSerialIds
+    // (added 2026-08-21) if they weren't carried here too.
     m[r.center_id] = { segment: r.segment || '', status: r.status || '', state: r.state || '', hub: r.hub || '',
-      city: r.city || '', country: r.country || '' };
+      city: r.city || '', country: r.country || '',
+      billable: r.billable || '', machine_type: r.machine_type || '',
+      device_id: r.device_id || '', mac_serial_id: r.mac_serial_id || '',
+      center_id: r.center_id, deployment_date: r.deployment_date || '' };
   });
   return m;
 }
@@ -564,6 +616,10 @@ function centerPassesFilters_(row, filters) {
   // too (see centerAttrCond_'s CAST) — both paths must agree or they disagree
   // on the same filter set (the finding-I4 failure mode).
   if (!inList(f.centers, String(row.center_id))) return false;
+  if (!inList(f.billable, row.billable)) return false;
+  if (!inList(f.machineTypes, row.machine_type)) return false;
+  if (!inList(f.deviceIds, row.device_id)) return false;
+  if (!inList(f.macSerialIds, row.mac_serial_id)) return false;
   var d = row.deployment_date ? row.deployment_date.slice(0, 10) : '';
   if (f.dateFrom && (!d || d < f.dateFrom)) return false;
   if (f.dateTo && (!d || d > f.dateTo)) return false;
@@ -614,6 +670,10 @@ function apiGetDashboardCD(options) {
     centers: (options.filters && options.filters.centers) || [],
     deviceTypes: (options.filters && options.filters.deviceTypes) || [],
     deviceStatusExclude: (options.filters && options.filters.deviceStatusExclude) || [],
+    billable: (options.filters && options.filters.billable) || [],
+    machineTypes: (options.filters && options.filters.machineTypes) || [],
+    deviceIds: (options.filters && options.filters.deviceIds) || [],
+    macSerialIds: (options.filters && options.filters.macSerialIds) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
@@ -637,7 +697,8 @@ function apiGetDashboardCD(options) {
     // v17: Asset page — dropped cloud_devices kpis/fleetStatus/firmware/hubs
     // specs (device-status donut, firmware chart, device explorer all removed;
     // cloud_devices data is CDM/Numbers/Raw-Data only now).
-    var cacheKey = 'dashcd_v17_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
+    // v18: billable/machineTypes/deviceIds/macSerialIds filters added.
+    var cacheKey = 'dashcd_v18_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -665,13 +726,17 @@ function apiGetDashboardCD(options) {
     results.deviceStatusOptions = distinctValues_(assetIdx, 'status').map(function (v) { return { status: v }; });
     var hasCenterFilter = filters.segments.length || filters.statuses.length ||
       filters.states.length || filters.hubs.length || filters.cities.length ||
-      filters.countries.length || (filters.centers || []).length;
+      filters.countries.length || (filters.centers || []).length ||
+      (filters.billable || []).length || (filters.machineTypes || []).length ||
+      (filters.deviceIds || []).length || (filters.macSerialIds || []).length;
     if (hasCenterFilter) {
       var cfMap = centerFilterMap_();
       assetIdx = assetIdx.filter(function (a) {
         return a.center_id != null && centerPassesFilters_(cfMap[a.center_id] || {}, {
           segments: filters.segments, statuses: filters.statuses, states: filters.states, hubs: filters.hubs,
-          cities: filters.cities, countries: filters.countries, centers: filters.centers || []
+          cities: filters.cities, countries: filters.countries, centers: filters.centers || [],
+          billable: filters.billable || [], machineTypes: filters.machineTypes || [],
+          deviceIds: filters.deviceIds || [], macSerialIds: filters.macSerialIds || []
         });
       });
     }
@@ -723,6 +788,10 @@ function apiGetCentersCD(options) {
       cities: ((options.filters && options.filters.cities) || []).map(segClean_).filter(Boolean),
       countries: ((options.filters && options.filters.countries) || []).map(segClean_).filter(Boolean),
       centers: ((options.filters && options.filters.centers) || []).map(segClean_).filter(Boolean),
+      billable: ((options.filters && options.filters.billable) || []).map(segClean_).filter(Boolean),
+      machineTypes: ((options.filters && options.filters.machineTypes) || []).map(segClean_).filter(Boolean),
+      deviceIds: ((options.filters && options.filters.deviceIds) || []).map(segClean_).filter(Boolean),
+      macSerialIds: ((options.filters && options.filters.macSerialIds) || []).map(segClean_).filter(Boolean),
       dateFrom: String((options.filters && options.filters.dateFrom) || ''),
       dateTo: String((options.filters && options.filters.dateTo) || '')
     },
@@ -854,6 +923,70 @@ function apiSearchCentersCD(options) {
   });
 }
 
+/**
+ * Server-side Device ID search for the Device ID filter dimension — same
+ * design as apiSearchHubsCD and for the same reason: center_details holds
+ * ~7,400 distinct DeviceID values, far too many to ship as a static list.
+ * @param {{query:string, bypassCache:boolean}=} options
+ */
+function apiSearchDeviceIdsCD(options) {
+  options = options || {};
+  var q = segClean_(String(options.query || '')).toLowerCase();
+  return respond_(function () {
+    return withCache('devidsrch_v1_' + getCacheEpoch_() + '_' + shortHash(q), function () {
+      var CD = T('center_details');
+      var base = " WHERE " + cdFilter_() + " AND NULLIF(TRIM(DeviceID), '') IS NOT NULL";
+      var sql, params = null;
+      if (q.length < 2) {
+        sql = "SELECT TRIM(DeviceID) AS deviceId, COUNT(DISTINCT CenterID) AS centers FROM " + CD +
+          base + " GROUP BY deviceId ORDER BY centers DESC, deviceId LIMIT 50";
+      } else {
+        sql = "SELECT DISTINCT TRIM(DeviceID) AS deviceId FROM " + CD + base +
+          " AND LOWER(TRIM(DeviceID)) LIKE @like ORDER BY deviceId LIMIT 50";
+        params = { like: '%' + likeEscape_(q) + '%' };
+      }
+      var rows = runQuery(sql, params, { maxRows: 50 }) || [];
+      return {
+        deviceIds: rows.map(function (r) { return r.deviceId; }),
+        query: q, mode: q.length < 2 ? 'top' : 'search',
+        edition: 'center_details'
+      };
+    }, options.bypassCache === true);
+  });
+}
+
+/**
+ * Server-side Mac Serial ID search for the Mac Serial ID filter dimension —
+ * same design as apiSearchDeviceIdsCD, for the same reason (center_details
+ * holds ~16,000 distinct MacSerialID values).
+ * @param {{query:string, bypassCache:boolean}=} options
+ */
+function apiSearchMacSerialIdsCD(options) {
+  options = options || {};
+  var q = segClean_(String(options.query || '')).toLowerCase();
+  return respond_(function () {
+    return withCache('macsrch_v1_' + getCacheEpoch_() + '_' + shortHash(q), function () {
+      var CD = T('center_details');
+      var base = " WHERE " + cdFilter_() + " AND NULLIF(TRIM(MacSerialID), '') IS NOT NULL";
+      var sql, params = null;
+      if (q.length < 2) {
+        sql = "SELECT TRIM(MacSerialID) AS macSerialId, COUNT(DISTINCT CenterID) AS centers FROM " + CD +
+          base + " GROUP BY macSerialId ORDER BY centers DESC, macSerialId LIMIT 50";
+      } else {
+        sql = "SELECT DISTINCT TRIM(MacSerialID) AS macSerialId FROM " + CD + base +
+          " AND LOWER(TRIM(MacSerialID)) LIKE @like ORDER BY macSerialId LIMIT 50";
+        params = { like: '%' + likeEscape_(q) + '%' };
+      }
+      var rows = runQuery(sql, params, { maxRows: 50 }) || [];
+      return {
+        macSerialIds: rows.map(function (r) { return r.macSerialId; }),
+        query: q, mode: q.length < 2 ? 'top' : 'search',
+        edition: 'center_details'
+      };
+    }, options.bypassCache === true);
+  });
+}
+
 function apiGetMapDataCD(options) {
   options = options || {};
   var filters = {
@@ -864,6 +997,10 @@ function apiGetMapDataCD(options) {
     cities: (options.filters && options.filters.cities) || [],
     countries: (options.filters && options.filters.countries) || [],
     centers: (options.filters && options.filters.centers) || [],
+    billable: (options.filters && options.filters.billable) || [],
+    machineTypes: (options.filters && options.filters.machineTypes) || [],
+    deviceIds: (options.filters && options.filters.deviceIds) || [],
+    macSerialIds: (options.filters && options.filters.macSerialIds) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
@@ -875,7 +1012,8 @@ function apiGetMapDataCD(options) {
     // trailing it by however many centers runGeocodeBatch() hasn't reached yet.
     // Index 12 (approx) flags these so the client can mark them visually
     // distinct — they're a neighborhood-level guess, not the center's real spot.
-    var cacheKey = 'mapcd_v13_' + getCacheEpoch_() + '_' + filterHash_(filters);
+    // v14: billable/machineTypes/deviceIds/macSerialIds filters added.
+    var cacheKey = 'mapcd_v14_' + getCacheEpoch_() + '_' + filterHash_(filters);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -970,10 +1108,14 @@ function apiGetCdmDataCD(options) {
     hubs: (options.filters && options.filters.hubs) || [],
     cities: (options.filters && options.filters.cities) || [],
     countries: (options.filters && options.filters.countries) || [],
-    centers: (options.filters && options.filters.centers) || []
+    centers: (options.filters && options.filters.centers) || [],
+    billable: (options.filters && options.filters.billable) || [],
+    machineTypes: (options.filters && options.filters.machineTypes) || [],
+    deviceIds: (options.filters && options.filters.deviceIds) || [],
+    macSerialIds: (options.filters && options.filters.macSerialIds) || []
   };
   return respond_(function () {
-    var cacheKey = 'cdmcd_v2_' + getCacheEpoch_() + '_' + filterHash_(filters); // v2: country filter sources from hub_country
+    var cacheKey = 'cdmcd_v3_' + getCacheEpoch_() + '_' + filterHash_(filters); // v3: billable/machineTypes/deviceIds/macSerialIds filters added
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -1089,11 +1231,15 @@ function apiGetTopCustomersCD(options) {
     cities: (options.filters && options.filters.cities) || [],
     countries: (options.filters && options.filters.countries) || [],
     centers: (options.filters && options.filters.centers) || [],
+    billable: (options.filters && options.filters.billable) || [],
+    machineTypes: (options.filters && options.filters.machineTypes) || [],
+    deviceIds: (options.filters && options.filters.deviceIds) || [],
+    macSerialIds: (options.filters && options.filters.macSerialIds) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('topcustcd_v11_' + getCacheEpoch_() + '_' + filterHash_(filters), // v11: dropped cloud_devices online (per user, 2026-08-19)
+    return withCache('topcustcd_v12_' + getCacheEpoch_() + '_' + filterHash_(filters), // v12: billable/machineTypes/deviceIds/macSerialIds filters added
       function () { return computeTopCustomersCD_(filters); },
       options.bypassCache === true);
   });

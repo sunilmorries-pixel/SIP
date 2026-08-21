@@ -118,16 +118,47 @@ function filteredJiraDevices_(filters, dcm) {
     byIssue[ik] = {
       issue_key: ik, type: String(row.issuetype_name || 'Other'),
       status: String(row.status_name || '').trim(),
-      cid: (cid == null ? NaN : cid), age: assetAgeDays_(row.ticket_created)
+      cid: (cid == null ? NaN : cid), age: assetAgeDays_(row.ticket_created),
+      // The device's OWN created date — the date range belongs here, not on
+      // its center's deploymentdate. See the date block below.
+      birthday: assetDateStr_(row.ticket_created)
     };
   });
+  // `centers` belongs in this guard: it is a real user-facing dimension (the
+  // "Center: …" chip, applied in SQL by centerAttrCond_). While it was absent,
+  // a Center-only selection skipped filtering entirely and returned the WHOLE
+  // fleet, and a Center selection combined with any other dimension returned 0.
   var hasCenterFilter = (filters.segments || []).length || (filters.statuses || []).length ||
     (filters.states || []).length || (filters.hubs || []).length ||
-    (filters.cities || []).length || (filters.countries || []).length;
+    (filters.cities || []).length || (filters.countries || []).length ||
+    (filters.centers || []).length ||
+    (filters.billable || []).length || (filters.machineTypes || []).length ||
+    (filters.deviceIds || []).length || (filters.macSerialIds || []).length;
   var out = Object.keys(byIssue).map(function (k) { return byIssue[k]; });
   if (hasCenterFilter) {
     var cfMap = centerFilterMap_();
-    out = out.filter(function (o) { return isFinite(o.cid) && centerPassesFilters_(cfMap[o.cid] || {}, filters); });
+    // Hand centerPassesFilters_ ONLY the center dimensions — never dateFrom/
+    // dateTo. Its date branch tests the CENTER's deploymentdate, which is a
+    // different question from "was this device created in the window", and
+    // passing the whole filters object here is what drove the entire fleet to
+    // 0 on any date selection. apiGetDashboardCD's asset path already splits
+    // the two this way; this is the same split, applied consistently.
+    var centerDims = {
+      segments: filters.segments, statuses: filters.statuses, states: filters.states,
+      hubs: filters.hubs, cities: filters.cities, countries: filters.countries,
+      centers: filters.centers,
+      billable: filters.billable, machineTypes: filters.machineTypes,
+      deviceIds: filters.deviceIds, macSerialIds: filters.macSerialIds
+    };
+    out = out.filter(function (o) { return isFinite(o.cid) && centerPassesFilters_(cfMap[o.cid] || {}, centerDims); });
+  }
+  if (filters.dateFrom || filters.dateTo) {
+    out = out.filter(function (o) {
+      if (!o.birthday) return false;                                  // undated device: outside any explicit window
+      if (filters.dateFrom && o.birthday < filters.dateFrom) return false;
+      if (filters.dateTo && o.birthday > filters.dateTo) return false;
+      return true;
+    });
   }
   return out;
 }
@@ -144,7 +175,7 @@ function filteredJiraDevices_(filters, dcm) {
  */
 function jiraDeviceStats_(filters) {
   filters = filters || {};
-  return withCache('jiradev_v9_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
+  return withCache('jiradev_v10_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v10: billable/machineTypes/deviceIds/macSerialIds filters added
     var dcm = deviceCenterMap_();
     var devices = filteredJiraDevices_(filters, dcm);
     var dTotal = 0, dStatus = {};
@@ -184,8 +215,15 @@ function apiGetNumbers(options) {
     hubs: (options.filters && options.filters.hubs) || [],
     cities: (options.filters && options.filters.cities) || [],
     countries: (options.filters && options.filters.countries) || [],
+    // centers was missing from this whitelist, so the "Center: …" chip rendered
+    // as active on Numbers and had no effect on a single number.
+    centers: (options.filters && options.filters.centers) || [],
     deviceTypes: (options.filters && options.filters.deviceTypes) || [],
     deviceStatusExclude: (options.filters && options.filters.deviceStatusExclude) || [],
+    billable: (options.filters && options.filters.billable) || [],
+    machineTypes: (options.filters && options.filters.machineTypes) || [],
+    deviceIds: (options.filters && options.filters.deviceIds) || [],
+    macSerialIds: (options.filters && options.filters.macSerialIds) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
@@ -195,7 +233,7 @@ function apiGetNumbers(options) {
     // Hubs use the center-attribute chain + deploymentdate (matches Centers/
     // Map); Tickets bridge to center_details via CenterID + CreatedAt (matches
     // Support); Devices already accepted the full filters object.
-    return withCache('numbers_v9_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v9: country filter sources from hub_country
+    return withCache('numbers_v10_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v10: billable/machineTypes/deviceIds/macSerialIds filters added
       var CD = T('center_details');
       var ZOHO = zohoDedupSql_();
       var techBool = techBoolSql_("IFNULL(IssueCategory,'')");
@@ -281,6 +319,9 @@ function apiGetCenterDetailsRaw(options) {
     hubs: (options.filters && options.filters.hubs) || [],
     cities: (options.filters && options.filters.cities) || [],
     countries: (options.filters && options.filters.countries) || [],
+    // Same omission as apiGetNumbers above — the raw center table ignored the
+    // "Center: …" chip while displaying it as active.
+    centers: (options.filters && options.filters.centers) || [],
     dateFrom: String((options.filters && options.filters.dateFrom) || ''),
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };

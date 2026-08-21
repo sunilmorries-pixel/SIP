@@ -41,6 +41,21 @@ function loadGas(fileNames) {
     Logger: { log: function () {} },
     CacheService: { getScriptCache: function () { return null; } },
     PropertiesService: { getScriptProperties: function () { return { getProperty: function () { return null; } }; } },
+    // Real MD5 (not a no-op) because shortHash's byte->hex formatting is the
+    // thing under test — a stub returning fixed bytes couldn't catch the
+    // zero-padding bug. Apps Script's computeDigest returns SIGNED bytes
+    // (-128..127), which is why shortHash does the (b + 256) % 256 dance;
+    // this stub reproduces that signedness so the test exercises the real
+    // code path.
+    Utilities: {
+      DigestAlgorithm: { MD5: 'MD5' },
+      computeDigest: function (_algorithm, text) {
+        const digest = require('crypto').createHash('md5').update(String(text), 'utf8').digest();
+        return Array.prototype.slice.call(digest).map(function (b) {
+          return b > 127 ? b - 256 : b;
+        });
+      },
+    },
     console: console,
   };
   vm.createContext(sandbox);

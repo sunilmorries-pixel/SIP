@@ -32,12 +32,14 @@
  * separate execution contexts in Apps Script, so they cannot share a constant —
  * if you change the default on one side, change it here too.
  * @return {{segments:Array,statuses:Array,states:Array,hubs:Array,cities:Array,countries:Array,
- *           centers:Array,deviceTypes:Array,deviceStatusExclude:Array,dateFrom:string,dateTo:string}}
+ *           centers:Array,deviceTypes:Array,deviceStatusExclude:Array,billable:Array,
+ *           machineTypes:Array,deviceIds:Array,macSerialIds:Array,dateFrom:string,dateTo:string}}
  */
 function warmDefaultFilters_() {
   return { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], cities: [], countries: [],
     centers: [],
     deviceTypes: CONFIG.JIRA_DEVICE_TYPE_DEFAULT, deviceStatusExclude: CONFIG.JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT,
+    billable: [], machineTypes: [], deviceIds: [], macSerialIds: [],
     dateFrom: '', dateTo: '' };
 }
 

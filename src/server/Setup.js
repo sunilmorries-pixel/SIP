@@ -197,7 +197,12 @@ function clearDashboardCache() {
   // filter-aware cache.
   cache.removeAll(['exec_v4']);
   // Large (gzip-chunked) caches with NO filter variant: remove #meta + each chunk.
-  ['ctr360cd_v9', 'map_v3', 'assets_v3'].forEach(function (base) {
+  // ctr360cd and map are NOT listed here any more — both now fold
+  // getCacheEpoch_() into their own keys (ctr360cd_v12 as of 2026-08-21,
+  // mapcd_v12 already did), so the bump above invalidates them. Listing a
+  // hard-coded prefix here is what let them drift out of reach in the first
+  // place: the writer moved to v12 while this list still named v9.
+  ['assets_v3'].forEach(function (base) {
     var meta = cache.get(base + '#meta');
     var n = meta ? parseInt(meta, 10) : 40;
     var keys = [base + '#meta'];

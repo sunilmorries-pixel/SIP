@@ -74,9 +74,30 @@ function parseRows_(data) {
       var field = fields[i];
       var v = cell.v;
       if (v !== null && v !== undefined) {
-        if (field.type === 'INTEGER') v = parseInt(v, 10);
-        else if (field.type === 'FLOAT' || field.type === 'NUMERIC') v = parseFloat(v);
-        else if (field.type === 'BOOLEAN') v = (v === 'true' || v === true);
+        // The REST API returns every value as a string, so an unhandled type
+        // falls through AS a string and later JS arithmetic silently
+        // concatenates instead of adding. Both the legacy names (what
+        // production returns today) and the standard names are handled, so a
+        // future API change can't quietly stringify every number in the app.
+        if (field.type === 'INTEGER' || field.type === 'INT64') {
+          var asInt = parseInt(v, 10);
+          // Beyond 2^53 a JS number can't represent the value exactly; keep the
+          // string rather than hand back a silently wrong integer.
+          v = Number.isSafeInteger(asInt) ? asInt : String(v);
+        } else if (field.type === 'FLOAT' || field.type === 'FLOAT64' ||
+                   field.type === 'NUMERIC' || field.type === 'BIGNUMERIC') {
+          v = parseFloat(v);
+        } else if (field.type === 'BOOLEAN' || field.type === 'BOOL') {
+          v = (v === 'true' || v === true);
+        } else if (field.type === 'TIMESTAMP') {
+          // TIMESTAMP arrives as seconds-since-epoch in a string
+          // ("1.7555616E9"). Every hand-written query CASTs it in SQL, but the
+          // Raw Data page issues SELECT *, so LastTimeStamp and ticket_created
+          // reached the on-screen table and the CSV export as raw epoch floats.
+          // DATE/DATETIME/TIME need no branch — those arrive as usable strings.
+          var epochSeconds = parseFloat(v);
+          v = isNaN(epochSeconds) ? v : new Date(epochSeconds * 1000).toISOString();
+        }
       }
       obj[field.name] = v;
     });
@@ -297,7 +318,13 @@ function cacheGetLarge(key) {
  */
 function shortHash(text) {
   return Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, text)
-    .map(function (b) { return ((b + 256) % 256).toString(16).slice(-2); })
+    // ZERO-PAD to two hex chars. Without the leading '0', any byte below 0x10
+    // renders as ONE character (`(5).toString(16)` is "5", and .slice(-2) on a
+    // 1-char string is a no-op), so the unseparated join was ambiguous: bytes
+    // [0x0A,0xBC] and [0xAB,0x0C] both produced "abc". That both shortened the
+    // digest and cut its entropy below the intended 64 bits — on keys that
+    // decide which cached numbers a user is shown.
+    .map(function (b) { return ('0' + ((b + 256) % 256).toString(16)).slice(-2); })
     .join('')
     .slice(0, 16);
 }

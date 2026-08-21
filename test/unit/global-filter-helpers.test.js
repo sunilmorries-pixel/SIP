@@ -29,11 +29,23 @@ describe('multiCond_', function () {
     expect(sandbox.multiCond_('Status', ['ACTIVE'])).toBe(" AND TRIM(IFNULL(Status,'')) IN ('ACTIVE')");
   });
 
-  test('multiple values are all included, sanitized', function () {
-    var cond = sandbox.multiCond_('State', ["Karnataka", 'Tamil"Nadu']);
+  test('multiple values are all included, escaped rather than mangled', function () {
+    // Was: asserted 'Tamil"Nadu' arrived as 'TamilNadu' because segClean_
+    // DELETED the quote. That is exactly the defect fixed on 2026-08-21 —
+    // deleting a character rewrites the value into one that exists nowhere in
+    // the column, so the filter matched zero rows while the JS filter path
+    // (which compares uncleaned values) still matched. multiCond_ now emits
+    // through sqlLiteral_, which preserves the value. A double quote is an
+    // ordinary character inside a single-quoted BigQuery literal, so it needs
+    // no treatment at all; an apostrophe is doubled.
+    var cond = sandbox.multiCond_('State', ['Karnataka', 'Tamil"Nadu']);
     expect(cond).toContain("'Karnataka'");
-    expect(cond).toContain("'TamilNadu'"); // quote stripped by segClean_
-    expect(cond).not.toMatch(/"/);
+    expect(cond).toContain("'Tamil\"Nadu'");
+  });
+
+  test('an apostrophe in a value is doubled, keeping the literal closed', function () {
+    var cond = sandbox.multiCond_('HubName', ["St. Mary's Hospital"]);
+    expect(cond).toContain("'St. Mary''s Hospital'");
   });
 
   test('the column is TRIM(IFNULL(...))-normalized, never compared bare (finding I4 guard)', function () {

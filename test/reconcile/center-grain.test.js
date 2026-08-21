@@ -33,14 +33,21 @@ maybeDescribe('center-grain invariants (live BigQuery)', function () {
     expect(row.active_deployments / row.centers).toBeLessThanOrEqual(1.0);
   });
 
-  test('centerKpis: states/cities counts are non-negative and bounded by centers', async function () {
+  test('centerKpis: centers_with_open_tickets is non-negative and bounded by centers', async function () {
+    // Was asserting on `row.states`, a column centerKpis stopped returning when
+    // v12 replaced the "States" tile with centers_with_open_tickets — so this
+    // test would have thrown on expect(undefined) the moment it ran with
+    // credentials. It never did: test/reconcile is credential-gated, and
+    // `npm test` roots only at test/unit. Retargeted 2026-08-21 onto the column
+    // that actually exists, preserving the same bounded-by-centers invariant.
     const spec = specs.find(function (s) { return s.key === 'centerKpis'; });
     const rows = await runQuery(spec.sql);
     const row = rows[0];
-    // A center is in exactly one state/city, so distinct states/cities can
-    // never exceed distinct centers.
-    expect(row.states).toBeGreaterThanOrEqual(0);
-    expect(row.states).toBeLessThanOrEqual(row.centers);
+    // Every counted center is drawn from the same filtered center set, so a
+    // subset count can never exceed the total. If it does, the sub-count has
+    // regressed to counting raw rows instead of COUNT(DISTINCT CenterID).
+    expect(row.centers_with_open_tickets).toBeGreaterThanOrEqual(0);
+    expect(row.centers_with_open_tickets).toBeLessThanOrEqual(row.centers);
   });
 
   test('geo: per-state distinct-center sum does not exceed the true center total (row-inflation guard)', async function () {

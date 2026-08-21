@@ -242,11 +242,16 @@ describe('centerFilterSubqueryCond_ (EditionCD.js)', function () {
     expect(result).toContain("TRIM(IFNULL(HubName,'')) IN ('SomeHub')");
   });
 
-  test('the emitted literal is sanitized (quotes stripped) the same way multiCond_/segClean_ do', function () {
+  test('the emitted literal escapes an apostrophe instead of deleting it', function () {
+    // Was: asserted "Gov't" arrived as 'Govt'. That was the bug in miniature —
+    // a segment genuinely named "Gov't" could never match, because the emitted
+    // literal named a value that exists nowhere in the column. Fixed 2026-08-21
+    // by routing multiCond_ through sqlLiteral_ (escape, don't delete);
+    // segClean_ itself is unchanged and still strips quotes for slug/cache-key
+    // use — see its own tests above.
     const result = sandboxWithCd.centerFilterSubqueryCond_({ segments: ["Gov't"] });
-    expect(result).not.toContain("Gov't");
     expect(result).toContain(
-      "TRIM(IFNULL(" + sandboxWithCd.segmentGroupSql_('hub_master_segment') + ",'')) IN ('Govt')"
+      "TRIM(IFNULL(" + sandboxWithCd.segmentGroupSql_('hub_master_segment') + ",'')) IN ('Gov''t')"
     );
   });
 });

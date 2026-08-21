@@ -28,6 +28,7 @@
     globalFilters: { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], cities: [], countries: [],
       centers: [],
       deviceTypes: JIRA_DEVICE_TYPE_DEFAULT.slice(), deviceStatusExclude: JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT.slice(),
+      billable: [], machineTypes: [], deviceIds: [], macSerialIds: [],
       dateFrom: '', dateTo: '' },
     globalFiltersPending: null, // staged edits inside the open drawer; null when drawer is closed
     // dim -> { storedValue: displayLabel }, for dimensions that filter on an id
@@ -41,7 +42,7 @@
     // where reading the options off the payload showed empty lists. (Hub is not
     // here — it's searched server-side, see searchHubs_.)
     segmentOptions: [], stateOptions: [], cityOptions: [], countryOptions: [],
-    deviceTypeOptions: [], deviceStatusOptions: [],
+    deviceTypeOptions: [], deviceStatusOptions: [], machineTypeOptions: [],
     ticketBucket: '', // '' | none | low | high — clickable map legend
     activeTab: 'tab-overview',
     // Default sort: open tickets most->least (server tiebreaks 0-ticket rows
@@ -356,6 +357,26 @@
         : MOCK_CENTERS.filter(function (c) { return c.label.toLowerCase().indexOf(cq) !== -1; }).slice(0, 50);
       return Promise.resolve({ centers: centerHits, query: cq, mode: cq.length < 2 ? 'top' : 'search' });
     }
+    if (fn === 'apiSearchDeviceIds') {
+      // Mirrors apiSearchDeviceIdsCD — real data has ~7,400 distinct DeviceID values.
+      var diq = String((args && args.query) || '').trim().toLowerCase();
+      var MOCK_DEVICE_IDS = ['BOR001', 'F2P001', 'Tricog-Dongle-0000', 'API_UPLOAD'];
+      for (var di = 0; di < 20; di++) MOCK_DEVICE_IDS.push('HE-' + (100000 + di * 733).toString(16).toUpperCase());
+      var diHits = diq.length < 2
+        ? MOCK_DEVICE_IDS.slice(0, 12)
+        : MOCK_DEVICE_IDS.filter(function (d) { return d.toLowerCase().indexOf(diq) !== -1; }).slice(0, 50);
+      return Promise.resolve({ deviceIds: diHits, query: diq, mode: diq.length < 2 ? 'top' : 'search' });
+    }
+    if (fn === 'apiSearchMacSerialIds') {
+      // Mirrors apiSearchMacSerialIdsCD — real data has ~16,000 distinct MacSerialID values.
+      var msq = String((args && args.query) || '').trim().toLowerCase();
+      var MOCK_MAC_IDS = [];
+      for (var mi = 0; mi < 20; mi++) MOCK_MAC_IDS.push('B2-' + (100000 + mi * 991).toString(16));
+      var msHits = msq.length < 2
+        ? MOCK_MAC_IDS.slice(0, 12)
+        : MOCK_MAC_IDS.filter(function (m) { return m.toLowerCase().indexOf(msq) !== -1; }).slice(0, 50);
+      return Promise.resolve({ macSerialIds: msHits, query: msq, mode: msq.length < 2 ? 'top' : 'search' });
+    }
     if (fn === 'apiSupportSearch') {
       // Deterministic-but-varied so all 3 outcomes are reachable while testing
       // the preview by hand: ÷3 → not found, even → center match, odd → ticket
@@ -641,7 +662,9 @@
         'BP Machine', 'IV Trolley', 'Mobile', 'Laptop', 'ECG Device', 'WiFi Dongle'].map(function (t) { return { type: t }; }),
       deviceStatusOptions: ['Deployed', 'Exported', 'Delivered', 'Hardware', 'Store', 'Field',
         'Ownership Transferred', 'UNKNOWN', 'Decommissioned', 'Misplaced', 'Transit', 'Ready to ship']
-        .map(function (s) { return { status: s }; })
+        .map(function (s) { return { status: s }; }),
+      machineTypeOptions: ['MAC600', 'BORON', 'GE600', 'Mindray', 'MR300', 'EDAN_DEVICE', 'F2P', 'Fukuda']
+        .map(function (m) { return { machineType: m }; })
     });
   }
 
@@ -898,6 +921,26 @@
       });
   }
 
+  /**
+   * Ranked-bar input: the top `n` rows plus one trailing "Other (N)" row
+   * summing the remainder, so a truncated breakdown states what it dropped
+   * instead of just ending at n. The two Asset breakdowns previously sliced to
+   * 8 with nothing on screen to say more existed — which started mattering
+   * more once JIRA_DEVICE_TYPE_DEFAULT went empty (`8c02469`) and Asset types
+   * began spanning every Jira type instead of Connector + ECG.
+   *
+   * Rows arrive already sorted descending (`assetsDonutFromIndex_`,
+   * EditionCD.js), so the top n really is the top n — this does not re-sort,
+   * and must not, or it would disagree with the server about what "top" means.
+   * Server-side counterpart: OverviewFlow.js's topNPlusOthers_.
+   */
+  function topNPlusOther_(rows, n) {
+    if (rows.length <= n) return rows;
+    var rest = rows.slice(n);
+    var sum = rest.reduce(function (s, r) { return s + (r.cnt || 0); }, 0);
+    return rows.slice(0, n).concat([{ label: 'Other (' + rest.length + ')', cnt: sum }]);
+  }
+
   function renderDashboard(data) {
     state.lastDashboard = data; // kept so theme changes can re-render charts offline
     state.dashFilters = data.filters || null; // the filter set this payload was fetched with
@@ -912,6 +955,7 @@
     state.countryOptions = data.countryOptions || state.countryOptions || [];
     state.deviceTypeOptions = data.deviceTypeOptions || state.deviceTypeOptions || [];
     state.deviceStatusOptions = data.deviceStatusOptions || state.deviceStatusOptions || [];
+    state.machineTypeOptions = data.machineTypeOptions || state.machineTypeOptions || [];
     /* Asset KPIs (device grain) — every tile reads data.fleet, i.e.
        jiraDeviceStats_. This page is jira_data only (per user, 2026-08-19);
        the cloud_devices `kpis`/`fleetStatus`/`firmware` specs and the Device
@@ -961,8 +1005,8 @@
     // data is CDM/Numbers/Raw-Data only now.
     Charts.deviceAges((data.fleet && data.fleet.age_bands) || []);
     var assets = data.assets || [];
-    Charts.assetStatus(assets.filter(function (r) { return r.dim === 'status'; }).slice(0, 8));
-    Charts.assetTypes(assets.filter(function (r) { return r.dim === 'type'; }).slice(0, 8));
+    Charts.assetStatus(topNPlusOther_(assets.filter(function (r) { return r.dim === 'status'; }), 8));
+    Charts.assetTypes(topNPlusOther_(assets.filter(function (r) { return r.dim === 'type'; }), 8));
     renderCohort(data.cohortReliability || []);
 
     /* Centers charts */
@@ -2017,7 +2061,8 @@
   // two dimensions that need their own irregular plural (the others already
   // end cleanly in a consonant).
   var FILTER_DIM_PLURAL = { segments: 'segments', statuses: 'statuses', states: 'states', hubs: 'hubs', cities: 'cities', countries: 'countries',
-    centers: 'centers', deviceTypes: 'device types', deviceStatusExclude: 'device statuses' };
+    centers: 'centers', deviceTypes: 'device types', deviceStatusExclude: 'device statuses',
+    billable: 'billable', machineTypes: 'machine types', deviceIds: 'device IDs', macSerialIds: 'MAC serial IDs' };
 
   /**
    * Filter-drawer accordion groups (declutter pass, per user 2026-08-18):
@@ -2030,7 +2075,12 @@
   var FILTER_GROUPS_ = {
     fgCore: ['statuses', 'segments'],
     fgLocation: ['states', 'hubs', 'centers', 'cities', 'countries'],
-    fgDevice: ['deviceTypes', 'deviceStatusExclude']
+    fgDevice: ['deviceTypes', 'deviceStatusExclude'],
+    // Billable/MachineType/DeviceID/MacSerialID (per user, 2026-08-21) — all 4
+    // are center_details columns, distinct from fgDevice's Jira-sourced
+    // dimensions, so they get their own group rather than blurring what
+    // "Device (Jira)" means.
+    fgHardware: ['billable', 'machineTypes', 'deviceIds', 'macSerialIds']
     // fgDate is date-range, handled separately (not an array dimension).
   };
 
@@ -2086,6 +2136,15 @@
     renderFilterCombo_('filterCountry', 'countries', (state.countryOptions || []).map(function (s) { return s.country; }));
     renderFilterCombo_('filterDeviceType', 'deviceTypes', (state.deviceTypeOptions || []).map(function (s) { return s.type; }));
     renderFilterCombo_('filterDeviceStatus', 'deviceStatusExclude', (state.deviceStatusOptions || []).map(function (s) { return s.status; }));
+    // Billable/MachineType/DeviceID/MacSerialID (per user, 2026-08-21) — 4 more
+    // center_details filter dimensions. Billable has only 2 real values
+    // (YES/NO), a static list like Status; MachineType (18 distinct values)
+    // ships a static server list like City/Country; DeviceID (~7.4k) and
+    // MacSerialID (~16k) are Hub-scale, so both are server-searched instead.
+    renderFilterCombo_('filterBillable', 'billable', ['YES', 'NO']);
+    renderFilterCombo_('filterMachineType', 'machineTypes', (state.machineTypeOptions || []).map(function (s) { return s.machineType; }));
+    renderFilterCombo_('filterDeviceId', 'deviceIds', [], searchDeviceIds_);
+    renderFilterCombo_('filterMacSerialId', 'macSerialIds', [], searchMacSerialIds_);
     $('filterDateFrom').value = state.globalFiltersPending.dateFrom;
     $('filterDateTo').value = state.globalFiltersPending.dateTo;
     autoExpandFilterGroups_();
@@ -2145,6 +2204,34 @@
         var centers = (data && data.centers) || [];
         centerSearchCache[key] = centers;
         done(centers);
+      })
+      .catch(function (err) { done([], err); });
+  }
+
+  /** Debounced server-side Device ID search — same shape as searchHubs_ and for the same reason (~7.4k distinct values). */
+  var deviceIdSearchCache = {};
+  function searchDeviceIds_(query, done) {
+    var key = 'q:' + String(query || '').trim().toLowerCase();
+    if (deviceIdSearchCache[key]) { done(deviceIdSearchCache[key]); return; }
+    gsCall(ep('apiSearchDeviceIds'), { query: String(query || '').trim() })
+      .then(function (data) {
+        var ids = (data && data.deviceIds) || [];
+        deviceIdSearchCache[key] = ids;
+        done(ids);
+      })
+      .catch(function (err) { done([], err); });
+  }
+
+  /** Debounced server-side Mac Serial ID search — same shape as searchDeviceIds_ (~16k distinct values). */
+  var macSerialIdSearchCache = {};
+  function searchMacSerialIds_(query, done) {
+    var key = 'q:' + String(query || '').trim().toLowerCase();
+    if (macSerialIdSearchCache[key]) { done(macSerialIdSearchCache[key]); return; }
+    gsCall(ep('apiSearchMacSerialIds'), { query: String(query || '').trim() })
+      .then(function (data) {
+        var ids = (data && data.macSerialIds) || [];
+        macSerialIdSearchCache[key] = ids;
+        done(ids);
       })
       .catch(function (err) { done([], err); });
   }
@@ -3550,6 +3637,7 @@
       state.globalFiltersPending = { segments: [], statuses: ['ACTIVE'], states: [], hubs: [], cities: [], countries: [],
         centers: [],
         deviceTypes: JIRA_DEVICE_TYPE_DEFAULT.slice(), deviceStatusExclude: JIRA_DEVICE_STATUS_EXCLUDE_DEFAULT.slice(),
+        billable: [], machineTypes: [], deviceIds: [], macSerialIds: [],
         dateFrom: '', dateTo: '' };
       openFilterDrawer_(true); // re-render the toggle/combos to reflect the cleared state (don't re-snapshot over it)
     });

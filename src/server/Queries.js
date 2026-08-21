@@ -157,7 +157,7 @@ function cdSegCond_(segment) {
  * @return {string}
  */
 function multiCond_(column, values) {
-  var clean = (values || []).map(segClean_).filter(Boolean);
+  var clean = (values || []).map(sqlLiteral_).filter(Boolean);
   if (!clean.length) return '';
   return " AND TRIM(IFNULL(" + column + ",'')) IN (" +
     clean.map(function (v) { return "'" + v + "'"; }).join(',') + ')';
@@ -173,10 +173,38 @@ function multiCond_(column, values) {
  * @return {string}
  */
 function multiCondNot_(column, values) {
-  var clean = (values || []).map(segClean_).filter(Boolean);
+  var clean = (values || []).map(sqlLiteral_).filter(Boolean);
   if (!clean.length) return '';
   return " AND TRIM(IFNULL(" + column + ",'')) NOT IN (" +
     clean.map(function (v) { return "'" + v + "'"; }).join(',') + ')';
+}
+
+/**
+ * Escapes a value for use as a BigQuery STRING LITERAL — the emit-side
+ * counterpart to segClean_.
+ *
+ * segClean_ DELETES quote characters, which is right for its own jobs (slugs,
+ * cache-key canonicalisation) but wrong for a literal: a real hub named
+ * "St. Mary's Hospital" was rewritten to "St. Marys Hospital", a value that
+ * exists nowhere in the column, so every SQL-backed panel silently returned
+ * zero rows. Worse, the JS filter path (centerPassesFilters_) compares the
+ * UNCLEANED value with ===, so Map / CDM / Top Customers / the Overview trees
+ * still matched — the same filter produced two different answers on one
+ * screen. That is the SQL-vs-JS divergence class of finding I4, reached
+ * through the quote character instead of through whitespace.
+ *
+ * So: double the apostrophe (SQL's own escape) rather than removing it, and
+ * do NOT truncate — a shortened hospital name matches nothing. Backslashes
+ * and newlines are removed outright: BigQuery reads a backslash as an escape
+ * introducer inside a quoted literal, and neither character can legitimately
+ * appear in a center attribute.
+ * @param {*} value
+ * @return {string} safe to interpolate between single quotes
+ */
+function sqlLiteral_(value) {
+  return String(value == null ? '' : value)
+    .replace(/[\\\r\n\t\0]/g, '')
+    .replace(/'/g, "''");
 }
 
 /**
@@ -230,7 +258,21 @@ function filterHash_(filters) {
     segments: sorted(f.segments), statuses: sorted(f.statuses),
     states: sorted(f.states), hubs: sorted(f.hubs),
     cities: sorted(f.cities), countries: sorted(f.countries),
+    // centers MUST be here: centerAttrCond_ emits CAST(CenterID AS STRING)
+    // IN (...) for it, tomFilterCond_ emits center_id IN (...), and
+    // centerPassesFilters_ checks it in JS — so it changes the payload. While
+    // it was missing, {centers:[]} and {centers:['1234']} hashed identically
+    // and the colliding key was the WARMED one: selecting a center served the
+    // all-centers payload under a visible "Center: X" chip for the full TTL,
+    // and in reverse leaked one center's numbers to every other viewer.
+    centers: sorted(f.centers),
     deviceTypes: sorted(f.deviceTypes), deviceStatusExclude: sorted(f.deviceStatusExclude),
+    // billable/machineTypes/deviceIds/macSerialIds (center_details columns,
+    // added 2026-08-21) MUST be here too, same reasoning as the `centers`
+    // note above — omitting one of these from the hash would silently
+    // collide two different filter selections onto the same cache key.
+    billable: sorted(f.billable), machineTypes: sorted(f.machineTypes),
+    deviceIds: sorted(f.deviceIds), macSerialIds: sorted(f.macSerialIds),
     dateFrom: String(f.dateFrom || ''), dateTo: String(f.dateTo || '')
   });
   return shortHash(canonical);
@@ -261,7 +303,10 @@ function centerUptimeSql_(tailSelect) {
     "  MAX(e) OVER (PARTITION BY center_id ORDER BY s ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS pe FROM tix), " +
     "islands AS (SELECT center_id, s, e, " +
     "  COUNTIF(pe IS NULL OR s > pe) OVER (PARTITION BY center_id ORDER BY s ROWS UNBOUNDED PRECEDING) AS grp FROM flagged), " +
-    "dt AS (SELECT center_id, SUM(DATETIME_DIFF(se, ss, HOUR)) AS downtime_hrs " +
+    // GREATEST(0, …) — see the identical guard in EditionCD.js's
+    // centerUptimeSqlCD_ (the live path) for why a per-island duration can go
+    // negative and what it does to downtime_days.
+    "dt AS (SELECT center_id, SUM(GREATEST(0, DATETIME_DIFF(se, ss, HOUR))) AS downtime_hrs " +
     "  FROM (SELECT center_id, grp, MIN(s) ss, MAX(e) se FROM islands GROUP BY center_id, grp) GROUP BY center_id), " +
     "fail AS (SELECT center_id, COUNT(*) AS failures FROM tix GROUP BY center_id), " +
     "base AS (SELECT b.center_id, " +

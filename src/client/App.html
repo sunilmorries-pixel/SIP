@@ -809,7 +809,13 @@
     var tile = $(id);
     if (!tile) return;
     tile.classList.remove('is-loading');
-    countUp(tile.querySelector('.kpi-value'), value == null ? 0 : value);
+    // An ABSENT value renders as '—', never as 0. A missing server key, a
+    // renamed field, or a panel whose BigQuery spec failed used to animate a
+    // confident zero into the tile — indistinguishable from a real zero, and
+    // therefore worse than an error, because nothing prompts anyone to look.
+    // Only a genuine numeric 0 prints "0".
+    if (value == null) tile.querySelector('.kpi-value').textContent = '—';
+    else countUp(tile.querySelector('.kpi-value'), value);
     if (subHtml) tile.querySelector('.kpi-sub').innerHTML = subHtml;
     else if (subText) tile.querySelector('.kpi-sub').textContent = subText;
   }
@@ -2269,14 +2275,55 @@
       debounceTimer = setTimeout(function () { renderList(query); }, FILTER_COMBO_DEBOUNCE_MS);
     }
 
+    // .filter-combo-list is position:fixed (see Styles.html for why — the
+    // drawer body's own overflow-y:auto clips absolutely-positioned dropdowns
+    // that open below the visible area, which is exactly what hid the LAST
+    // field's dropdown in each accordion group). Fixed positioning needs its
+    // coordinates computed here, since "float below this input" isn't
+    // expressible in CSS once the element is out of normal flow.
+    var drawerBody = container.closest('.center-panel-body');
+    function positionList_() {
+      var r = input.getBoundingClientRect();
+      // Anchor input scrolled out of the drawer's visible area (the accordion
+      // body scrolled, but the dropdown isn't clipped anymore so it would
+      // otherwise float disconnected from its input) — close it instead of
+      // showing a floating list nothing points at.
+      if (drawerBody) {
+        var br = drawerBody.getBoundingClientRect();
+        if (r.bottom < br.top || r.top > br.bottom) { list.hidden = true; return; }
+      }
+      list.style.left = r.left + 'px';
+      list.style.width = r.width + 'px';
+      // Flip above the input when there isn't 200px (max-height) of room
+      // below — same reasoning as the clipping this replaces: never let the
+      // list run off the visible viewport either.
+      var spaceBelow = window.innerHeight - r.bottom;
+      if (spaceBelow < 200 && r.top > spaceBelow) {
+        list.style.top = 'auto';
+        list.style.bottom = (window.innerHeight - r.top + 4) + 'px';
+      } else {
+        list.style.bottom = 'auto';
+        list.style.top = (r.bottom + 4) + 'px';
+      }
+    }
+
     input.addEventListener('focus', function () {
       list.hidden = false;
+      positionList_();
       renderList(input.value); // no debounce: focus shows the default set at once
     });
     input.addEventListener('input', function () { requestList(input.value); });
     document.addEventListener('click', function (e) {
       if (!container.contains(e.target)) list.hidden = true;
     });
+    // Capture phase: the drawer body's scroll event doesn't bubble to window,
+    // but capture-phase listeners on window still see it trickle down. Cheap
+    // no-op when this combobox's own list is closed, so this doesn't get
+    // meaningfully worse each time the drawer reopens (renderFilterCombo_
+    // already re-adds its click listener per open — a pre-existing, separate
+    // issue, not one this change should compound further).
+    window.addEventListener('scroll', function () { if (!list.hidden) positionList_(); }, true);
+    window.addEventListener('resize', function () { if (!list.hidden) positionList_(); });
     renderSelected();
   }
 

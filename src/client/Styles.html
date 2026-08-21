@@ -886,9 +886,18 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 /* ── searchable multi-select combobox (State/Hub) — vanilla, no library ── */
 .filter-combo { position: relative; }
 .filter-combo-input { width: 100%; }
+/* position:fixed, not absolute — the filter drawer's body (.center-panel-body)
+   scrolls with overflow-y:auto, which clips any absolutely-positioned child
+   whose dropdown would open past its bottom edge. That's exactly what made
+   the LAST field's dropdown (Country, at the bottom of the Location group)
+   invisible: the list was there, just clipped away by the ancestor's overflow.
+   Fixed positioning escapes that clipping — top/left/width are computed from
+   the input's getBoundingClientRect() in positionList_() (App.html), not CSS,
+   since "float below this specific input" can't be expressed in CSS alone
+   once the element is out of normal flow relative to the viewport. */
 .filter-combo-list {
-  position: absolute; top: 100%; left: 0; right: 0; z-index: 5;
-  max-height: 200px; overflow-y: auto; margin-top: 4px;
+  position: fixed; z-index: 5;
+  max-height: 200px; overflow-y: auto;
   background: var(--surface-solid); border: 1px solid var(--border-strong);
   border-radius: 8px; box-shadow: 0 8px 24px rgba(2,10,20,.35);
   display: flex; flex-direction: column; padding: 6px;

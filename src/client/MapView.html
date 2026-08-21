@@ -61,8 +61,11 @@ function MapView(containerId) {
   function defaultTooltip(c) {
     // No trailing "N assets" clause: c[7] is now the same Jira count as c[4]
     // (see the file-header note), so it would just repeat the device count.
+    // index 12 (approx, main map only — undefined elsewhere) flags a center
+    // plotted at a city/hub proxy coordinate because it isn't geocoded yet.
     return esc(c[1]) + ' · ' + esc(c[4]) + ' device' + (c[4] === 1 ? '' : 's') +
-      ' · ' + esc(c[6]) + ' open ticket' + (c[6] === 1 ? '' : 's');
+      ' · ' + esc(c[6]) + ' open ticket' + (c[6] === 1 ? '' : 's') +
+      (c[12] ? ' · approx. location' : '');
   }
 
   // opts lets a page override marker color/tooltip while reusing the same
@@ -77,8 +80,12 @@ function MapView(containerId) {
     var markers = centers.map(function (c) {
       var radius = Math.min(18, 5 + Math.sqrt(c[4] || 1) * 1.9);
       var color = colorFn(c);
+      // approx (proxy-coordinate) centers render lighter/dashed — a
+      // neighborhood-level guess, not the center's real geocoded spot.
       var marker = L.circleMarker([c[2], c[3]], {
-        radius: radius, color: color, weight: 1.5, fillColor: color, fillOpacity: 0.4
+        radius: radius, color: color, weight: c[12] ? 1 : 1.5,
+        fillColor: color, fillOpacity: c[12] ? 0.2 : 0.4,
+        dashArray: c[12] ? '2,3' : null
       });
       marker.bindTooltip(tooltipFn(c), { direction: 'top' });
       marker.on('click', function () { onClick(c); });

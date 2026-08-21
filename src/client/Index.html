@@ -199,10 +199,11 @@
 
     <!-- Center map — moved here from its own tab (2026-08-21, per user): only
          the map itself carried over, the old Map page's KPI tiles and 4 chart
-         cards were dropped as not required. -->
-    <div id="geoProgress" class="geo-progress" role="status" aria-live="polite" style="margin-top:var(--gap);margin-bottom:var(--gap)">Loading map data…</div>
-
-    <div class="map-wrap card">
+         cards were dropped as not required. The geocode-progress status line
+         (pending count, "run runGeocodeBatch() in the editor") was removed
+         2026-08-21 too — dev-facing copy that didn't belong on the user-facing
+         landing page. -->
+    <div class="map-wrap card" style="margin-top:var(--gap)">
       <div id="assetMap" role="application"
            aria-label="Map of centers. Click a marker to see center and asset details."></div>
 
@@ -210,7 +211,7 @@
         <button class="legend-filter" type="button" data-bucket="none" aria-pressed="false"><span class="legend-dot" style="background:#34D399"></span>No open tickets</button>
         <button class="legend-filter" type="button" data-bucket="low" aria-pressed="false"><span class="legend-dot" style="background:#FBBF24"></span>1–3 open</button>
         <button class="legend-filter" type="button" data-bucket="high" aria-pressed="false"><span class="legend-dot" style="background:#F87171"></span>4+ open</button>
-        <span class="legend-note">size = devices · click to filter</span>
+        <span class="legend-note">size = devices · faded/dashed = approximate location · click to filter</span>
       </div>
     </div>
   </section>

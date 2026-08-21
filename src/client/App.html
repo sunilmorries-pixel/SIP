@@ -445,7 +445,10 @@
           // from the Map page, 2026-08-19.
           rnd(1, 15), 0, rnd(0, 7), nAssets,
           hubs[p % hubs.length], 40 + (p % hubs.length),
-          segs[p % segs.length], states[p % states.length]
+          segs[p % segs.length], states[p % states.length],
+          // index 12 (approx) — every 6th demo center simulates an ungeocoded
+          // center plotted at a city/hub proxy coordinate, 2026-08-21.
+          p % 6 === 0 ? 1 : 0
         ]);
         // [center_id, serial] — trimmed 2026-08-21 to match apiGetMapDataCD
         // once the Map page's charts (which needed type/category/age) were removed.
@@ -455,7 +458,6 @@
       }
       return Promise.resolve({
         centers: pts, assets: asset,
-        geo: { located: 5210, failed: 64, pending: 2790, total: 8064 },
         filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], dateFrom: '', dateTo: '' }
       });
     }
@@ -1861,27 +1863,20 @@
   }
 
   // Compact center array indices (must match EditionCD.js apiGetMapDataCD).
-  var CI = { id: 0, name: 1, lat: 2, lng: 3, devices: 4, online: 5, tickets: 6, assets: 7, hub: 8, hubId: 9, segment: 10, state: 11 };
+  var CI = { id: 0, name: 1, lat: 2, lng: 3, devices: 4, online: 5, tickets: 6, assets: 7, hub: 8, hubId: 9, segment: 10, state: 11, approx: 12 };
   // Compact asset array indices (must match EditionCD.js apiGetMapDataCD) —
   // trimmed to just what the map's serial search needs (2026-08-21): type/
   // category/age only fed the Map page's now-removed charts.
   var AI = { center: 0, serial: 1 };
 
   function loadMapData() {
-    $('geoProgress').textContent = 'Loading map data…';
     gsCall(ep('apiGetMapData'), { filters: state.globalFilters })
       .then(function (payload) {
         state.mapLoaded = true;
         state.mapBundle = payload;
         applyMapFilters();
-        var geo = payload.geo || {};
-        $('geoProgress').textContent =
-          FMT.format(payload.centers.length) + ' centers on map · located ' +
-          FMT.format(geo.located || 0) + ' of ' + FMT.format(geo.total || 0) + ' locations' +
-          (geo.pending ? ' · ' + FMT.format(geo.pending) + ' pending — run runGeocodeBatch() in the editor' : ' · geocoding complete');
       })
       .catch(function (err) {
-        $('geoProgress').textContent = 'Map data failed: ' + err.message;
         toast('Map data failed: ' + err.message, 'error');
       });
   }
@@ -2893,7 +2888,7 @@
     if (tabId === 'tab-overview') {
       if (!state.overviewFlowLoaded || overviewFlowStale) loadOverviewFlow();
       if (!mainMap.ensureMap()) {
-        $('geoProgress').textContent = 'Map library failed to load — check your network and refresh.';
+        toast('Map library failed to load — check your network and refresh.', 'error');
       } else if (!state.mapLoaded) {
         loadMapData();
       }

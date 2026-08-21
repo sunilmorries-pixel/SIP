@@ -868,17 +868,21 @@ function apiGetMapDataCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    // v12: map merged into the Overview page (2026-08-21, per user) — its KPI
-    // tiles and 4 chart cards were dropped as not required, so assets no
-    // longer carry type/category/age (only the serial search still needs
-    // them), and the KPI-only unlocatedCenters count is gone too.
-    var cacheKey = 'mapcd_v12_' + getCacheEpoch_() + '_' + filterHash_(filters);
+    // v13: ungeocoded centers (no direct lat/lng, no cached pin-geocode) are no
+    // longer dropped outright — they're plotted at a proxy coordinate (the
+    // average of already-geocoded centers sharing their city, else their hub),
+    // per user 2026-08-21, so the map's count matches Customer 360 instead of
+    // trailing it by however many centers runGeocodeBatch() hasn't reached yet.
+    // Index 12 (approx) flags these so the client can mark them visually
+    // distinct — they're a neighborhood-level guess, not the center's real spot.
+    var cacheKey = 'mapcd_v13_' + getCacheEpoch_() + '_' + filterHash_(filters);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
     }
 
-    var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters); });
+    var allCenters = getCenter360RowsCD_();
+    var centers = allCenters.filter(function (row) { return centerPassesFilters_(row, filters); });
     var assets = getAssetIndex_();               // from the Jira SHEET (Connector + ECG only)
     var geoStore = loadGeoStore();
 
@@ -887,9 +891,33 @@ function apiGetMapDataCD(options) {
       if (a.center_id !== null) assetCount[a.center_id] = (assetCount[a.center_id] || 0) + 1;
     });
 
+    // Proxy pool built from EVERY center with a real coordinate (not just the
+    // current filter's) — a center's geographic neighbors don't depend on
+    // which segment/status/etc. happens to be selected right now.
+    var cityCoords = {}, hubCoords = {};
+    function accumulate_(map, key, c) {
+      var e = map[key] || (map[key] = { latSum: 0, lngSum: 0, n: 0 });
+      e.latSum += c[0]; e.lngSum += c[1]; e.n++;
+    }
+    allCenters.forEach(function (row) {
+      var c = coordsForCD_(row, geoStore);
+      if (!c) return;
+      if (row.city) accumulate_(cityCoords, row.city + '|' + row.state, c);
+      if (row.hub_id != null && row.hub_id !== '') accumulate_(hubCoords, String(row.hub_id), c);
+    });
+    function proxyCoord_(row) {
+      var cc = row.city && cityCoords[row.city + '|' + row.state];
+      if (cc) return [cc.latSum / cc.n, cc.lngSum / cc.n];
+      var hc = row.hub_id != null && row.hub_id !== '' && hubCoords[String(row.hub_id)];
+      if (hc) return [hc.latSum / hc.n, hc.lngSum / hc.n];
+      return null;
+    }
+
     var locatedIds = {}, located = [];
     centers.forEach(function (row) {
       var c = coordsForCD_(row, geoStore);
+      var approx = c ? 0 : 1;
+      if (!c) c = proxyCoord_(row);
       if (c) {
         locatedIds[row.center_id] = true;
         located.push([
@@ -904,7 +932,7 @@ function apiGetMapDataCD(options) {
           row.center_id, row.center, c[0], c[1], row.jira_devices, 0,
           row.open_tickets, assetCount[row.center_id] || 0,
           row.hub || '', row.hub_id != null ? row.hub_id : '',
-          row.segment || '', row.state || ''
+          row.segment || '', row.state || '', approx
         ]);
       }
     });
@@ -918,7 +946,7 @@ function apiGetMapDataCD(options) {
     });
 
     var payload = {
-      centers: located, assets: assetRows, geo: geoStats(),
+      centers: located, assets: assetRows,
       edition: 'center_details', flags: FLAGS_CD
     };
     cachePutLarge(cacheKey, payload, 1800); // outlives the 10-min warm interval

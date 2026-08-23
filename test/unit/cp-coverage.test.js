@@ -104,4 +104,57 @@ describe('CP dealer layer (Cp.js)', function () {
       expect(out.dealers.map(d => d.name)).toEqual(['Arun Corp', 'Meera Corp', 'Zoya Corp']);
     });
   });
+
+  describe('CP_ROSTER (real data)', function () {
+    // This suite intentionally reads the REAL roster (not a reset fixture) —
+    // it exists to catch typos/missing fields in the hand-entered coordinate
+    // data, which unit tests over buildCpLayer_ alone cannot see.
+    let realSandbox;
+    beforeAll(function () { realSandbox = loadGas(['Cp.js']); });
+
+    test('has 11 companies', function () {
+      expect(realSandbox.CP_ROSTER).toHaveLength(11);
+    });
+
+    test('every entry has a complete HQ (name, hqCity, hqState, lat, lng)', function () {
+      realSandbox.CP_ROSTER.forEach(function (entry) {
+        expect(typeof entry.name).toBe('string');
+        expect(entry.name.length).toBeGreaterThan(0);
+        expect(typeof entry.hqCity).toBe('string');
+        expect(typeof entry.hqState).toBe('string');
+        expect(typeof entry.lat).toBe('number');
+        expect(typeof entry.lng).toBe('number');
+      });
+    });
+
+    test('every covered location has a name and coordinates', function () {
+      realSandbox.CP_ROSTER.forEach(function (entry) {
+        (entry.locations || []).forEach(function (loc) {
+          expect(typeof loc.name).toBe('string');
+          expect(loc.name.length).toBeGreaterThan(0);
+          expect(typeof loc.lat).toBe('number');
+          expect(typeof loc.lng).toBe('number');
+        });
+      });
+    });
+
+    test('feeding the real roster through buildCpLayer_ plots all 11 with no unlocated entries', function () {
+      var identity = function (e) { return [e.lat, e.lng]; };
+      var identityLoc = function (e, l) { return [l.lat, l.lng]; };
+      var out = realSandbox.buildCpLayer_(realSandbox.CP_ROSTER, identity, identityLoc);
+      expect(out.dealers).toHaveLength(11);
+      expect(out.unlocatedRoster).toEqual([]);
+      expect(out.unlocatedLocations).toEqual([]);
+    });
+
+    test('SBM Corp\'s renamed/duplicate location names were merged, not carried in twice', function () {
+      var sbm = realSandbox.CP_ROSTER.filter(function (e) { return e.name === 'SBM Corp'; })[0];
+      var names = sbm.locations.map(function (l) { return l.name; });
+      expect(names.filter(function (n) { return n === 'Chhatrapati Sambhajinagar'; })).toHaveLength(1);
+      expect(names).not.toContain('Aurangabad');
+      expect(names).not.toContain('Chh. Sambajinagar');
+      expect(names.filter(function (n) { return n === 'Sangli'; })).toHaveLength(1);
+      expect(names).not.toContain('Sangali');
+    });
+  });
 });

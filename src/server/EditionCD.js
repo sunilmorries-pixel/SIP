@@ -1018,7 +1018,10 @@ function apiGetMapDataCD(options) {
     // engineers" for up to the 30-min TTL rather than as "not loaded yet".
     // NOTE: the key does not hash FSE_ROSTER, so a roster edit can serve a
     // stale layer until the entry expires (or getCacheEpoch_ moves).
-    var cacheKey = 'mapcd_v15_' + getCacheEpoch_() + '_' + filterHash_(filters);
+    // v16: payload gained `cp` (the dealer layer) — same reasoning as v15: a
+    // v15 entry cached before this deploy has no `cp` key, and would read as
+    // "no dealers" for up to the 30-min TTL rather than "not loaded yet".
+    var cacheKey = 'mapcd_v16_' + getCacheEpoch_() + '_' + filterHash_(filters);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -1108,8 +1111,21 @@ function apiGetMapDataCD(options) {
       }, plottedIds);
     }
 
+    // CP (Channel Partner) dealer layer (Cp.js). Unlike fse above, this needs
+    // no query and no active-roster guard to skip a query cost — every
+    // coordinate on CP_ROSTER is explicit (spec: docs/superpowers/specs/
+    // 2026-08-24-cp-dealer-layer-design.md), so hqCoordFn/locationCoordFn are
+    // trivial pass-throughs. Guarded on non-empty roster only so an empty
+    // catalog sends `cp: null` (no layer) instead of an empty-but-present one.
+    var cp = null;
+    if (CP_ROSTER.length) {
+      cp = buildCpLayer_(CP_ROSTER,
+        function (entry) { return (entry.lat != null && entry.lng != null) ? [entry.lat, entry.lng] : null; },
+        function (entry, loc) { return (loc.lat != null && loc.lng != null) ? [loc.lat, loc.lng] : null; });
+    }
+
     var payload = {
-      centers: located, assets: assetRows, fse: fse,
+      centers: located, assets: assetRows, fse: fse, cp: cp,
       edition: 'center_details', flags: FLAGS_CD
     };
     cachePutLarge(cacheKey, payload, 1800); // outlives the 10-min warm interval

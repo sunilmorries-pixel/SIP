@@ -1122,6 +1122,39 @@ body[data-theme="light"] .fse-name {
 }
 .fse-tip-rule { border: 0; border-top: 1px solid var(--border); margin: 5px 0; }
 
+/* CP (Channel Partner dealer) pins — same casing/halo technique as .fse-glyph
+   above, burnt orange (#C2410C, see MapView.html's CP_COLOR comment for the
+   contrast math) instead of violet, briefcase glyph instead of a person. */
+.cp-pin {
+  display: grid; place-items: center;
+  background: none; border: 0;
+}
+.cp-glyph { display: grid; place-items: center; width: 44px; height: 44px; }
+.cp-glyph svg {
+  fill: none; stroke: #C2410C; stroke-width: 2.2;
+  stroke-linecap: round; stroke-linejoin: round;
+  paint-order: stroke;
+  filter: drop-shadow(0 0 1.5px #0B1220) drop-shadow(0 0 1.5px #0B1220);
+}
+body[data-theme="light"] .cp-glyph svg {
+  filter: drop-shadow(0 0 1.5px #FFFFFF) drop-shadow(0 0 1.5px #FFFFFF);
+}
+.cp-name {
+  color: #FFF1E7; background: rgba(11, 18, 32, 0.82);
+  border: 1px solid rgba(194, 65, 12, 0.6);
+}
+body[data-theme="light"] .cp-name {
+  color: #7C2D12; background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(194, 65, 12, 0.6);
+}
+.cp-pin.is-focused .cp-glyph svg { stroke-width: 2.8; }
+.cp-pin.is-focused .cp-name {
+  color: #fff; background: #C2410C; border-color: #C2410C;
+}
+.cp-pin:focus-visible .cp-glyph {
+  outline: 2px solid #C2410C; outline-offset: 2px; border-radius: 50%;
+}
+
 /* While an engineer is focused, recede the clustered backdrop. Scoped to the
    plugin's own .marker-cluster and NOT .leaflet-marker-icon — the FSE pins
    carry that class too, and dimming the selected engineer would defeat the
@@ -1158,6 +1191,8 @@ body[data-theme="light"] .fse-name {
 .legend-dot-gap {
   background: transparent; border: 2px solid #F87171; box-sizing: border-box;
 }
+.map-legend-cp { flex-wrap: wrap; }
+.legend-dot-cp { background: #C2410C; }
 
 .fse-focus-bar {
   position: absolute; left: 12px; top: 12px; z-index: 500;
@@ -1174,6 +1209,11 @@ body[data-theme="light"] .fse-focus-bar {
   background: rgba(255, 255, 255, 0.95);
   border-color: rgba(139, 92, 246, 0.5);
 }
+/* CP's focus bar reuses .fse-focus-bar's layout (position/flex/padding/
+   shadow/animation) via the SAME class in Index.html's markup — only the
+   accent border differs, via this modifier class stacked alongside it. */
+.cp-focus-bar { border-color: rgba(194, 65, 12, 0.55); }
+body[data-theme="light"] .cp-focus-bar { border-color: rgba(194, 65, 12, 0.5); }
 .fse-focus-name {
   font-family: var(--font-head); font-weight: 700; font-size: 13px;
   color: var(--text-1); white-space: nowrap;

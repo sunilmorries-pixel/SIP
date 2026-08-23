@@ -236,6 +236,15 @@
         </button>
         <span class="legend-note" id="fseWindowNote"></span>
       </div>
+
+      <!-- Dealer (CP) layer toggle. Own row, own hidden guard — same
+           reasoning as the engineer row above: no dead chrome if the roster
+           is ever emptied, even though it ships populated today. -->
+      <div class="map-legend map-legend-cp" id="cpLegend" role="group" aria-label="Dealer coverage" hidden>
+        <button id="cpToggle" class="legend-filter" type="button" aria-pressed="true">
+          <span class="legend-dot legend-dot-cp"></span>Dealers
+        </button>
+      </div>
       </div><!-- /.map-legend-stack -->
 
       <!-- Focus bar: appears only while one engineer is selected. Carries the
@@ -245,6 +254,13 @@
         <span class="fse-focus-name" id="fseFocusName"></span>
         <span class="fse-focus-meta" id="fseFocusMeta"></span>
         <button class="btn btn-ghost btn-sm" type="button" id="fseFocusClear">Clear</button>
+      </div>
+
+      <!-- Same three-escape-route convention as the engineer focus bar. -->
+      <div class="fse-focus-bar cp-focus-bar" id="cpFocusBar" role="status" hidden>
+        <span class="fse-focus-name" id="cpFocusName"></span>
+        <span class="fse-focus-meta" id="cpFocusMeta"></span>
+        <button class="btn btn-ghost btn-sm" type="button" id="cpFocusClear">Clear</button>
       </div>
     </div>
   </section>

@@ -302,7 +302,9 @@ function MapView(containerId) {
         keyboard: true, riseOnHover: true, zIndexOffset: 1000
       });
       marker.bindTooltip(group.map(function (e) {
-        return '<strong>' + esc(e.name) + '</strong><br>' + esc(e.hq) +
+        var terr = e.territory && e.territory.length ?
+          '<br>Territory: ' + esc(e.territory.join(', ')) : '';
+        return '<strong>' + esc(e.name) + '</strong><br>' + esc(e.hq) + terr +
           '<br>' + e.centers.length + ' center' + (e.centers.length === 1 ? '' : 's') +
           ' · ' + e.tickets + ' ticket' + (e.tickets === 1 ? '' : 's');
       }).join('<hr class="fse-tip-rule">'), { direction: 'top', className: 'fse-tip' });

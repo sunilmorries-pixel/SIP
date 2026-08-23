@@ -40,8 +40,64 @@
  * Example row (commented — do not ship invented names):
  *   // { name: 'R Kulkarni', hqCity: 'Pune', hqState: 'Maharashtra',
  *   //   territory: ['Maharashtra', 'Goa'], active: true },
+ *
+ * SOURCE (2026-08-24): "Progress on the Service Dealer Network - BRM 2026.xlsx",
+ * 'direct' sheet — 27 direct-employed FSEs. lat/lng are supplied explicitly
+ * rather than left to the geo store: several HQ towns here (Kalaburagi,
+ * Thirthahalli, Ramdurg, Munger, Jharsuguda, Rayagada, ...) have no guarantee
+ * of already being geocoded via an existing center, and an explicit coordinate
+ * means the pin always renders instead of silently landing in
+ * unlocatedRoster. `territory` is derived from the sheet's "Segment" column,
+ * which is actually the STEMI program the engineer works under, not a state
+ * list — mapped here (KASTEMI -> Karnataka, BIHAR STEMI -> Bihar, ODISHA
+ * STEMI -> Odisha); "Private" engineers carry no territory (general/nationwide
+ * coverage, not tied to one state program). One row was SKIPPED: "Manumaya
+ * Kumar" / HQ "Jaspur" / segment "MANIPUR STEMI" — Jaspur is not a Manipur
+ * city (there's a Jaspur in Uttarakhand and a Jashpur in Chhattisgarh), so the
+ * HQ state couldn't be resolved with confidence. Flagged to the user rather
+ * than guessed; add the row once the correct HQ is confirmed.
  */
-var FSE_ROSTER = [];
+var FSE_ROSTER = [
+  { name: 'Javed Hussain Khan', hqCity: 'Delhi', hqState: 'Delhi', lat: 28.7041, lng: 77.1025 },
+  { name: 'Rakesh Kumar', hqCity: 'Chandigarh', hqState: 'Chandigarh', lat: 30.7333, lng: 76.7794 },
+  { name: 'Kaushal Dubey', hqCity: 'Lucknow', hqState: 'Uttar Pradesh', lat: 26.8467, lng: 80.9462 },
+  // Sheet spells this "Hydrabad" — corrected here; original spelling kept nowhere since it's a typo, not an alias ServiceWRK would use.
+  { name: 'Sai Vamshi', hqCity: 'Hyderabad', hqState: 'Telangana', lat: 17.3850, lng: 78.4867 },
+  { name: 'Madesh S', hqCity: 'Bengaluru', hqState: 'Karnataka', lat: 12.9716, lng: 77.5946 },
+  // Sheet spells this "Guwahatti" — corrected.
+  { name: 'Milan Sarma', hqCity: 'Guwahati', hqState: 'Assam', lat: 26.1445, lng: 91.7362 },
+  { name: 'Sujoy Low', hqCity: 'Kolkata', hqState: 'West Bengal', lat: 22.5726, lng: 88.3639 },
+  { name: 'Anish Sharma', hqCity: 'Mumbai', hqState: 'Maharashtra', lat: 19.0760, lng: 72.8777 },
+  { name: 'Karthikeyan', hqCity: 'Chennai', hqState: 'Tamil Nadu', lat: 13.0827, lng: 80.2707 },
+
+  { name: 'Anand Pimpale', hqCity: 'Kalaburagi', hqState: 'Karnataka', lat: 17.3297, lng: 76.8343, territory: ['Karnataka'] },
+  { name: 'Umesha G M', hqCity: 'Davanagere', hqState: 'Karnataka', lat: 14.4644, lng: 75.9218, territory: ['Karnataka'] },
+  { name: 'Sachin K M', hqCity: 'Thirthahalli', hqState: 'Karnataka', lat: 13.6833, lng: 75.2500, territory: ['Karnataka'] },
+  { name: 'Ganuga Khader Basha', hqCity: 'Bengaluru', hqState: 'Karnataka', lat: 12.9716, lng: 77.5946, territory: ['Karnataka'] },
+  { name: 'Vijayakumar Bilagi', hqCity: 'Ramdurg', hqState: 'Karnataka', lat: 15.9500, lng: 75.3000, territory: ['Karnataka'] },
+  { name: 'Karthik', hqCity: 'Mysuru', hqState: 'Karnataka', lat: 12.2958, lng: 76.6394, territory: ['Karnataka'] },
+  { name: 'Kishore Bhandari', hqCity: 'Udupi', hqState: 'Karnataka', lat: 13.3409, lng: 74.7421, territory: ['Karnataka'] },
+
+  { name: 'Abhishek Kumar', hqCity: 'Bhagalpur', hqState: 'Bihar', lat: 25.2445, lng: 86.9718, territory: ['Bihar'] },
+  { name: 'Manjeet Kumar', hqCity: 'Munger', hqState: 'Bihar', lat: 25.3747, lng: 86.4735, territory: ['Bihar'] },
+  // Sheet spells this "Nalada" — corrected to Nalanda.
+  { name: 'Sharad', hqCity: 'Nalanda', hqState: 'Bihar', lat: 25.1972, lng: 85.5217, territory: ['Bihar'] },
+  { name: 'Rohit Patel', hqCity: 'Patna', hqState: 'Bihar', lat: 25.5941, lng: 85.1376, territory: ['Bihar'] },
+  { name: 'Vikash Prasad', hqCity: 'Patna', hqState: 'Bihar', lat: 25.5941, lng: 85.1376, territory: ['Bihar'] },
+  { name: 'Avisham Singh', hqCity: 'Patna', hqState: 'Bihar', lat: 25.5941, lng: 85.1376, territory: ['Bihar'] },
+
+  // Sheet spells this "Bhubaneshwar" — corrected to Bhubaneswar.
+  { name: 'Abhishek Mohapatra', hqCity: 'Bhubaneswar', hqState: 'Odisha', lat: 20.2961, lng: 85.8245, territory: ['Odisha'] },
+  { name: 'Manas Ranjan Pati', hqCity: 'Jharsuguda', hqState: 'Odisha', lat: 21.8554, lng: 84.0062, territory: ['Odisha'] },
+  // Sheet's "Baharampur" under the ODISHA STEMI segment is Berhampur/Brahmapur
+  // (Ganjam district) — NOT the same-named town in West Bengal's Murshidabad
+  // district, disambiguated by the segment it's grouped under.
+  { name: 'Surjya Kanta Panda', hqCity: 'Berhampur', hqState: 'Odisha', lat: 19.3149, lng: 84.7941, territory: ['Odisha'] },
+  { name: 'Lalu Palaka', hqCity: 'Rayagada', hqState: 'Odisha', lat: 19.1711, lng: 83.4163, territory: ['Odisha'] }
+
+  // SKIPPED: 'Manumaya Kumar', HQ 'Jaspur', segment 'MANIPUR STEMI' — see the
+  // SOURCE note above. Add once the real HQ city is confirmed.
+];
 
 /**
  * Editor-run helper for SEEDING the roster above: prints every distinct

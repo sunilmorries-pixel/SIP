@@ -1147,10 +1147,38 @@ body[data-theme="light"] .fse-name {
 }
 .fse-tip-rule { border: 0; border-top: 1px solid var(--border); margin: 5px 0; }
 
+/* While an engineer is focused, recede the clustered backdrop. Scoped to the
+   plugin's own .marker-cluster and NOT .leaflet-marker-icon — the FSE pins
+   carry that class too, and dimming the selected engineer would defeat the
+   point. Canvas circleMarkers are dimmed in JS (setStyle); clusters are DOM
+   icons the canvas path can't reach, which is why this rule exists at all.
+
+   filter, not opacity: Leaflet writes opacity INLINE on marker icons (and
+   markercluster animates it during zoom), so a class rule loses to it —
+   measured computed opacity 1 while focused.
+
+   NO transition here, deliberately. With one, the computed filter stayed
+   pinned at opacity(1) — markercluster recreates its icon elements
+   (chunkedLoading, zoom animations), so each new element's transition sits at
+   t=0 forever, and `filter: none` interpolates as the identity, i.e.
+   opacity(1). Removing the transition made it resolve to 0.3 immediately
+   (verified both ways in the preview). A fade on elements that get recreated
+   underneath it would have flickered anyway. */
+.fse-focus-active .marker-cluster { filter: opacity(0.3); }
+
 /* Second legend row — its own strip, not appended to the ticket buckets: those
    three are one mutually exclusive filter, these are a layer toggle plus a
-   separate filter, and one six-item strip read as a single control group. */
-.map-legend-fse { top: auto; bottom: 12px; }
+   separate filter, and one six-item strip read as a single control group.
+   The stack owns the positioning so the two rows can't land on top of each
+   other (both .map-legend rules resolve to bottom:14px on their own).
+   column-reverse puts the FIRST child (ticket buckets) at the bottom. */
+.map-legend-stack {
+  position: absolute; left: 14px; bottom: 14px; z-index: 500;
+  display: flex; flex-direction: column-reverse; gap: 8px;
+  align-items: flex-start; max-width: calc(100% - 28px);
+}
+.map-legend-stack .map-legend { position: static; left: auto; bottom: auto; }
+.map-legend-fse { flex-wrap: wrap; }
 .legend-dot-fse { background: #8B5CF6; }
 .legend-dot-gap {
   background: transparent; border: 2px solid #F87171; box-sizing: border-box;

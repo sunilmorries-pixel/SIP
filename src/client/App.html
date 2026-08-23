@@ -480,6 +480,7 @@
         }
       }
       return Promise.resolve({
+        centers: pts, assets: asset,
         // Demo FSE layer. PREVIEW ONLY — src/server/Fse.js ships FSE_ROSTER
         // empty on purpose (an entry there draws a named human on a production
         // ops map), so these exist solely to exercise the layer locally. Names

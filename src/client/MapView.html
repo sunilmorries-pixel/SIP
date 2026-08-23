@@ -204,6 +204,7 @@ function MapView(containerId) {
   /** Restores every center marker and removes the reach fan. */
   function clearFseFocus() {
     fseFocused = null;
+    if (map) L.DomUtil.removeClass(map.getContainer(), 'fse-focus-active');
     if (reachGroup) { reachGroup.clearLayers(); }
     Object.keys(markerById).forEach(function (id) {
       var m = markerById[id];
@@ -220,6 +221,15 @@ function MapView(containerId) {
     if (!rec || !map) return;
     if (!reachGroup) { reachGroup = L.layerGroup().addTo(map); }
     reachGroup.clearLayers();
+
+    // Clustered centers are DOM icons from the markercluster plugin, not
+    // canvas circleMarkers, so the setStyle dimming below cannot touch them —
+    // at the default India-wide zoom that left 8 bright cluster bubbles
+    // competing with the fan (measured: opacity 1 while focused). A class on
+    // the container dims the clustered backdrop in CSS instead. Individual
+    // violet rings still only appear as clusters break apart on zoom-in;
+    // that is inherent to clustering, not something this can paint around.
+    L.DomUtil.addClass(map.getContainer(), 'fse-focus-active');
 
     var covered = {};
     rec.data.centers.forEach(function (id) { covered[String(id)] = true; });

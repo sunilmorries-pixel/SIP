@@ -1,102 +1,40 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-21 · **Live version:** 5.51 · **Status:** ⚠️ **Production is @80/v5.51,
-built from `77c19d2`. Three deployable commits sit ahead of it, and one of them is a blocker — see
-item 21.** Production (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`,
-same URL as always) serves Apps Script **@80 / v5.51**, deployed 2026-08-21 5:28 PM.
+**Last updated:** 2026-08-23 · **Live version:** 5.55 · **Status:** ✅ Production, `main` and
+`origin/main` all agree at `921d39b`. Production
+(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always)
+serves Apps Script **@84 / v5.55**, deployed 2026-08-23 8:09 PM. Working tree is clean. **@81/v5.52
+was never deployed standalone** — see its entry below; the version-bump discipline held (nobody
+shipped code claiming to be `'81'`), it was simply superseded by `'82'` before a deploy ever ran.
 
-**There is deliberately no tip SHA and no commit count in this header.** Both kept going stale, twice
+**There is deliberately no tip SHA and no commit count in this header.** It kept going stale, twice
 because of commits that edited nothing but this file — any "N commits ahead of production" figure is
 falsified by the very commit that corrects it. Cite what a deploy would actually ship instead:
 
 ```
-git log 77c19d2..HEAD -- src/
+git log <last-deployed-commit>..HEAD -- src/
 ```
 
 The `-- src/` pathspec is the point: `rootDir` is `src/`, so nothing outside it can reach production
-and doc commits never show up. As of this pass it returns three commits — `35e1246` (filters + audit
-fixes) and `4a0a30c` (FTF chart, `span-4` cards) change page behaviour, and `307285e` is the
-`APP_VERSION` bump that ships with them. `d36217a` (`.gitignore`/`.gitattributes`) and every
-HANDOFF-only commit fall outside `src/` and deploy nothing, which is why the raw gap reads larger
-than the deployable one.
+and doc-only commits never show up in the deployable gap.
 
-⚠️ **The working tree is NOT clean** — `src/client/App.html` carries an uncommitted edit; see the
-warning below before running anything that pushes. No tag cut for v5.27–v5.51;
-tags are not a reliable release index.
-
-⚠️ **A deploy IS needed, and `APP_VERSION` is already staged for it.** `Config.js` reads
-`APP_VERSION: '81'` (commit `307285e`) while production runs @80 — which is exactly what the rule
-in that file's comment block asks for ("the version THIS DEPLOY WILL CREATE"). The value had been
-sitting at `'80'`, i.e. equal to the live version, which is the @54-shipped-`'53'` failure mode
-again; it was corrected before any deploy, not after. **`APP_DEPLOYED_AT` is deliberately still
-@80's `'Aug 21, 2026, 5:28 PM'`** — it was not moved with the bump because the deploy hasn't
-happened and inventing a timestamp would put a false claim in the footer. Until @81 ships, the
-footer pairs v81 with @80's timestamp; **set `APP_DEPLOYED_AT` to the real deploy time in the same
-change as the `clasp deploy`.** Nothing else needs bumping.
+**RETIRED (was a live blocker through @81, resolved @82, 2026-08-21/22):** this header used to carry
+~90 lines describing a silently-wrong-data bug — `filtersEqual_`/`filterActiveCount_`/
+`renderFilterChips_`/`FILTER_DIM_LABELS` in `App.html` didn't know about the four filter dims
+`35e1246` had just added (billable/machineTypes/deviceIds/macSerialIds), so selecting one of them
+advanced `state.globalFilters` without ever calling `commitGlobalFilters_()` — no error, nothing
+refetched, and every per-tab staleness check compared against the same blind 11-key list so it
+couldn't self-detect either. **Fixed and verified in commit `8f77d06`**, deployed as part of @82/v5.53
+(browser-tested: badge went 2→3, chip appeared, remove button worked). If a similar bug reappears
+after adding a *new* filter dimension, this is the shape to look for: grep every enumeration site
+listed in the "New filter" line under Extending in `docs/ARCHITECTURE.md`, not just the SQL side —
+this exact bug has now recurred at least twice with different dimensions.
 
 **The `v5.x` label lives only in these docs.** There is no semantic-version constant anywhere in
-`src/` — `CONFIG.APP_VERSION` holds the Apps Script deployment number (`'81'`) and nothing else, so
-don't go hunting for a `5.51` string in the source. The @N → v5.x mapping is maintained here by
-hand: @78 = v5.49, @79 = v5.50, @80 = v5.51, so the pending deploy is **@81 = v5.52** — a docs-only
-label assigned in this pass.
-
-⚠️ **A concurrent session IS editing `src/client/App.html` — the main checkout is not clean.**
-`git status` was empty at `307285e` when this pass began and `HANDOFF.md` was the only file it changed,
-but `App.html` has carried an uncommitted edit from another session since 18:26 and is still growing
-(+10/−1 at 18:29, +13/−4 at 18:30) — treat any figure quoted here as stale and run
-`git diff --stat src/client/App.html` for the live number. **Size is not the point.** That edit is the
-client-side completion of the four new global filters committed in `35e1246` — 7 hunks, of which only
-4 reach production (the other 3 are `filters` defaults inside `mockCall` payloads, and `mockCall` runs
-only when `google.script` is unavailable, App.html:114).
-
-**`35e1246` wired the drawer's INPUT path but not its change-detection and display path.** It already
-has the staged/applied state defaults, the `fgHardware` group (2083), all four `renderFilterCombo_`
-calls including both search-backed ones (2144–2147), both search endpoints and their preview mocks, and
-`FILTER_DIM_PLURAL` (2065). What it lacks is the four consumers of that state: `filtersEqual_`,
-`filterActiveCount_`, `renderFilterChips_` and the `FILTER_DIM_LABELS` entries (2058). Beware the
-two-map trap: `FILTER_DIM_PLURAL` *does* carry all four dims, so grepping for `billable: 'billable'`
-reads as a false positive — `FILTER_DIM_LABELS`, the singular map next to it, is the one missing them.
-A reviewer should check those four consumers, not re-audit the drawer.
-
-⚠️ **The consequence is silently wrong data, not a cosmetic glitch — and it is self-concealing.**
-`filtersEqual_` is the app's staleness gate, not a chip helper. It guards the Apply handler
-(`$('filterApplyBtn')`'s click listener) and all nine per-tab refetch checks (overviewFlow, service,
-tom, numbers, rawData, the shared dashboard payload, centers, cdm, slaRisk). Its committed body
-compares 11 keys and none of the four new dims. The Apply handler reads:
-
-```js
-var changed = !filtersEqual_(state.globalFilters, state.globalFiltersPending);
-state.globalFilters = state.globalFiltersPending;   // unconditional
-closeFilterDrawer_();
-if (changed) commitGlobalFilters_();                // never fires for the 4 dims
-```
-
-So selecting only a device ID gives `changed === false`. `state.globalFilters` advances anyway, but
-`commitGlobalFilters_()` never runs — nothing refetches, no error, and the applied state now disagrees
-with what is on screen. **It then hides itself:** every per-tab check compares its own
-`state.<tab>Filters` against the *new* `state.globalFilters` using that same blind comparison, so it
-also reports no staleness. A difference living only in those four dims can never be detected. This is
-the exact failure class this dashboard has spent the month fixing.
-
-**Cite the functions, not line numbers — they are correct for only one reader at a time.** The
-in-flight edit inserts 9 lines above these call sites (+2 `filtersEqual_`, +2 `filterActiveCount_`,
-+4 `renderFilterChips_`, +1 `FILTER_DIM_LABELS`), so the same code sits at Apply gate 3631 /
-per-tab 2974–3036 in `HEAD`, and 3640 / 2983–3045 in the working tree on disk. Once that edit is
-committed, HEAD's numbers become the working-tree ones. Anyone opening `App.html` while the blocker
-is unresolved is reading the working tree and will find HEAD's figures off by nine — grep
-`filtersEqual_(` and `$('filterApplyBtn')` instead. **`clasp push` from this directory would upload the
-in-flight edit**, so run `git status` yourself before any deploy rather than trusting any line in this
-doc, including this one. One stray untracked file also sits at the repo
-root, a scratch file written through a mangled Windows temp path
-(`UsersSUNILM~1AppData...scratchpadapp_script_check.js`) — a 219,156-byte extraction of `App.html`'s
-`<script>` block, written 18:20 by a `node --check` run whose temp path lost its separators. It carries
-session id `1116f-88f2-4bb0-9ff0-aab37eadbfbf` — neither of the two sessions writing this doc — so it
-belongs to whichever session is editing `App.html` and was live at the time: delete it once that
-session is done, not while it is running. Note it is a root-level `*.js` file, so a blanket
-`git add -A` would happily commit it. The previous header warned about an
-in-flight 378-line `Charts.html` diff from the other concurrent session — that work is committed and
-shipped (it went out as @78, see below), so the warning is retired. Two other worktrees still hold
-unmerged or uncommitted work; see the worktree note below.
+`src/` — `CONFIG.APP_VERSION` holds the Apps Script deployment number and nothing else, so don't go
+hunting for a `5.55` string in the source. The @N → v5.x mapping is maintained here by hand: @78 =
+v5.49, @79 = v5.50, @80 = v5.51, **@81 = v5.52 (never deployed — see below)**, @82 = v5.53, @83 =
+v5.54, @84 = v5.55.
 
 **This handoff was stale for three deploys again** (@78–@80) before this catch-up pass — its header
 still claimed `cd29dc6`/@77/v5.48 was live and that "git, GitHub, and production all agree", while
@@ -116,13 +54,17 @@ branch `qa-findings-stale` (`ffbce3a`) was deleted too — its one substantive c
 `src/server/EditionCD.js:172` (`COUNT(DISTINCT IF(deactivationdate IS NULL, CenterID, NULL))`), so
 nothing was lost. `git branch -r` is now just `origin/HEAD -> origin/main` and `origin/main`.
 
-**Two local worktrees deliberately left alone** (both still in `git worktree list`):
-- `.claude/worktrees/audit-data-correctness` (branch `worktree-audit-data-correctness`, tip
-  `f340a36`) — its 11 data-correctness fixes **are on `main` now, but they were re-applied inside
-  `35e1246`, not merged**, so `f340a36` is NOT an ancestor of `main` and `git branch --merged` will
-  never list it. Its working tree is clean; another session holds the checkout, so it was not
-  removed. Before deleting branch or worktree, diff it against `main` — the merge-base tells you
-  nothing here.
+**Worktrees as of 2026-08-23** (`git worktree list`): `audit-data-correctness` is **gone** — it was
+removed between the 2026-08-21 and 2026-08-23 passes (by whoever held that checkout; not tracked
+here mid-flight, same blind spot noted below for the concurrent-session pattern). Two remain:
+- `.claude/worktrees/ecstatic-austin-24c6f4` (branch `claude/ecstatic-austin-24c6f4`, tip
+  `4a0a30c`) — **new since the last pass, not previously documented.** Clean working tree, **no
+  unique commits** — its tip is already an ancestor of `main`, and `git diff --stat main` shows only
+  deletions (everything `main` has gained since — FSE, ServiceWRK ticket tabs, the 4 new filters —
+  reads as "removed" from this branch's frozen point of view). Looks like a `remote`/isolated-agent
+  worktree whose branch was never advanced past its starting commit. Safe-looking candidate for
+  cleanup, but leave it — same rule as always, don't remove another session's checkout without
+  confirming nobody's using it.
 - `.claude/worktrees/centers-360-reliability-merge` (branch `worktree-centers-360-reliability-merge`,
   tip `c622815`) — ⚠️ **~99 lines of uncommitted DELETIONS sit in its working tree**:
   `src/client/App.html` (−71), `Index.html` (−30), `Styles.html` (−1), nobody has said what they
@@ -160,6 +102,15 @@ schedules when the bump lands ahead of the deploy. Bump `APP_VERSION` when you k
 set `APP_DEPLOYED_AT` only at the moment `clasp deploy` actually runs (`b40a4ab` is the precedent —
 it set @78's timestamp two days after @78's version bump).
 
+**A new failure mode, not the old one (2026-08-23):** @83's marker commit (`f2067c6`, "the
+filter-dropdown-fix deploy") bumps only `Config.js` — `git log 11e83d0..f2067c6` returns nothing
+else, meaning @83 redeployed byte-identical `src/` code to @82. Not the @56/v5.27 mistake (that one
+forgot to bump anything); this one bumped correctly but the deploy itself was redundant — whatever
+"filter-dropdown-fix" it thought it was shipping had already gone out as part of @82. Harmless (an
+extra deployment number burned, nothing wrong in production), but worth naming as its own class:
+**before deploying, diff the last-deployed commit against HEAD's `src/` tree first** — an empty diff
+means the fix already shipped and the deploy isn't needed, whatever the intent behind it was.
+
 **Two Claude Code sessions have been working this same directory concurrently** (confirmed by the
 user). Files were repeatedly modified on disk mid-edit, and one session's change was silently
 reverted by the other's save at least once. Consequences to know:
@@ -191,12 +142,96 @@ reverted by the other's save at least once. Consequences to know:
   editing when a second session is live**, and re-verify the other session's claims against `git`
   rather than transcribing them — the commit list quoted between sessions that day undercounted the
   gap by eleven commits, and only `git log cd29dc6..HEAD` showed the real spread.
+- **Recurred 2026-08-23, uncoordinated but clean — no file ownership agreed, no conflict either.**
+  Two sessions edited `src/server/Queries.js`'s `buildCenterDetailSpecs` concurrently: one added the
+  ServiceWRK ticket-tab specs (`svcTickets`/`svcOpenTickets`/`svcClosedTickets`/`svcSwappedTickets`),
+  the other independently added a Zoho `swappedTickets` spec — both anchored their `Edit` calls on
+  unrelated, still-unique surrounding text, so the two insertions interleaved into one file without
+  either overwriting the other. The same pattern held in `App.html`: both sessions added a ticket
+  toggle group to the same `renderInto()` function and the drawer, and both coexist correctly.
+  **Then a THIRD session (or an automated flow inside one of them) committed the entire dirty working
+  tree** — everything from both sessions' edits — as one commit (`e3d6e1a`) with a message that
+  correctly described both halves, without either session being asked. It, in turn, was pushed and
+  deployed (@84) before the session that had done the Service-tab half had itself asked to push.
+  **Lesson: a commit or push by "another session" in this repo may include YOUR uncommitted work too
+  — `git status`/`git log` after ANY multi-session gap, before assuming your own change is still
+  pending.** Don't re-commit or re-push work you find already landed; verify with `git show --stat`
+  first (byte-identical insertion counts to what you tested is the tell).
 
-### v5.52 / @81 (2026-08-21) — 4 new global filters, 2 ID search endpoints, 11 data-correctness fixes, FTF chart rework — COMMITTED + PUSHED, NOT DEPLOYED
+### v5.55 / @84 (2026-08-23) — ServiceWRK ticket tabs + Zoho Swapped tab on the center-detail drawer; FSE coverage layer on the Overview map — CURRENT LIVE
 
-> ⚠️ **This is the deploy gap.** `main` and `origin/main` are both at `307285e`; production is still
-> @80. `APP_VERSION` is staged at `'81'`, `APP_DEPLOYED_AT` is not (see the header). `v5.52` is a
-> docs-only label assigned here for the deploy that will carry these four commits.
+> Deployed 2026-08-23 8:09 PM (`921d39b`), built from `e3d6e1a`.
+>
+> **`349d5b3`/`6148bc8`/`688d8d2` — FSE (Field Service Engineer) coverage layer, new `Fse.js`.**
+> Pins engineers from a hand-maintained roster (`FSE_ROSTER`, ships **empty** on purpose — no
+> engineer table exists anywhere in the warehouse, and a placeholder name would draw a person who
+> doesn't exist onto a production ops map) onto every center they've worked a `servicewrk_Tickets`
+> ticket for within a fixed 90-day rolling window (`CONFIG.FSE_COVERAGE_DAYS`, deliberately
+> independent of the global date filter — see the field's comment in `Config.js`). Joins
+> `customer_id` → `CenterID` by casting both to STRING (`buildFseLayer_`), same mechanism the
+> ticket-tabs work below independently verified. The Overview map itself was also fixed in the same
+> pass to actually fit India's aspect ratio instead of an arbitrary bounding box. Built entirely by
+> the other concurrent session; summarized here from commit messages and a read of `Fse.js`, not
+> independently re-verified in the browser by this doc pass.
+>
+> **`e3d6e1a` — center-detail drawer gets two independent ticket toggles.** The drawer's existing
+> Zoho Open/All toggle gains a third **Swapped** tab (`IssueCategory LIKE '%swap%'`, same list
+> Center-360's `swapped` column already counted with no drill-down of its own). A new, separate
+> **Service** ticket section gets its own Open/Closed/Swapped toggle over `servicewrk_Tickets`
+> (`service_type LIKE '%swap%'` for Swapped), sourced via `buildCenterDetailSpecs` in `Queries.js`
+> (`svcTickets`/`svcOpenTickets`/`svcClosedTickets`/`svcSwappedTickets`) and surfaced through
+> `apiGetCenterDetailCD` (cache key `ctrdetcd_v6` → `v7`). **This unblocked a long-open item (#17
+> below):** `profileJoinKeys()` was finally run (manually, in the Apps Script editor — `clasp run`
+> doesn't work on this project, confirmed 2026-08-23: the manifest has no `executionApi` block, only
+> `webapp`) and returned 87.7% of all 36,620 `servicewrk_Tickets` rows resolving to a real
+> `center_details.CenterID` (7,786 distinct centers hit) — high enough per the decision rule in
+> `docs/superpowers/specs/2026-08-13-service-tom-pages-design.md` §7 to build the drawer
+> click-through it had been waiting on. Both toggle groups share the `.ticket-toggle-btn` class for
+> styling but are bound by their distinct `data-tix`/`data-svctix` attribute, not the bare class —
+> both groups can render a button with identical visible text (`Swapped (N)`), so a class-only
+> listener would have made one toggle's click move the other's state.
+>
+> **Verified:** `npm test` → **14 suites, 233 tests passing**. Browser-tested in the local preview:
+> all three Service tabs render (Open/Closed/Swapped), pagination works (`1–5 of 8` on an 8-row mock
+> list), and the two toggle groups are provably independent — clicking each of Zoho's three tabs and
+> each of Service's three tabs via direct DOM selectors confirmed neither one's active state ever
+> moves the other's. Not independently verified: the FSE layer (summarized from commits only).
+>
+> **`921d39b` — `APP_VERSION` `'83'` → `'84'`.**
+
+### v5.54 / @83 (2026-08-23) — redundant redeploy, no `src/` change
+
+> Deployed 2026-08-23 5:33 PM (`f2067c6`), built from `f2067c6`. Marker commit only bumps
+> `Config.js`; `git log 11e83d0..f2067c6` returns nothing else, so @83 shipped byte-identical `src/`
+> code to @82. See the header's "new failure mode" note — not a version-bump mistake, a redundant
+> deploy of already-shipped code. Harmless; no user-visible change.
+
+### v5.53 / @82 (2026-08-21/22) — chip-bar/badge fix for the 4 new filters; first deploy after @80
+
+> Deployed 2026-08-21 6:10 PM (`11e83d0`), built from `8f77d06`. **This is the deploy that actually
+> shipped the work staged as "@81" below** — @81 was never deployed standalone (see the header and
+> the v5.52 entry's status line).
+>
+> **`8f77d06` — `filtersEqual_`/`filterActiveCount_`/`renderFilterChips_`/`FILTER_DIM_LABELS` learn
+> the 4 new filter dims.** Fixes the silently-wrong-data bug the previous header carried at length
+> (now retired there) — selecting Billable/Machine Type/Device ID/MAC Serial ID didn't move the chip
+> bar, the active-filter badge, or the Apply-button staleness check, because those four
+> client-side enumeration sites were missed when `35e1246` added the dimensions everywhere else.
+> Found via manual browser testing (select Billable:YES + a Device ID → badge stayed at the old
+> count, no chip appeared), fixed, and verified via a fresh reload: badge went 2→3, "Billable: YES"
+> chip appeared with a working remove button.
+>
+> **`11e83d0` — `APP_VERSION` `'81'` → `'82'`.** Bundles `35e1246`/`4a0a30c`/`307285e` (see the
+> v5.52 entry below for what those contain) together with `8f77d06` — all four commits shipped in
+> this one deploy, since no deploy had actually run while `APP_VERSION` said `'81'`.
+
+### v5.52 / @81 (2026-08-21) — 4 new global filters, 2 ID search endpoints, 11 data-correctness fixes, FTF chart rework — NEVER DEPLOYED STANDALONE, superseded by @82
+
+> **This version number was never live.** `APP_VERSION` was staged at `'81'` in `307285e`, but no
+> `clasp deploy` ran before more commits landed (`8f77d06`, the chip-bar fix above) — the actual next
+> deploy bumped straight to `'82'` and shipped all of it together. `v5.52` stays here as a docs-only
+> label for what these three commits contain; treat the code below as "shipped as part of @82", not
+> as its own release.
 >
 > **`d36217a` — repo hygiene; no `src/` change, no deploy needed.** `*.xlsx`/`*.xls` are now
 > gitignored — `SLA sheet.xlsx` had been sitting untracked at the repo root, showing up in every
@@ -243,10 +278,11 @@ reverted by the other's save at least once. Consequences to know:
 >
 > **Verified:** `npm test` → **13 suites, 217 tests passing** (re-run at `307285e` during this doc
 > pass, not just quoted from the commit messages). `node --check` clean on the `App.html`/
-> `Charts.html`/`Index.html` script blocks. **Not** verified against live BigQuery, and this doc
-> pass did not walk the new filters in the local preview — do that before deploying @81.
+> `Charts.html`/`Index.html` script blocks. **Not** verified against live BigQuery at the time; the
+> chip-bar/badge bug in the browser-tested filter drawer was caught after this and fixed separately
+> (see the v5.53/@82 entry above) before any of this actually shipped.
 
-### v5.51 / @80 (2026-08-21) — map plots ungeocoded centers at a proxy location — CURRENT LIVE
+### v5.51 / @80 (2026-08-21) — map plots ungeocoded centers at a proxy location
 
 > Deployed 2026-08-21 5:28 PM (`APP_DEPLOYED_AT`), built from `77c19d2`.
 >
@@ -1868,8 +1904,33 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 13. **(from 2026-07-31 review) Add first-run onboarding** — a dismissible welcome panel (localStorage-flagged, shown once) surfacing what's currently only in the header ⓘ tooltip (`App.html:2385`), which a first-time visitor has no reason to discover.
 14. **(from 2026-07-31 review) Add real focus-trap + focus-restore to both drawers** (`#filterDrawer` AND `#centerDrawer` — live-reproduced escaping into background content on the center-detail drawer, not just the filter drawer already parked above in the 2026-07-29 fix-wave notes).
 15. ~~**(from 2026-07-31 review) Decide the fate of the confirmed-dead non-CD code** in `Api.js`/`ExecOverview.js`/`TopCustomers.js`~~ — **DONE (2026-08-17):** deleted the dead entry points (`apiGetCenters`/`apiGetMapData`/`apiGetCenterDetail` from `Api.js`, `apiGetExecOverview`+`execSpecs_` — the whole file — from `ExecOverview.js`, `apiGetTopCustomers`+`computeTopCustomers_` from `TopCustomers.js`) after re-verifying each had zero live callers (the CD endpoints in `EditionCD.js` have their own independent `getCenter360RowsCD_`/`enrichCenterNamesCD_`/`computeTopCustomersCD_`, not these). Kept every helper the CD path actually still calls: `respond_`, `apiGetDevices`, `apiGetCdmDevices`, `apiHealthCheck`, `assetDateStr_`/`assetAgeDays_`/`assetMachineModel_`/`getAssetIndex_` (Api.js), and `TOP_CUSTOMERS`/`topCustomerTicketStats_` (TopCustomers.js).
-16. **(from 2026-07-31 review) Investigate the Overview-vs-Centers-tab KPI count mismatch** — Overview shows 18,370 centers, the Centers-tab KPI strip shows 28,482 "all centers", both under the identical default "Status: Active" filter chip. Not yet root-caused; may be a fresh instance of the SQL-vs-JS filter-path disagreement class the 2026-07-29 fix wave already fixed once for Hub/State (item I4/I8 above).
-17. **(v5.29/v5.30) Run `profileJoinKeys` in the Apps Script editor** — `src/server/ProfileNewSources.js` is a temporary read-only diagnostic. `profileNewSources()` has been run (its output shaped both new pages); **`profileJoinKeys()` STILL has NOT** (reconfirmed 2026-08-14, commit `dffa0fd`). A `doGet(?diag=joinkeys)` remote-read attempt was tried and reverted — it rendered, but the browser-automation tool lacks host permission for `script.google.com/a/macros/tricog.com/*`, so the output couldn't be read back that way; `profileJoinKeysText_()` now at least returns its output as one string for whoever runs it directly in the editor. It answers whether `servicewrk_Tickets.customer_id` and `tom_tickets.center_id` actually resolve to `center_details.CenterID`, whether the `zoho_ticket`/`zoho_id` cross-references resolve to `zoho_data.ticketNumber`, and whether ANY row carries time-of-day. **If centre coverage is good, Hub/Centre filtering and centre-drawer click-through can be added to both new pages** (they are currently ignored — see each page's filter-coverage note). Delete the whole file once it has served its purpose.
+16. ~~**(from 2026-07-31 review) Investigate the Overview-vs-Centers-tab KPI count mismatch**~~ — **NO LONGER REPRODUCES (verified live, 2026-08-23):** both Overview's "Customers" flow-card and the Customers-tab's "CUSTOMERS" KPI tile now read the identical **19,410** under the default "Status: Active" + "Hides: Decommissioned" filters (checked on production @84). Root cause was never isolated at the time, but the two code paths — Overview's JS aggregation (`buildCustomersTree_` over `getCenter360RowsCD_()` + `centerPassesFilters_`) vs the Customers tab's SQL (`centerKpis.centers`, `COUNT(DISTINCT CenterID) FROM center_details`) — went through several filter-parity fixes since 2026-07-31 (billable/machineTypes/deviceIds/macSerialIds wiring, @82/@83's filter-dropdown fixes), any of which plausibly closed this gap as a side effect. One residual asymmetry remains worth knowing about if this ever resurfaces: `centerBaseSpecCD_` dedupes via `SELECT DISTINCT <all columns>` (row-grain, so a center with genuinely-conflicting duplicate attribute rows can still surface as 2 JS rows) while `centerKpis` dedupes via `COUNT(DISTINCT CenterID)` (center-grain, "any row matches" semantics) — not currently causing visible drift, but not structurally guaranteed to agree either.
+17. **RESOLVED 2026-08-23 — `profileJoinKeys` has now been run.** (v5.29/v5.30 background:
+    `src/server/ProfileNewSources.js` is a temporary read-only diagnostic; `profileNewSources()` ran
+    long ago and shaped both new pages, but `profileJoinKeys()` sat unrun through 2026-08-14 —
+    `clasp run` was tried and failed with a generic storage error; re-tried 2026-08-23 and got a
+    definitive answer: `Script function not found. Please make sure script is deployed as API
+    executable` — the manifest (`src/appsscript.json`) has no `executionApi` block, only `webapp`,
+    so `clasp run` cannot work here at all without a manifest change. The user ran it manually in
+    the Apps Script editor instead and pasted back the execution log.) **Results:**
+    `servicewrk_Tickets.customer_id` → `center_details.CenterID` resolves for **87.7%** of all
+    36,620 rows (32,133 resolve, 7,786 distinct centers hit) — high coverage, non-resolving rows are
+    mostly placeholder text (`"New spoke"`, `"NA"`, `"New"`), not malformed IDs. `tom_tickets
+    .center_id` resolves even better, 97.7% (3,689/3,777). Zoho cross-references
+    (`servicewrk.zoho_ticket`/`tom.zoho_id` → `zoho_data.ticketNumber`) both resolve ~87% of the
+    rows that carry a reference at all, but most ServiceWRK rows (70%) carry no Zoho reference in
+    the first place — it's mostly a standalone ticket system, not a Zoho mirror. Timestamps are
+    confirmed date-only (0 rows with a non-`00:00:00` time on either table) — consistent with the
+    existing decision to keep ServiceWRK out of the M-A1 uptime engine (`docs/SOURCES.md`).
+    **Consequence: centre-drawer click-through was added the same day** — see the v5.55/@84 HANDOFF
+    entry above and `docs/ARCHITECTURE.md`'s "Center-detail drawer" section. **Still open:**
+    Hub/Centre *filtering* (as opposed to drawer click-through) has NOT been added to the Service or
+    TOM pages themselves — `swFilterCond_`'s docblock in `ServiceWrk.js` still says the join is
+    "unverified and at best partial," which is now stale wording (the join IS verified, at 87.7%);
+    the page's filter-coverage decision itself (state/city/customer_category only, no
+    hub/center/status/deviceType) hasn't been revisited in light of that, and should be before
+    trusting that docblock's reasoning on anything past 2026-08-23. `ProfileNewSources.js` can be
+    deleted once someone confirms nothing else still needs its diagnostics.
 18. **(v5.30) Confirm what TOM actually is.** The page is built as a CS issue tracker because `remarks` records outcomes, but the user was asked twice and did not answer, and `comments` hints at machine transfers. Still unanswered as of 2026-08-14. If it's really machine movement, re-frame the page's labels/KPIs around movements and turnaround — the underlying queries mostly survive.
 19. ~~**(v5.29/v5.30) `Charts.rankBar` x-axis labels collide in narrow `span-4` cards`~~ — **DONE, v5.32/@61 (2026-08-14), commit `678496f`.** Removed the redundant/overlapping value axis from all 12 `rankBar` instances (5 TOM, 3 Service, 3 Top Customers, 1 Overview) — the axis duplicated the value already printed as a bar-end label.
 20. **(2026-08-14 catch-up pass) `docs/SOURCES.md` and `docs/ARCHITECTURE.md` were 3 versions stale** (last touched at v5.13, missing every v5.14–v5.33 change: `tom_tickets`, `servicewrk_Tickets`, `hub_country`, the CDM page, the 7-dimension filter set, the zoho dedup/native-DATETIME fixes, the reversed ServiceWRK-uptime-swap decision). **Fixed in this pass** — both docs now reflect state through v5.33/@62. Re-verify they're still current before trusting them on anything past this point.

@@ -52,6 +52,39 @@ longer exists; and a level-1 block under 5% of the total is folded to a single t
 7px-tall node and clips it (`childrenVisibleMin` does not fix this — verified at 340/420/500px).
 Folded tiles say so in their tooltip and still click through.
 
+**Overview's map gained an FSE (Field Service Engineer) coverage layer at v5.54/@83–84**
+(`src/server/Fse.js`) — pins for engineers from a hand-maintained roster (`FSE_ROSTER`, ships
+empty until real names are pasted in — see the file's docblock), fanned to every center they've
+worked a `servicewrk_Tickets` ticket for in a fixed 90-day rolling window
+(`CONFIG.FSE_COVERAGE_DAYS`, deliberately independent of the global date filter — coverage means
+"served now", not "served within whatever range is selected"). The `customer_id` → `CenterID`
+join it relies on is the same one profiled for the center-detail drawer below. The map itself was
+also fixed in the same pass to actually fit India's proportions rather than an arbitrary
+bounding box.
+
+## Center-detail drawer
+
+The shared drawer (`makeCenterDetail` in `App.html`, backed by `apiGetCenterDetailCD` →
+`buildCenterDetailSpecs` in `Queries.js`) shows **two independent ticket sources**, each with its
+own toggle group, added incrementally and kept in separate `data-*` namespaces so their click
+handlers can't cross-wire:
+
+- **Zoho** (`data-tix`): Open / All / **Swapped** (added v5.55/@84 — every ticket
+  counted by Center-360's `swapped` column, `IssueCategory LIKE '%swap%'`, which previously had
+  no drill-down list of its own).
+- **Service** (`data-svctix`, new v5.55/@84): Open / Closed / **Swapped** (`service_type LIKE
+  '%swap%'`, same convention, over ServiceWRK's own category column) — sourced from
+  `servicewrk_Tickets` via the `customer_id` → `CenterID` join (see `docs/SOURCES.md`), verified
+  at 87.7% coverage on 2026-08-23. Swapped is all-time and can overlap Open/Closed for both
+  sources, same as the Center-360 column it mirrors — it isn't a third disjoint bucket.
+
+Both toggle groups share the `.ticket-toggle-btn` class for styling but are queried by their
+distinct data attribute (`[data-tix]` vs `[data-svctix]`) when binding click handlers, not by the
+bare class — both groups now render a button whose visible text can be identical (`Swapped (N)`
+appears in each), so a generic class-only click listener would bind to whichever group's DOM
+order won and stomp the other's state variable. Verified in the browser that the two toggles are
+fully independent (clicking one never changes the other's active tab).
+
 ## Data sources
 
 See `docs/SOURCES.md` for the full source-of-truth table. Summary of current roles:
@@ -106,8 +139,10 @@ Every filter-aware endpoint (`apiGetDashboardCD`, `apiGetMapDataCD`, `apiGetTopC
 `apiGetCenterDetailCD`, …) keys its `CacheService`/large-cache entry on a version tag
 (bumped often as filters/queries change — check the current value in-code rather than trusting
 a specific tag quoted here) + the current cache epoch (`getCacheEpoch_()`, a counter in Script
-Properties) + a hash of the active filter set (`filterHash_(filters)` — 7 dimensions as of
-v5.33: Segment/Status/State/Hub/City/Country/Center, up from the original 4) — e.g.
+Properties) + a hash of the active filter set (`filterHash_(filters)` — 11 dimensions as of
+v5.53/@82: Segment/Status/State/Hub/City/Country/Center (7 as of v5.33) plus
+Billable/MachineTypes/DeviceIds/MacSerialIds (added @82, all sourced from `center_details`),
+up from the original 4) — e.g.
 `dashcd_v<N>_<epoch>_<filterHash>_<hub>`. `clearDashboardCache()` in `Setup.js` bumps
 `CACHE_EPOCH` by one, instantly invalidating every existing filtered variant at once
 instead of enumerating segment values one by one; the handful of caches that don't vary

@@ -8,30 +8,35 @@ flow (Zoho), SLA compliance, device fleet, and asset reliability.
 ![stack](https://img.shields.io/badge/stack-Apps%20Script%20%C2%B7%20BigQuery%20%C2%B7%20ECharts-E5344F)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-black?logo=github)](https://github.com/sunilmorries-pixel/SIP)
 
-## What it shows (11 tabs)
+## What it shows (10 tabs)
+
+There is no standalone Map tab — it was merged into Overview at @79/v5.50; the map now lives
+there, plus an FSE (Field Service Engineer) coverage layer added v5.54/@83–84 (see
+`docs/ARCHITECTURE.md`).
 
 | Tab | Insights |
 |---|---|
-| **Overview** | 3 decomposition **treemaps** — Customers, Devices, All tickets (trees as of v5.38/@67, layout iterated through @76/v5.47, treemaps from @77/v5.48 — see `HANDOFF.md`) — each card opens from a KPI total into an ECharts treemap (`Charts.decompTreemap`) built from pure-JS aggregation over one combined endpoint (`apiGetOverviewFlowCD`). Rectangle area = share of the total, so a category's size is visible rather than only printed. Every node is clickable and drills the global filters |
+| **Overview** | 3 decomposition **treemaps** — Customers, Devices, All tickets (trees as of v5.38/@67, layout iterated through @76/v5.47, treemaps from @77/v5.48 — see `HANDOFF.md`) — each card opens from a KPI total into an ECharts treemap (`Charts.decompTreemap`) built from pure-JS aggregation over one combined endpoint (`apiGetOverviewFlowCD`). Rectangle area = share of the total, so a category's size is visible rather than only printed. Every node is clickable and drills the global filters. Also carries the located-centers map (merged in from the old Map tab, @79) and, since @83–84, an FSE coverage layer (`Fse.js`) |
 | **Centers / Customers** | Geo, deployment age, segment breakdown (`hub_master_segment`), top hubs (by spoke count), Center-360 table (MTBF/Failures columns, sticky Center column, swapped-ticket count, clickable rows → drawer) |
 | **Support / CS** | Zoho KPIs (with prior-7-day delta chips), ticket flow, **SLA-compliance suite** (within% + Tech/Non-Tech + breach-by-type), **SLA risk card** (breached/at-risk chart + ticket worklist), open-ticket age-bucket chart, backlog, categories, channel, segment |
 | **Service** | Field-service ticket analytics from `servicewrk_Tickets` (added v5.29) — deliberately not the Machine Uptime source; see `docs/SOURCES.md` |
 | **TOM** | CS-owned issue/escalation tracker from `tom_tickets` (added v5.30); Centre + date-range filter only |
 | **Asset** | Jira-sourced device age (executive summary), asset lifecycle/type breakdown, failure-analysis cohort (M-A3/A5). The device-status donut, firmware spread, and device explorer were removed 2026-08-19 — `cloud_devices` telemetry now surfaces only on CDM/Numbers/Raw Data |
 | **CDM** | Communicator Device Management (added v5.33) — `cloud_devices` map colored by battery severity, signal/battery/hardware-mix charts, paginated communicator explorer |
-| **Map** | Leaflet map of located centers, clustered, colored by open tickets, clickable ticket-bucket legend |
 | **Top Customers** | Curated 27 "Top LE" hubs: KPIs, map, ranked bars, leaderboard (→ customer drawer) |
 | **Numbers** | Source-reconciliation counts + raw paginated `center_details` table (Devices + Mapped columns) |
 | **Raw Data** | All 4 underlying BigQuery sources as paginated, unfiltered tables with pill-selector and full CSV export. No site filters apply |
 
 Interactive everywhere: global search (per-tab behavior — filters a list, looks up a
 CenterID/ticket number on Support/CS, or disables itself with an explanation on tabs with no
-list to filter), a **Filters** drawer (Segment / Status / State / Hub multi-select + date
-range, with Status defaulting to `ACTIVE` as a removable chip), light/dark theme, a shared
-center-detail drawer (KPIs + Zoho ticket links + Jira-devices table), **ⓘ
-metric-explanation tooltips** on every KPI and card (formula + data source), flowing animations,
-auto-refresh every 5 minutes, skeleton loading, graceful error/empty states. **Responsive** down
-to 320px (breakpoints in `src/client/Styles.html`).
+list to filter), a **Filters** drawer (11 dimensions as of v5.53/@82 — Segment / Status / State /
+Hub / City / Country / Center / Billable / Machine Type / Device ID / Mac Serial ID, all
+multi-select, plus a date range; Status defaults to `ACTIVE` as a removable chip), light/dark
+theme, a shared center-detail drawer (KPIs, Jira-devices table, and — as of v5.55/@84 — two
+independent ticket toggles: Zoho Open/All/Swapped and Service Open/Closed/Swapped, see
+`docs/ARCHITECTURE.md`), **ⓘ metric-explanation tooltips** on every KPI and card (formula + data
+source), flowing animations, auto-refresh every 5 minutes, skeleton loading, graceful error/empty
+states. **Responsive** down to 320px (breakpoints in `src/client/Styles.html`).
 
 ## Repository layout
 
@@ -61,7 +66,7 @@ demo-sip/
 │   │   ├── Setup.js          # one-time key setup + diagnostics
 │   │   └── Warm.js           # cache-warming trigger (installWarmTrigger(), every 10 min)
 │   └── client/               # HTML-service frontend
-│       ├── Index.html        # page shell (8 tabs, shared drawer)
+│       ├── Index.html        # page shell (10 tabs, shared drawer)
 │       ├── Styles.html       # Tricog design tokens + components + motion
 │       ├── Charts.html       # all ECharts configs
 │       ├── MapView.html      # Leaflet factory (map + top-customers)

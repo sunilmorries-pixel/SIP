@@ -45,6 +45,7 @@
     deviceTypeOptions: [], deviceStatusOptions: [], machineTypeOptions: [],
     ticketBucket: '', // '' | none | low | high — clickable map legend
     fseVisible: true,   // engineer pins on the map (layer toggle)
+    cpVisible: true,    // dealer pins on the map (layer toggle)
     mapGapsOnly: false, // show only centers with open tickets and no FSE coverage
     activeTab: 'tab-overview',
     // Default sort: open tickets most->least (server tiebreaks 0-ticket rows
@@ -512,6 +513,27 @@
             unlocatedRoster: [], coveredCenterIds: Object.keys(coveredAll), windowDays: 90
           };
         })(),
+        // Demo dealer layer — exercises the CP layer locally without touching
+        // the real (committed, populated) CP_ROSTER server-side. Two dealers,
+        // one with several covered locations (to see the fan-out) and one
+        // with just one (to see the single-line case).
+        cp: {
+          dealers: [
+            {
+              name: 'Demo Dealer Corp', hq: 'Nagpur, Maharashtra', lat: 21.15, lng: 79.09,
+              locations: [
+                { name: 'Wardha', lat: 20.75, lng: 78.60 },
+                { name: 'Chandrapur', lat: 19.95, lng: 79.30 },
+                { name: 'Gondia', lat: 21.46, lng: 80.19 }
+              ]
+            },
+            {
+              name: 'Demo Single-Location Dealer', hq: 'Jaipur, Rajasthan', lat: 26.91, lng: 75.79,
+              locations: [{ name: 'Kota', lat: 25.21, lng: 75.86 }]
+            }
+          ],
+          unlocatedRoster: [], unlocatedLocations: []
+        },
         filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], billable: [], machineTypes: [], deviceIds: [], macSerialIds: [], dateFrom: '', dateTo: '' }
       });
     }
@@ -2557,6 +2579,7 @@
 
     mainMap.setData(centers, CenterDetail.open);
     renderFseLayer_(fse);
+    renderCpLayer_(state.mapBundle.cp || null);
   }
 
   /**
@@ -2593,6 +2616,44 @@
       console.warn('[SIP] roster entries whose HQ could not be located (add lat/lng, or geocode the city):',
         fse.unlocatedRoster);
     }
+  }
+
+  /**
+   * Draws the dealer layer and its toggle, or hides both when the payload
+   * carries no dealers. `cp` is null on a payload cached before the layer
+   * existed (see the mapcd_v16 note in EditionCD.js) or if CP_ROSTER is ever
+   * emptied, which is why the guard tests for the object rather than for an
+   * empty dealers array.
+   */
+  function renderCpLayer_(cp) {
+    var legend = $('cpLegend');
+    if (!legend) return;
+    var dealers = (cp && cp.dealers) || [];
+    legend.hidden = !dealers.length;
+    if (!dealers.length) { mainMap.setCp([]); setCpFocusBar_(null); return; }
+
+    mainMap.setCp(dealers, setCpFocusBar_);
+    mainMap.setCpVisible(state.cpVisible !== false);
+    $('cpToggle').setAttribute('aria-pressed', String(state.cpVisible !== false));
+
+    if (cp.unlocatedRoster && cp.unlocatedRoster.length) {
+      console.warn('[SIP] CP roster entries whose HQ could not be located (add lat/lng):',
+        cp.unlocatedRoster);
+    }
+    if (cp.unlocatedLocations && cp.unlocatedLocations.length) {
+      console.warn('[SIP] CP covered locations that could not be located (add lat/lng):',
+        cp.unlocatedLocations);
+    }
+  }
+
+  function setCpFocusBar_(dealer) {
+    var bar = $('cpFocusBar');
+    if (!bar) return;
+    if (!dealer) { bar.hidden = true; return; }
+    var n = (dealer.locations || []).length;
+    $('cpFocusName').textContent = dealer.name;
+    $('cpFocusMeta').textContent = dealer.hq + ' — ' + FMT.format(n) + ' location' + (n === 1 ? '' : 's') + ' covered';
+    bar.hidden = false;
   }
 
   /** Shows/hides the focus bar. `group` is the clicked pin's engineers, or null. */
@@ -3918,6 +3979,13 @@
       if (!state.fseVisible) setFseFocusBar_(null);
     });
 
+    $('cpToggle').addEventListener('click', function () {
+      state.cpVisible = !state.cpVisible;
+      $('cpToggle').setAttribute('aria-pressed', String(state.cpVisible));
+      mainMap.setCpVisible(state.cpVisible);
+      if (!state.cpVisible) setCpFocusBar_(null);
+    });
+
     // Coverage gaps: centers with open tickets that no engineer has worked in
     // the window. Re-filters the center set rather than restyling, so the map
     // shows the gap list and nothing else.
@@ -3933,14 +4001,17 @@
       mainMap.clearFseFocus();
       setFseFocusBar_(null);
     });
+    $('cpFocusClear').addEventListener('click', function () {
+      mainMap.clearCpFocus();
+      setCpFocusBar_(null);
+    });
     document.addEventListener('keydown', function (event) {
       // Ordered after the drawer's own Escape handler above: with the drawer
-      // open, Escape should close the drawer and leave the engineer focused,
-      // which is why this checks the drawer is already shut.
-      if (event.key === 'Escape' && $('centerDrawer').hidden && !$('fseFocusBar').hidden) {
-        mainMap.clearFseFocus();
-        setFseFocusBar_(null);
-      }
+      // open, Escape should close the drawer and leave the engineer/dealer
+      // focused, which is why this checks the drawer is already shut.
+      if (event.key !== 'Escape' || !$('centerDrawer').hidden) return;
+      if (!$('fseFocusBar').hidden) { mainMap.clearFseFocus(); setFseFocusBar_(null); }
+      if (!$('cpFocusBar').hidden) { mainMap.clearCpFocus(); setCpFocusBar_(null); }
     });
 
     window.addEventListener('hashchange', applyHashRoute);

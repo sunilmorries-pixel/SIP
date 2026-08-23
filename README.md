@@ -16,7 +16,7 @@ there, plus an FSE (Field Service Engineer) coverage layer added v5.54/@83–84 
 
 | Tab | Insights |
 |---|---|
-| **Overview** | 3 decomposition **treemaps** — Customers, Devices, All tickets (trees as of v5.38/@67, layout iterated through @76/v5.47, treemaps from @77/v5.48 — see `HANDOFF.md`) — each card opens from a KPI total into an ECharts treemap (`Charts.decompTreemap`) built from pure-JS aggregation over one combined endpoint (`apiGetOverviewFlowCD`). Rectangle area = share of the total, so a category's size is visible rather than only printed. Every node is clickable and drills the global filters. Also carries the located-centers map (merged in from the old Map tab, @79) and, since @83–84, an FSE coverage layer (`Fse.js`) |
+| **Overview** | 3 decomposition **flow diagrams** — Customers, Devices, All tickets (trees as of v5.38/@67, layout iterated through @76/v5.47, treemaps @77/v5.48–@88, flow from @90 — see `HANDOFF.md`) — each card opens from a KPI total into a hand-laid two-rank flow (`Charts.decompFlow`, one ECharts `custom` series) built from pure-JS aggregation over one combined endpoint (`apiGetOverviewFlowCD`): a column of level-1 blocks, a column of level-2 blocks, and one ribbon per parent→child relationship. Heights are value-driven but floored and compressed rather than ratio-true, so every drawn block also prints its own count (and its share where the width allows), and the tooltip is a full row readout. Every node is clickable and drills the global filters. Also carries the located-centers map (merged in from the old Map tab, @79) and, since @83–84, an FSE coverage layer (`Fse.js`) |
 | **Centers / Customers** | Geo, deployment age, segment breakdown (`hub_master_segment`), top hubs (by spoke count), Center-360 table (MTBF/Failures columns, sticky Center column, swapped-ticket count, clickable rows → drawer) |
 | **Support / CS** | Zoho KPIs (with prior-7-day delta chips), ticket flow, **SLA-compliance suite** (within% + Tech/Non-Tech + breach-by-type), **SLA risk card** (breached/at-risk chart + ticket worklist), open-ticket age-bucket chart, backlog, categories, channel, segment |
 | **Service** | Field-service ticket analytics from `servicewrk_Tickets` (added v5.29) — deliberately not the Machine Uptime source; see `docs/SOURCES.md` |
@@ -53,7 +53,7 @@ demo-sip/
 │   │   ├── SlaCatalog.js     # SLA catalog + Tech/Non-Tech classification
 │   │   ├── SlaRisk.js        # SLA risk card: breached/at-risk chart + ticket worklist (Support/CS)
 │   │   ├── Numbers.js         # Numbers page + Jira device stats (live jira_data BQ table, exclude-list device-type filter)
-│   │   ├── OverviewFlow.js   # Overview decomposition treemaps: apiGetOverviewFlowCD + pure-JS tree aggregation
+│   │   ├── OverviewFlow.js   # Overview decomposition flow diagrams: apiGetOverviewFlowCD + pure-JS tree aggregation
 │   │   ├── ServiceWrk.js     # Service page — field-service ticket analytics (servicewrk_Tickets)
 │   │   ├── TomTickets.js     # TOM page — CS issue/escalation tracker (tom_tickets)
 │   │   ├── ProfileNewSources.js # one-off join-key profiling helpers for new BQ tables (dev/diagnostic only)

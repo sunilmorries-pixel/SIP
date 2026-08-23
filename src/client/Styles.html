@@ -552,13 +552,19 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 .card-sub { font-size: 13px; color: var(--text-3); margin-top: 2px; }
 
 /* ── Overview flow cards — a KPI total that expands into a decomposition
-   tree. Closed, each card sits in its normal 3-column span-4 slot; open, it
-   grows to the full page width (:has() reacts live to the <details>'s own
-   [open] attribute, no JS needed for the layout change) — the tree's
-   Reingold-Tilford-style layout needs much more absolute horizontal room
-   than one column ever gave it, which is what actually keeps a thin
-   sibling (e.g. an inert "Others" bucket) from being squeezed against a
-   wide subtree (e.g. India's 7 segments). ── */
+   flow diagram. Closed, each card sits in its normal 3-column span-4 slot;
+   open, it grows to the full page width (:has() reacts live to the
+   <details>'s own [open] attribute, no JS needed for the layout change).
+   The full width is still what the renderer needs, but for a different
+   reason than the old tree's Reingold-Tilford spread: Charts.decompFlow
+   lays out two rank columns clamped to 26% of the canvas each, with the
+   rest of the width given to the ribbon span between them. Under about
+   600px the columns hit their floor and long names (e.g. "United Republic
+   of Tanzania") start ellipsising, so one grid column is not enough.
+   NOTE the collapsed state renders nothing at all: the chart div lives
+   inside the <details>, so while it is closed it is 0x0 and Charts.render()
+   only stages the option — the flow never lays out at one-third width, and
+   the toggle handler re-renders on open. ── */
 .flow-card { padding: 0; }
 .flow-card:has(details[open]) { grid-column: 1 / -1; }
 .flow-summary {
@@ -589,10 +595,20 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 /* One fixed height for every breakdown, set here rather than computed in JS.
    The tree renderer had to size its container from the leaf count (72px a
    leaf) because its layout grew with the data — three cards ran 432/720/504px
-   of canvas and the landing page came to 2,436px. A treemap subdivides
-   whatever box it is given, so the height is a design decision again: 340px
-   over the full card width leaves the smallest real category (ECHO, 2.7% of
-   customers) enough area to caption.
+   of canvas and the landing page came to 2,436px. Charts.decompFlow inverts
+   that dependency: the height is fixed and the DATA is folded to fit it, so
+   the height is a design decision again.
+
+   THIS NUMBER IS THE FLOW'S ONLY CAPACITY LEVER. With box-sizing: border-box
+   and the padding below, zrender's getSize() hands ECharts a 320px-tall,
+   (card − 40px)-wide canvas; decompFlow reads that at runtime via
+   api.getHeight() and derives everything from it — how many level-1 rows can
+   be drawn before the tail is folded, and how many level-2 blocks each band
+   can hold. Nothing in Charts.html mirrors the 340. Raising it here raises
+   both capacities with no code change (and lowering it lowers them), so this
+   is the knob to reach for if the folded tail ever needs to be more visible;
+   at 340px the flow names fewer categories on canvas than the treemap it
+   replaced, which is the deliberate trade recorded in decompFlow's comment.
 
    min-height, not height: `.chart` sets height: 280px further down this file
    at equal specificity, so a `height` here would lose on source order. */

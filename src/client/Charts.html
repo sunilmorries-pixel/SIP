@@ -24,7 +24,7 @@ var Charts = (function () {
     tooltipBg: '#0A2340', tooltipText: '#EAF1F8', sliceBorder: '#04182C'
   };
 
-  // Read by decompPalette_(), which needs to know the theme by name rather
+  // Read by flowPalette_(), which needs to know the theme by name rather
   // than infer it from a chrome color it happens to share a value with.
   var THEME = 'dark';
 
@@ -705,62 +705,325 @@ var Charts = (function () {
     }));
   }
 
-  /* ── Decomposition treemaps (Overview) ───────────────────────── */
+  /* ── Overview decomposition FLOW ─────────────────────────────── */
 
   /**
-   * The treemap's two tones, per theme. Colour is deliberately NOT a data
-   * channel here: area already carries every value, so a per-node ramp would
-   * only restate what a rectangle's size says. (The old tree needed one
-   * because its fixed boxes had no size channel to spend.) Each theme gets
-   * exactly two tones — BAND, behind a parent's name strip, and TILE, which
-   * its children fill. BAND is always the higher-contrast tone against the
-   * card: lighter than the tile on navy, darker on white. That's what keeps
-   * "this strip labels the block below it" reading correctly in both themes
-   * without inverting the palette. Every text pair clears WCAG AA for normal
-   * text — dark 10.3 (band) / 4.7 (tile), light 9.5 / 4.7.
+   * ═════════════════════════════════════════════════════════════════════
+   *  WHY THIS RENDERER EXISTS, AND WHAT IT SUPERSEDES.  Read before
+   *  editing: this card has been redrawn six times and every failure was
+   *  the same failure, alignment.
+   * ═════════════════════════════════════════════════════════════════════
    *
-   * The tone tracks a rectangle's ROLE, not its depth: band means "this is a
-   * label strip", tile means "this is data". That distinction matters for the
-   * level-1 nodes that have nothing drawn under them (the inert "Others"
-   * bucket, a source folded by decompPrepLevel1_) — styling those by depth
-   * made an 18% residual the heaviest block on the card while the 65% one sat
-   * lighter, so they take the tile tone like every other data rectangle and
-   * the band tone is left to mean one thing.
+   *  · `tree` series (through @76) — FAILED ON ALIGNMENT. The series lays
+   *    out by TOPOLOGY, not by value: every node drew at a fixed 88×52 /
+   *    70×48 box whatever its count, so magnitude lived only in the label
+   *    text, and same-depth siblings split one span whether a branch held
+   *    3% or 65%. Six passes tried to buy the labels room (size-by-depth
+   *    @69, hard-wrapped names @70, 8%→2% margins @72, TB→LR + a depth
+   *    colour ramp @76, 34px→72px leaf slots) and each MOVED the collision
+   *    instead of removing it, because the layout never consulted the
+   *    numbers.
+   *  · `sankey` (5ad63f3) — fixed the collision, reverted in d2b4b1c purely
+   *    on preference, back when the alternative was the tree.
+   *  · `treemap` (@78-@88) — correct and collision-proof (rectangles that
+   *    partition their parent by share cannot overlap) but a MOSAIC: no
+   *    total flowing into parts, no connector anywhere on the card. That is
+   *    what the user asked to replace.
    *
-   * Captions are single-tone. A faded second line was tried for the count
-   * under each name and dropped: white at 82% over either tile tone measures
-   * 3.7, and even 92% only reaches 4.2, so the hierarchy comes from weight
-   * and size instead. A count is data; it doesn't get to be hard to read.
+   *  ── What this is ────────────────────────────────────────────────────
+   *  A hand-laid two-rank flow: a column of level-1 blocks on the left, a
+   *  column of level-2 blocks on the right, and one polygon ribbon per
+   *  parent→child relationship crossing the gutter between them. One
+   *  ECharts `custom` series with `coordinateSystem: 'none'`; every pixel
+   *  comes from a PURE FUNCTION of (payload, canvas width, canvas height),
+   *  evaluated inside renderItem off api.getWidth()/api.getHeight().
+   *
+   *  ── THE ALIGNMENT ARGUMENT (five identities, not five tuning values) ─
+   *  Let H be the plot height, n the number of drawn level-1 rows, and
+   *  ROW1_MIN the row floor.
+   *
+   *  (1) NOTHING infers a position from topology. There is no relaxation
+   *      pass, no de-collision pass, no fixed node box, no per-branch slot.
+   *      The only constant in the layout that is not derived from the data
+   *      is the column WIDTH, and width carries no value here. This is the
+   *      root cause of the tree era removed rather than mitigated.
+   *
+   *  (2) THE LEFT COLUMN EXHAUSTS H EXACTLY.  free = H − (n−1)·GAP_OUT −
+   *      n·ROW1_MIN, and row i gets h_i = ROW1_MIN + free·(v_i / total).
+   *      Then Σh_i = n·ROW1_MIN + free = H − (n−1)·GAP_OUT identically —
+   *      the gaps and the floors are subtracted from the budget BEFORE the
+   *      values are scaled, so a large value can never eat a gap and the
+   *      column can never overrun or leave dead air. The last row's height
+   *      is assigned as the arithmetic remainder, so the identity survives
+   *      floating point too.
+   *
+   *  (3) THE RIGHT COLUMN IS THE SAME EXTENT, BRACKETED PER PARENT. Inside
+   *      a parent's band [by, by+B] with k drawn children: avail = B −
+   *      (k−1)·GAP_IN, free2 = avail − k·ROW2_MIN, h_c = ROW2_MIN +
+   *      free2·(v_c / v_parent). Children stack from the band's TOP, so the
+   *      parent's top edge IS its first child's top edge; and when the
+   *      children sum to the parent (Σv_c === v_parent, tested exactly) the
+   *      last child's bottom is snapped to the band's bottom, so the
+   *      parent's whole extent is bracketed to the pixel. Both columns
+   *      therefore span exactly [plotTop, plotTop+H]. Alignment is an
+   *      identity of the arithmetic, not an outcome of a heuristic.
+   *
+   *  (4) NO LABEL CAN COLLIDE, because no block is ever shorter than its
+   *      floor: heights are floor + a non-negative share of a non-negative
+   *      remainder. Adjacent level-2 centres are ≥ ROW2_MIN+GAP_IN = 18px
+   *      apart and level-1 centres ≥ ROW1_MIN+GAP_OUT = 22px apart, against
+   *      single-line 11/12px text — ≥5px of clearance, worst case. And the
+   *      row COUNT is capped by capacity computed from the same H the
+   *      geometry paints with, so the bound and the paint cannot disagree.
+   *      Horizontally, a name is truncated against a width MEASURED with
+   *      the exact font string it will be painted with (flowTextW_), so no
+   *      label can overrun its own block either. Nothing is clipped by
+   *      `overflow: hidden` anywhere.
+   *
+   *  (5) IT IS CHECKED, NOT JUST ARGUED. There are no client-side unit
+   *      tests in this repo (all 233 jest tests are server-side), so
+   *      flowLayout_ asserts its own postconditions at runtime and
+   *      console.warn()s the card id on any violation. The set covers both
+   *      columns, deliberately: a level-1 or level-2 block under its floor,
+   *      a non-finite coordinate at either level, a parent whose top differs
+   *      from its first child's, a CHILD THAT OVERRUNS ITS BAND (the class
+   *      an inconsistent payload actually produces — children summing above
+   *      their parent), a broken exact bracket, and a left column whose
+   *      extent is not [plotTop, plotTop+H].
+   *
+   *  ── WHAT THE HEIGHT MEANS (the one honesty trade, stated plainly) ────
+   *  A row's height is ROW_MIN + (its exact share of the remaining free
+   *  height). The floor is THE ROW — it carries no quantity; the height
+   *  ABOVE the floor is the quantity, and that part is exactly
+   *  proportional, one scale for the whole left column. This is what makes
+   *  the card survive its own acid test: on the live Tickets payload
+   *  (Zoho 84,545 / ServiceWRK 36,081 / TOM 1,325 — 64:1, and inside Zoho
+   *  Open 211 vs Closed 84,334 — 400:1) a purely proportional height puts
+   *  TOM at 3px and Open at well under a pixel. Here both get a legible,
+   *  labelled row. The cost is that heights are compressed rather than
+   *  ratio-true — a 64:1 count ratio draws at 8.8:1 — which is why the
+   *  COUNT, not the length, is the thing every block is guaranteed to
+   *  carry: flowFitLabel_ gives the share up first, then the count's exact
+   *  form ("18K" for 18,124), and only on a canvas under ~200px does it
+   *  give the count up to save the name. The tooltip prints the exact value
+   *  and both denominators at every size. The aria-labels in Index.html say
+   *  the same thing in words, because a canvas has no other channel to an
+   *  assistive reader: taller is larger, heights are compressed, and they
+   *  are comparable only within one column.
+   *  A value of exactly 0 therefore gets exactly the floor and nothing
+   *  more, and is painted in the TRACK tone (the "no quantity here" tone)
+   *  with its 0 spelled out — chosen over dropping it, because a silent
+   *  omission from a total the card header still counts is worse.
+   *
+   *  ── SCALE CAVEAT, deliberately not papered over ──────────────────────
+   *  Level 1 is one scale for the whole column (free/total). Level 2 is
+   *  normalised WITHIN ITS PARENT (share of parent), so free2/v_parent
+   *  differs from parent to parent and level-2 blocks under different
+   *  parents are NOT on a common scale. That is the decomposition reading
+   *  and it is the deliberate choice: it makes within-parent composition
+   *  comparable across parents (Zoho's 0.25% Open reads as 0.25% of Zoho
+   *  rather than as an unresolvable sliver of the card), and every tooltip
+   *  states both denominators so a length is never ambiguous.
+   *
+   *  ── THE COST VS THE TREEMAP, so it is not discovered later ───────────
+   *  A treemap has 2-D slack; a 1-D flow does not. At 340px the two columns
+   *  hold ~13 level-1 rows and ~13-20 level-2 rows total, so the flow NAMES
+   *  FEWER CATEGORIES ON CANVAS than the treemap did on the Devices card
+   *  (12-14 device types × 5 age bands = up to 70 level-2 nodes, of which
+   *  the treemap captioned most across the full card width). Nothing is
+   *  omitted silently: a folded tail is drawn as its own block, sized by
+   *  the tail's true sum, labelled with what it stands for, and its tooltip
+   *  enumerates the members — and clicking a parent re-renders the card
+   *  filtered, where those members become large. The lever, if more tail
+   *  detail is ever wanted, is the card height in Styles.html (every
+   *  capacity number here is derived from api.getHeight() at runtime, so
+   *  changing that one CSS value changes the capacity with no code edit) —
+   *  not the layout rule.
+   *
+   *  ── VERIFIED ECHARTS 5.5.0 FACTS THIS LEANS ON ──────────────────────
+   *  · `coordinateSystem: 'none'` — getCoordSysInfoBySeries() has no
+   *    fetcher for the name, so series.coordinateSystem stays null and
+   *    makeRenderItem skips coord-sys prep. api.getWidth/getHeight are
+   *    always present.
+   *  · element types 'group' / 'rect' / 'polygon' / 'text' are all real
+   *    (registerShape('polygon'), registerShape('rect'), createEl()).
+   *    Rect honours shape.r; Polygon honours shape.points.
+   *  · `emphasis: { style: … }` is the v5 spelling
+   *    (retrieveStyleOptionOnState); `styleEmphasis` is the v4 fallback.
+   *  · `style.font` (a CSS font shorthand) is honoured verbatim, which is
+   *    what lets a measurement and a paint agree exactly.
+   *  · `cursor` on a custom-series element option is IGNORED —
+   *    applyMiscProps handles only silent/ignore/invisible/autoBatch, and
+   *    zrender's Displayable defaults cursor to 'pointer'. So every mark
+   *    shows a pointer whether or not it acts. Rather than fake it, every
+   *    drawn mark that isn't a payload node routes its click to the
+   *    NEAREST REAL NODE (a folded level-2 block, a "not broken out"
+   *    placeholder and a ribbon all click through to the node they hang
+   *    off), so the only inert marks are the level-1 tail aggregate — whose
+   *    tooltip says so — and any node the SERVER left inert, which is
+   *    tested for rather than assumed: flowClickable_ asks whether the node
+   *    carries a field handleTreeNodeClick_ reads, and both the tooltip's
+   *    offer of a click and the click handler itself are gated on it, so an
+   *    "Others" bucket with no filterDim never promises an action.
+   *  · zrender's getSize() subtracts computed padding, so with
+   *    `.chart-flow { min-height: 340px; padding: 0 20px 20px }` and
+   *    border-box, api.getHeight() is 320 and api.getWidth() is the card
+   *    width minus 40. Nothing here mirrors those CSS numbers.
    */
-  function decompPalette_() {
+
+  /**
+   * The flow's text face. base() sets "'Fira Sans', sans-serif" — a face
+   * this app never loads, so every other chart's text actually paints in the
+   * browser's generic sans. Harmless for axis ticks; not harmless here,
+   * because this renderer MEASURES text to decide how much of a name fits
+   * inside a block, and a measurement is only trustworthy taken with the
+   * exact string the canvas will paint with. So the flow names Lato — the
+   * face Styles.html really @imports — and the measurer and every text
+   * element read the same constants. Weights are ones Lato actually ships
+   * (400/700), so the browser never synthesises one of them.
+   */
+  var FLOW_FONT = "'Lato', 'Segoe UI', system-ui, sans-serif";
+  var FLOW_FONTS = {
+    name1: '700 12px ' + FLOW_FONT, val1: '400 12px ' + FLOW_FONT,
+    name2: '700 11px ' + FLOW_FONT, val2: '400 11px ' + FLOW_FONT,
+    cap: '700 10px ' + FLOW_FONT
+  };
+
+  /**
+   * Every number the layout needs. NOTE what is NOT here: the canvas
+   * height. It is read from api.getHeight() on every render, so the
+   * capacities below are re-derived if .chart-flow's height in Styles.html
+   * ever changes, and re-derived on resize.
+   *
+   * ROW1_MIN/ROW2_MIN are the row floors: 12px and 11px of single-line text
+   * plus ≥5px of clearance. GAP_IN is the 2px surface gap that separates
+   * touching marks — the gap, never a border, is what separates neighbours.
+   * The two strokes this renderer does draw (EDGE, 1px) separate nothing:
+   * one marks the no-quantity ROLE and one gives the ribbon wash a legible
+   * edge, both argued in flowPalette_. END_GAP holds a ribbon 2px clear of
+   * both blocks it joins, so the connector reads as its own mark rather
+   * than a smear between two rectangles.
+   *
+   * NAME_MIN / NAME_TIGHT are the two widths a name is allowed to keep when
+   * the count is set beside it: NAME_MIN (46px, ~7 characters) for the
+   * comfortable tiers, NAME_TIGHT (24px, ~3 characters + ellipsis) for the
+   * last tier before the count would have to be dropped. Both are floors on
+   * the NAME, because the count is the channel the sub-3:1 fills owe the
+   * reader (flowFitLabel_ spells the ladder out).
+   */
+  var FLOW = {
+    INSET_Y: 4, CAP_H: 15, GAP_OUT: 4, GAP_IN: 2,
+    ROW1_MIN: 18, ROW2_MIN: 16, PAD_X: 10, SEP: 10,
+    NAME_MIN: 46, NAME_TIGHT: 24,
+    RADIUS: 4, END_GAP: 2, EDGE: 1,
+    COL_FRAC: 0.26, COL_MIN: 84, COL_MAX: 340, GUTTER_MIN: 48,
+    CURVE_STEPS: 14, ARROW_MIN: 22, ARROW_W: 7, ARROW_H: 9
+  };
+
+  /**
+   * Colour by ROLE, never by value — carrying forward the standing decision
+   * the treemap's decompPalette_ comment made: length already carries every
+   * magnitude, so a per-node ramp would only restate it, and the concrete
+   * failure that argument recorded (an 18% residual painted heavier than a
+   * 65% sibling) is exactly what a rank-keyed ramp reintroduces. Here every
+   * level-1 block shares one fill whatever its size and every level-2 block
+   * shares another, so a filter that drops a category can never repaint the
+   * survivors.
+   *
+   * Four roles. The DATA roles (l1, l2) are one blue family, one step apart
+   * by column. The NON-DATA roles are the ones a reader has to be able to
+   * pick out of a column of data blocks, so they do not merely change hue —
+   * they step OUT of the data tones' lightness neighbourhood entirely, to
+   * the ink end of the theme in light mode and to the paper end in dark:
+   *
+   *   · agg   — a real quantity (the folded tail's true sum) that is not a
+   *             single category: the highest-contrast neutral on the card.
+   *   · track — no quantity at all (a zero row, or a "nothing to break out"
+   *             placeholder): a near-surface fill that is deliberately
+   *             almost invisible, plus a HAIRLINE OUTLINE. The outline is
+   *             the form channel palette.md prescribes when a fill cannot
+   *             carry a distinction: an empty slot is drawn as an outline
+   *             because there is no quantity to ink in. It is not a
+   *             separator (the 2px gaps do that) and it is drawn on nothing
+   *             else.
+   *
+   * MEASURED, not eyeballed — every number below comes from the dataviz
+   * skill's validate_palette.js run against the COMPOSITED card surfaces
+   * (dark #0F2D4A, light #F8FAFC), OKLab ΔE×100, floors ≥15 normal / ≥8 CVD:
+   *
+   *   pair              light (norm/CVD)      dark (norm/CVD)
+   *   l1  ↔ agg           19.2 / 18.2          30.8 / 27.7
+   *   l1  ↔ track         41.6 / 38.6          26.1 / 25.4
+   *   l2  ↔ agg           40.0 / 39.6          39.3 / 37.1
+   *   l2  ↔ track         19.3 / 17.3          16.6 / 16.1
+   *   agg ↔ track         58.4 / 58.0          54.9 / 54.0
+   *
+   * That is every pair that can ever be ADJACENT, and the previous tones
+   * failed it badly (dark l1↔agg measured 6.4/5.4 — a full-colour reader
+   * could not tell an aggregate from a device type sitting 4px above it).
+   * The one pair NOT on that list is l1 ↔ l2 (light 22.3, dark 9.6): those
+   * two tones never touch. They live in different columns, ≥48px of gutter
+   * apart, and column membership is carried by x-position; the lightness
+   * step only reinforces it. Making the dark pair clear 15 would mean
+   * pushing l2 down onto the track tone, trading a real adjacency for a
+   * decorative one.
+   *
+   * Text-on-fill, WCAG AA for normal text (≥4.5:1) everywhere:
+   *   dark  l1 4.72 · l2 6.17 · agg 9.92 · track 6.43 · caption 4.87
+   *   light l1 4.67 · l2 7.31 · agg 10.09 · track 6.99 · caption 5.33
+   * Fills under 3:1 against the card remain (dark l1 2.98 / l2 2.00; light
+   * l2 1.92, and both track tones at ~1.0 by design), which triggers the
+   * palette's relief rule — and the relief is structural rather than
+   * promised: a block is only ever drawn at a size that holds its label, so
+   * every mark carries visible name text, and carries its COUNT too at
+   * every canvas width down to ~200px (flowFitLabel_ degrades the number's
+   * form before its existence). The tooltip is a full row readout on top of
+   * that, never instead of it.
+   *
+   * The RIBBONS are pre-composited rather than drawn as an alpha wash: they
+   * only ever occupy the empty gutter (never overlapping a block or each
+   * other), so an opacity buys nothing and costs a measurable colour. The
+   * wash alone composites to 1.32:1 (light) / 1.59:1 (dark) — lighter than
+   * a hairline gridline for the one mark that carries the parent→child
+   * mapping — so each ribbon also gets a 1px EDGE in the full ribbon hue,
+   * which reads at 4.46:1 (light) / 4.53:1 (dark) against the card. Fill
+   * for weight, edge for legibility, as marks-and-anatomy asks of any area
+   * fill. A ribbon into an empty slot carries no quantity, so it takes the
+   * track fill and the muted edge (3.60 / 3.90 — visible, recessive),
+   * never the live data tone.
+   *
+   * There is no separate hover tone. A ring has to clear 3:1 against the
+   * fill it strokes (WCAG 1.4.11) and no single accent could: the app's
+   * light accent #0E9E86 measured 1.39:1 on l1 and 1.67:1 on l2. So the
+   * hover ring wears the block's OWN ink — the same value that already
+   * clears AA for that block's label, i.e. ≥4.67:1 on every role in both
+   * themes, by construction rather than by luck.
+   */
+  function flowPalette_() {
     return THEME === 'light'
-      ? { band: '#124A67', bandText: '#FFFFFF', tile: '#2E7BA6', tileText: '#FFFFFF' }
-      : { band: '#9BCBE4', bandText: '#04182C', tile: '#1F7AAE', tileText: '#FFFFFF' };
+      ? { l1Fill: '#2E7BA6', l1Text: '#FFFFFF',
+          l2Fill: '#8FBDD9', l2Text: '#01294E',
+          aggFill: '#374350', aggText: '#FFFFFF',
+          trackFill: '#EDF3F8', trackText: '#3E546B', trackEdge: '#6E869F',
+          ribbon: '#CCDEE9', ribbonEdge: '#2E7BA6',
+          ribbonMuted: '#EDF3F8', ribbonMutedEdge: '#6E869F',
+          cap: '#566A80' }
+      : { l1Fill: '#1F7AAE', l1Text: '#FFFFFF',
+          l2Fill: '#1C5E85', l2Text: '#EAF1F8',
+          aggFill: '#C3CEDA', aggText: '#0A2340',
+          trackFill: '#123047', trackText: '#A2B4C8', trackEdge: '#6B8AA8',
+          ribbon: '#184E74', ribbonEdge: '#2E9BD6',
+          ribbonMuted: '#123047', ribbonMutedEdge: '#6B8AA8',
+          cap: '#869AB2' };
   }
 
   /** Minimal HTML escape for tooltip text built from raw BigQuery values
-   *  (ServiceWRK's `closure_type` reaches the label unprettified). */
+   *  (ServiceWRK's `closure_type` reaches the label unprettified). Shared
+   *  with nothing else now that the treemap is gone, but kept as its own
+   *  helper because every tooltip line below needs it. */
   function decompEsc_(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  /**
-   * A tile's two-line caption: name over count, anchored top-left. Top-left
-   * rather than centred so the caption stays put as a tile changes shape
-   * between filter states, and so it can't drift into the parent band above
-   * it. ECharts drops the whole label when the tile is too small to hold it,
-   * which is the intended fallback — the tooltip still carries the value.
-   */
-  function decompTileLabel_(color) {
-    return {
-      show: true, position: 'insideTopLeft', padding: [4, 6], overflow: 'truncate',
-      formatter: function (p) { return '{n|' + p.name + '}\n{v|' + FMT.format(p.value) + '}'; },
-      rich: {
-        n: { fontSize: 12, fontWeight: 700, color: color, lineHeight: 15, align: 'left' },
-        v: { fontSize: 11, fontWeight: 500, color: color, lineHeight: 14, align: 'left' }
-      }
-    };
   }
 
   /** `n` as a share of `total`, e.g. "12.4%" — "" when there's no total. */
@@ -770,83 +1033,822 @@ var Charts = (function () {
     return (pct >= 10 ? pct.toFixed(0) : pct.toFixed(1)) + '%';
   }
 
-  // A level-1 block needs the 26px name band plus ~34px for one captioned
-  // child before its breakdown is worth drawing — about 60px of height, which
-  // in the 340px-tall canvas (see .chart-flow in Styles.html) means roughly a
-  // 5% share once ECharts' squarify has picked a shape for it.
-  var DECOMP_COLLAPSE_SHARE = 0.05;
-
   /**
-   * Prepares the level-1 row: flattens any child too small to host a readable
-   * breakdown into a single tile (recording on `__collapsed` how many children
-   * were folded), and repaints every childless child in the tile tone, since
-   * what it draws is a data rectangle rather than a label strip.
-   *
-   * Necessary because ECharts draws a non-leaf node's upperLabel band at its
-   * configured height whether or not the node is that tall: a 1%-share source
-   * (TOM, in the preview's mock) got a ~7px strip with a 26px band painted
-   * over it, clipped mid-glyph by the canvas edge. `childrenVisibleMin` looks
-   * like the fix and isn't — it stops the children rendering but the parent
-   * still lays out and labels as a parent, so the band still overflows
-   * (verified in the preview at 340/420/500px canvas heights). Removing the
-   * children in the DATA does work: ECharts then treats the node as the leaf
-   * it now is, and leaf labels are the kind it drops when they don't fit.
-   *
-   * Nothing is lost silently — the tooltip says what was folded, and every
-   * one of these nodes is already clickable into the same breakdown (a
-   * country/type click filters down to it; a ticket-source click opens that
-   * source's own page).
+   * A short form of a count, for the narrow tiers of flowFitLabel_ only:
+   * "18K" where "18,124" will not fit beside a readable name. Same rounding
+   * as Intl's compact notation (84,545 → "85K", 1,234,567 → "1.2M"), which
+   * is the auto-compact the dataviz skill's stat-tile contract asks for, and
+   * deliberately the TERSEST form rather than a 3-significant-digit one:
+   * at the app's 320px body min-width the canvas is ~280px and the inner
+   * label width is 64px, where "18.1K" costs the count entirely and "18K"
+   * keeps it. It is never the only place a number appears — the tooltip
+   * always prints FMT.format() of the exact value — and it exists because
+   * the alternative shipped here first (dropping the count) dropped it from
+   * the LARGEST blocks first, which is exactly backwards.
    */
-  function decompPrepLevel1_(children, total, P) {
-    return children.map(function (child) {
-      var kids = child.children || [];
-      var folding = kids.length && total && child.value / total < DECOMP_COLLAPSE_SHARE;
-      if (kids.length && !folding) return child;   // big enough to keep its band
-      var flat = Object.assign({}, child);
-      delete flat.children;
-      if (folding) flat.__collapsed = kids.length;
-      // Per-node, because the level's own colour still has a job to do: it
-      // fills the gaps between a parent's children, which is what makes them
-      // read as sitting inside their parent.
-      flat.itemStyle = { color: P.tile };
-      return flat;
-    });
+  function flowCompact_(n) {
+    var v = n < 0 ? 0 : n;
+    if (v >= 1e7) return (v / 1e6).toFixed(0) + 'M';
+    if (v >= 1e6) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (v >= 1e4) return (v / 1e3).toFixed(0) + 'K';
+    if (v >= 1e3) return (v / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+    return String(v);
   }
 
   /**
-   * Renders a two-level decomposition treemap: each of `treeNode`'s children
-   * gets a rectangle sized by its share of the total, subdivided in turn by
-   * that child's own children (country → segment, device type → age band,
-   * ticket source → outcome).
+   * "1 segment" / "3 segments". The plurals are spelled out per card
+   * (opts.levels) because "Country" does not pluralise by suffix, and the
+   * SINGULAR is needed too: a device type with one age band, or Zoho when
+   * every ticket is open, really does have exactly one child.
+   */
+  function flowUnit_(n, one, many) {
+    return n === 1 ? one : many;
+  }
+  function flowPlural_(n, one, many) {
+    return n + ' ' + flowUnit_(n, one, many);
+  }
+
+  /**
+   * Does this payload node actually carry click metadata? Mirrors the
+   * branches handleTreeNodeClick_ reads, in its order. Used for two things
+   * that must agree: whether the tooltip offers a click, and whether the
+   * click handler bothers calling back. The server's inert buckets (an
+   * "Others" country, a source with no filterDim) reach this renderer as
+   * ordinary nodes with none of these fields, so "the node exists" is not
+   * the same question as "clicking it does something".
+   */
+  function flowClickable_(node) {
+    return !!(node && (node.clearDims || node.resetSet || node.filterSet ||
+      node.filterDim || node.navTab));
+  }
+
+  /* ── text measurement ─────────────────────────────────────────────
+     A real canvas 2D context measuring with the SAME font shorthand the
+     chart paints with, so a truncation decision is exact rather than an
+     em-advance guess or a trust-fall on zrender's overflow:'truncate'.
+     Cached per (font, string): the same handful of names is measured on
+     every render and on every resize. */
+  var flowCtx_ = null;
+  var flowTextCache_ = {};
+
+  function flowTextW_(text, font) {
+    var key = font + '|' + text;
+    if (flowTextCache_[key] != null) return flowTextCache_[key];
+    if (flowCtx_ === null) {
+      try { flowCtx_ = document.createElement('canvas').getContext('2d') || false; }
+      catch (e) { flowCtx_ = false; }
+    }
+    var w;
+    if (flowCtx_) { flowCtx_.font = font; w = flowCtx_.measureText(String(text)).width; }
+    else { w = String(text).length * 6.4; }   // last-ditch estimate, never expected
+    flowTextCache_[key] = w;
+    return w;
+  }
+
+  /** `text`, ellipsised to fit `maxW` — binary search on the measured
+   *  width, so the result is the longest prefix that actually fits. */
+  function flowTrunc_(text, maxW, font) {
+    text = String(text == null ? '' : text);
+    if (!(maxW > 0) || !text) return '';
+    if (flowTextW_(text, font) <= maxW) return text;
+    var lo = 0, hi = text.length, mid;
+    while (lo < hi) {
+      mid = Math.ceil((lo + hi) / 2);
+      if (flowTextW_(text.slice(0, mid) + '…', font) <= maxW) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo > 0 ? text.slice(0, lo) + '…' : '';
+  }
+
+  /**
+   * Lays out one block's two text runs: the name left-aligned, the count
+   * right-aligned in its OWN reserved width. Reserved rather than
+   * concatenated because a single "name · count · share" string truncates
+   * the COUNT away first, and the count is precisely what the sub-3:1 fills
+   * depend on being visible (see flowPalette_). ServiceWRK's closure_type
+   * is raw, unbounded BigQuery text and lands on this card's level 2, so
+   * this case is routine, not hypothetical.
+   *
+   * FIVE deterministic tiers, tried in order, each a measured fit rather
+   * than a guess:
+   *
+   *   1  name + count + share      (name keeps ≥ NAME_MIN)
+   *   2  name + count              (name keeps ≥ NAME_MIN)
+   *   3  name + COMPACT count      (name keeps ≥ NAME_MIN)
+   *   4  name + COMPACT count      (name keeps ≥ NAME_TIGHT)
+   *   5  name alone, whole box
+   *
+   * Tiers 3 and 4 exist because the three-tier version shipped before them
+   * had a per-string gate and so gave the count up on the WIDEST numbers
+   * first: at a 620px browser window (the Overview card is already full
+   * width there, per the max-width:820px rule in Styles.html) innerW is
+   * ~89px, and "18,124" + separator + NAME_MIN did not fit while "412" did
+   * — so the card printed a number on Nepal and none on India. A count
+   * that vanishes from the biggest rows is worse than a rounded one, and
+   * anti-patterns.md's "tooltip as the only way to read a value" is exactly
+   * what it costs. So the value degrades in FORM ("18K") before it
+   * degrades in existence, and the NAME gives up width before the count
+   * does — down to NAME_TIGHT, past which a name would be pure ellipsis and
+   * identity would be lost instead. Measured on the Customers payload, the
+   * count now survives down to a ~200px canvas (every block keeps it at
+   * 213px, the collapsed-column width) and tier 5 is reached below ~195px,
+   * where colW itself falls under 74px — narrower than the app can get at
+   * its 320px body min-width.
+   */
+  function flowFitLabel_(cell, name, valueTxt, compactTxt, shareTxt, w, nameFont, valFont) {
+    var innerW = w - 2 * FLOW.PAD_X;
+    var withShare = valueTxt + (shareTxt ? '  ·  ' + shareTxt : '');
+    compactTxt = compactTxt || valueTxt;
+    var tiers = valueTxt
+      ? [[withShare, FLOW.NAME_MIN], [valueTxt, FLOW.NAME_MIN],
+         [compactTxt, FLOW.NAME_MIN], [compactTxt, FLOW.NAME_TIGHT]]
+      : [];
+    var picked = false;
+    tiers.forEach(function (t) {
+      if (picked) return;
+      var room = innerW - flowTextW_(t[0], valFont) - FLOW.SEP;
+      if (room >= t[1]) {
+        cell.valText = t[0];
+        cell.nameW = room;
+        picked = true;
+      }
+    });
+    if (!picked) {
+      cell.valText = '';
+      cell.nameW = innerW;
+    }
+    // −2px of slack: if Lato has not finished loading, the measurer and the
+    // painter agree on the fallback face but a late swap could widen the
+    // string by a hair. Cheaper than a document.fonts round trip.
+    cell.nameText = flowTrunc_(name, cell.nameW - 2, nameFont);
+    cell.nameFont = nameFont;
+    cell.valFont = valFont;
+  }
+
+  /* ── geometry primitives ─────────────────────────────────────── */
+
+  /**
+   * A ribbon: a constant-thickness band from (x0, yA) to (x1, yB) drawn on
+   * the smoothstep s = t²(3−2t) — the same easing a sankey link uses, so it
+   * reads as movement rather than as a wire or an indented bar.
+   */
+  function flowRibbonPoints_(x0, x1, yA, yB, h) {
+    var n = FLOW.CURVE_STEPS, top = [], bot = [], i, t, s, x, y;
+    for (i = 0; i <= n; i++) {
+      t = i / n;
+      s = t * t * (3 - 2 * t);
+      x = x0 + (x1 - x0) * t;
+      y = yA + (yB - yA) * s;
+      top.push([x, y]);
+      bot.push([x, y + h]);
+    }
+    bot.reverse();
+    return top.concat(bot);
+  }
+
+  /** A right-pointing triangle centred on (cx, cy). */
+  function flowArrowPoints_(cx, cy, w, h) {
+    return [[cx - w / 2, cy - h / 2], [cx + w / 2, cy], [cx - w / 2, cy + h / 2]];
+  }
+
+  /* ── the model: pure, and entirely free of pixels ───────────────── */
+
+  /**
+   * Reshapes one payload root into the rows the layout will place. Pure and
+   * pixel-free on purpose: every pixel decision belongs to flowLayout_,
+   * which only runs inside renderItem where the real canvas size is
+   * available.
+   *
+   * Zero-valued children are separated out rather than mixed in: a level-2
+   * node with value 0 (Zoho's Closed when total === open, or any of TOM's
+   * three counts) must not compete for height, and a level-1 node with
+   * value 0 (ServiceWRK when its query returns no rows — note it arrives as
+   * `{value: 0, children: []}`, a TRUTHY empty array, so a "has children"
+   * guard misses it) must not be dropped either.
+   *
+   * `raw` is the payload node ITSELF, by reference — never a clone, a spread
+   * or a merge. handleTreeNodeClick_ reads clearDims / resetSet / filterSet
+   * / filterDim+filterValue / navTab+navDeviceType straight off it, and
+   * level-2 names collide across branches ("SME" under both India and
+   * Nepal), so the geometry travels alongside the node instead of on it.
+   *
+   * ORDER OF THE CHILDREN, and why this function is where it is decided.
+   * Level 1 arrives sorted by count descending (OverviewFlow.js emits
+   * countries and device types that way, and the three ticket sources in a
+   * deliberate fixed order), so the layout can take its fold from the tail
+   * and know the tail is the small end. Level 2 has NO such guarantee:
+   * buildTicketsQuerySpecs issues `SELECT ... closure_type ... GROUP BY
+   * label` with no ORDER BY, so ServiceWRK's ten outcomes arrive in
+   * whatever order BigQuery returned them, and nestTicketsTree_ maps them
+   * straight through. Folding that tail positionally named three outcomes
+   * AT RANDOM — CENTER_VISIT (~58% of ServiceWRK) could land inside the
+   * "+7 more" aggregate while PENDING_PARTS (~0.1%) got a block of its own.
+   * So a non-ordinal breakdown is sorted here, by value descending, and the
+   * layout's tail fold becomes a fold of the genuinely smallest children.
+   * An ORDINAL breakdown (device age bands, AGE_ORDER in OverviewFlow.js)
+   * keeps server order, because there the order IS the meaning and a fold
+   * has to stay a contiguous range. The sort runs on `kids`, an array this
+   * function built — never on the payload's own `children` array.
+   */
+  function flowModel_(root, levels) {
+    if (!root || !root.children || !root.children.length) return null;
+    var ordinal2 = !!(levels && levels.ordinal2);
+    var rows = [];
+    var total = 0;
+    root.children.forEach(function (node) {
+      var v = node && node.value > 0 ? node.value : 0;
+      var all = (node && node.children) || [];
+      var kids = [];
+      var zeroKids = [];
+      var kidSum = 0;
+      all.forEach(function (k) {
+        if (k && k.value > 0) { kids.push(k); kidSum += k.value; }
+        else if (k) { zeroKids.push(k); }
+      });
+      if (!ordinal2) {
+        kids.sort(function (a, b) { return (b.value || 0) - (a.value || 0); });
+      }
+      total += v;
+      rows.push({
+        raw: node, name: String(node && node.name != null ? node.name : ''),
+        value: v, kids: kids, zeroKids: zeroKids, kidSum: kidSum,
+        hadChildren: all.length > 0,
+        // Only a real SHORTFALL counts: children that exist and account for
+        // less than their parent (buildDevicesTree_ drops devices whose age
+        // is null, so a type's bands can sum below the type). A node with no
+        // breakdown at all is not a shortfall — its placeholder already says
+        // there is nothing to break down.
+        unallocated: kids.length && v - kidSum > 0 ? v - kidSum : 0
+      });
+    });
+    if (!(total > 0)) return null;   // every child zero → the card is empty
+    return { rows: rows, total: total, rootValue: root.value > 0 ? root.value : total, raw: root };
+  }
+
+  /**
+   * The series' data array: one entry per mark that COULD be drawn, in
+   * paint order (ribbons first, then blocks over them, then chrome). Its
+   * only job is to give ECharts a dataIndex per mark — every scrap of
+   * content comes from the layout, which is the only thing that knows the
+   * canvas size. Built from the same `rows` objects the layout walks, and
+   * each slot's index is written back onto the row it belongs to, so no
+   * parallel array can ever drift out of step with the payload node it
+   * hands to handleTreeNodeClick_.
+   */
+  function flowItems_(model) {
+    var items = [];
+    function slot(row, kind) {
+      items.push({ value: row ? row.value : 0, kind: kind });
+      return items.length - 1;
+    }
+    // The ORDER of this array is the paint order, and it is the only thing
+    // that controls it: verified in echarts 5.5.0, updateZ$1() returns early
+    // for a group (`if (el.isGroup) return`), so a `z2` set on a block group
+    // is silently dropped while a `z2` on a bare ribbon path is honoured —
+    // which would put every ribbon ON TOP of every block. So no element here
+    // sets z2 at all, and zrender paints equal-z elements in creation order:
+    // ribbons, then blocks over them, then the gutter chrome.
+    model.rows.forEach(function (row) {
+      row.ribbonIdx = [];
+      var n = row.kids.length > 0 ? row.kids.length : 1;
+      var rj;
+      for (rj = 0; rj < n; rj++) row.ribbonIdx.push(slot(row, 'ribbon'));
+    });
+    model.rows.forEach(function (row) { row.blockIdx = slot(row, 'block'); });
+    model.rows.forEach(function (row) {
+      row.kidIdx = [];
+      var n = row.kids.length > 0 ? row.kids.length : 1;
+      var kj;
+      for (kj = 0; kj < n; kj++) row.kidIdx.push(slot(row, 'block'));
+    });
+    model.rows.forEach(function (row) { row.arrowIdx = slot(row, 'arrow'); });
+    model.capIdx = [slot(null, 'cap'), slot(null, 'cap'), slot(null, 'arrow')];
+    return items;
+  }
+
+  /* ── the layout: the whole alignment argument, in one pure function ── */
+
+  /**
+   * flowLayout_(model, W, HC, levels, P) → { byIndex, warn }
+   *
+   * W / HC are api.getWidth() / api.getHeight(): the REAL canvas, measured
+   * by ECharts, never the DOM and never a constant. This matters more than
+   * it looks — render() stages options for elements that are not visible
+   * yet (a collapsed card's chart div is inside its <details>, so it is
+   * 0×0), and apply_() later replays that staged option verbatim. Anything
+   * measured at option-build time would be frozen wrong forever.
+   */
+  function flowLayout_(model, W, HC, levels, P) {
+    var F = FLOW;
+    var out = { byIndex: {}, warn: [] };
+    var i;
+
+    /* ── columns. The gutter is what the ribbons live in, so it gets a
+       floor of its own and the columns are clamped to whatever is left. */
+    var colW = Math.round(W * F.COL_FRAC);
+    if (colW > F.COL_MAX) colW = F.COL_MAX;
+    if (colW < F.COL_MIN) colW = F.COL_MIN;
+    var roomy = Math.floor((W - F.GUTTER_MIN) / 2);
+    if (colW > roomy) colW = roomy;
+    // Asserted, not assumed: the clamp above can fall below COL_MIN on a
+    // narrow canvas, and a non-positive inner width would silently produce
+    // empty labels rather than an error.
+    if (!(colW - 2 * F.PAD_X > 8)) { out.bad = 'canvas too narrow (' + W + 'px)'; return out; }
+
+    var x1 = 0, x1r = colW, x2l = W - colW;
+    if (!(x2l - x1r >= F.GUTTER_MIN * 0.5)) { out.bad = 'no room for connectors'; return out; }
+    var rx0 = x1r + F.END_GAP, rx1 = x2l - F.END_GAP;
+    var gutterMid = (x1r + x2l) / 2;
+
+    /* ── vertical budget. CAP_H buys the two rank captions; INSET_Y is
+       breathing room top and bottom. Everything below is derived from what
+       is left, so the card's height is the single lever. */
+    var plotTop = F.INSET_Y + F.CAP_H;
+    var H = HC - plotTop - F.INSET_Y;
+    if (!(H >= F.ROW1_MIN)) { out.bad = 'canvas too short (' + HC + 'px)'; return out; }
+
+    /* ── level-1 capacity, then the fold. The fold is driven ONLY by the
+       row count against the canvas — never by a "the residual must also
+       clear the floor" loop, which is how a min-size rule ends up eating a
+       sibling that was perfectly drawable on its own (an 88px ServiceWRK
+       sacrificed to make a 3px TOM residual legal). Here every row that
+       fits is drawn, and only the overflow is folded. The fold takes the
+       TAIL in server order, so the aggregate is always over ADJACENT
+       members: OverviewFlow.js emits countries and device types by count
+       descending and the ticket sources in a deliberate fixed order, and
+       nothing here re-sorts. */
+    // WHAT pitch1 IS, stated as the property the code actually enforces.
+    // It is a GLOBAL ROW-COUNT BUDGET — it feeds cap1 and nothing else. It
+    // is NOT a per-row guarantee: a row's drawn height is
+    // ROW1_MIN + free1·share, so on a skewed payload plenty of admitted rows
+    // land well under pitch1 and fold their whole breakdown into one slot
+    // (which the fold labels as "5 age bands", not as a range — see the
+    // level-2 fold below). Two things budgeting at this pitch does buy, both
+    // properties of the column as a whole:
+    //
+    //   · MEAN band ≥ pitch1. With n ≤ cap1 rows, Σh = H − (n−1)·GAP_OUT, so
+    //     the average row is at least pitch1 = 2·ROW2_MIN + GAP_IN — the
+    //     height at which a band can hold two level-2 blocks. The card
+    //     therefore decomposes SOMETHING at every payload shape; which rows
+    //     get the decomposition follows the data's own skew, not the budget.
+    //   · A LIVE MAGNITUDE CHANNEL. free1 ≥ n·(pitch1 − ROW1_MIN) ≈ n·16, so
+    //     roughly half the column stays value-driven height rather than
+    //     floor. That is the part that dies at a ROW1_MIN budget: traced on
+    //     the real Devices shape (13 tracked device types —
+    //     buildDevicesTree_ applies no top-N cap, unlike buildCustomersTree_,
+    //     and isTrackedJiraDeviceType_ excludes only Task/Epic/Test, so
+    //     12-14 level-1 nodes is that card's EXPECTED shape), 13 rows of
+    //     18px floor plus 12 gaps leave 15px of free height out of 297: every
+    //     row lands between 18px and 23px whether it holds 52% of the fleet
+    //     or 0.1%, and every band is then under 2·ROW2_MIN anyway, so
+    //     nothing decomposes either.
+    //
+    // Measured, on that same 13-type payload at the real open-card size
+    // (H = 297): cap1 = 7, so 6 named types plus a tail aggregate over 7.
+    // Bands come out 95.4 / 62.7 / 31.1 / 22.1 / 20.2 / 19.7 / 21.9px — the
+    // two largest decompose (ECG Machine into all five bands, Connector into
+    // two plus a "2-3y → 5y+" fold), the next four fold whole, and the tail
+    // aggregate takes a placeholder because it stands for seven types at
+    // once. Nothing is silent: a whole-fold block says "5 age bands", the
+    // tail block is sized by its members' true sum and its tooltip names
+    // each one with its count, and clicking any named type filters the page
+    // to it, where its own bands are large. Customers (6 rows) and Tickets
+    // (3) sit under the cap and are unaffected.
+    var pitch1 = 2 * F.ROW2_MIN + F.GAP_IN;
+    if (pitch1 < F.ROW1_MIN) pitch1 = F.ROW1_MIN;
+    var cap1 = Math.floor((H + F.GAP_OUT) / (pitch1 + F.GAP_OUT));
+    if (cap1 < 1) cap1 = 1;
+    var all = model.rows;
+    var drawN = all.length < cap1 ? all.length : cap1;
+    var slots = [];
+    for (i = 0; i < drawN; i++) {
+      if (i === drawN - 1 && drawN < all.length) {
+        var members = all.slice(i);
+        var sum = 0;
+        members.forEach(function (m) { sum += m.value; });
+        slots.push({
+          row: all[i], agg: members, value: sum,
+          name: members.length === all.length
+            ? flowPlural_(members.length, levels.l1.toLowerCase(), levels.l1s)
+            : '+' + members.length + ' more ' +
+              flowUnit_(members.length, levels.l1.toLowerCase(), levels.l1s)
+        });
+      } else {
+        slots.push({ row: all[i], agg: null, value: all[i].value, name: all[i].name });
+      }
+    }
+
+    /* ── (2) the left column exhausts H exactly. */
+    var n1 = slots.length;
+    var avail1 = H - (n1 - 1) * F.GAP_OUT;
+    var free1 = avail1 - n1 * F.ROW1_MIN;
+    if (!(free1 > 0)) free1 = 0;
+    var y = plotTop;
+    var colBottom = plotTop + H;
+
+    slots.forEach(function (s, idx) {
+      var share = model.total > 0 ? s.value / model.total : 1 / n1;
+      var h = F.ROW1_MIN + free1 * share;
+      // The last row takes the arithmetic remainder, so Σh + Σgaps === H
+      // exactly regardless of floating point.
+      if (idx === n1 - 1) h = colBottom - y;
+      var row = s.row;
+      var isAgg = !!s.agg;
+      var isZero = !isAgg && s.value <= 0;
+      var cell = {
+        kind: 'block', role: isAgg ? 'agg1' : (isZero ? 'zero1' : 'l1'),
+        x: x1, y: y, w: colW, h: h,
+        fill: isAgg ? P.aggFill : (isZero ? P.trackFill : P.l1Fill),
+        textFill: isAgg ? P.aggText : (isZero ? P.trackText : P.l1Text),
+        // Only the no-quantity role is outlined, and only because its fill
+        // is deliberately ~1:1 against the card: without the hairline there
+        // would be no mark, just a floating label. See flowPalette_.
+        stroke: isZero ? P.trackEdge : null,
+        // Object identity: the payload node itself, by reference. A level-1
+        // aggregate has no single node to stand for, so it gets none and
+        // the click handler no-ops on it (see the cursor note above).
+        raw: isAgg ? null : row.raw,
+        value: s.value, share: decompShare_(s.value, model.rootValue),
+        name: s.name, agg: s.agg, row: isAgg ? null : row, depth: 1
+      };
+      flowFitLabel_(cell, s.name, isZero ? '0' : FMT.format(s.value),
+        isZero ? '0' : flowCompact_(s.value),
+        (isAgg || isZero) ? '' : cell.share, colW, FLOW_FONTS.name1, FLOW_FONTS.val1);
+      out.byIndex[row.blockIdx] = cell;
+
+      /* ── (3) the same extent again, bracketed inside this band. */
+      var B = h;
+      var cap2 = Math.floor((B + F.GAP_IN) / (F.ROW2_MIN + F.GAP_IN));
+      if (cap2 < 1) cap2 = 1;    // guaranteed anyway by ROW1_MIN >= ROW2_MIN
+      var kids = isAgg ? [] : row.kids;
+      var kidSlots = [];
+      var kj;
+      if (kids.length) {
+        var k = kids.length < cap2 ? kids.length : cap2;
+        for (kj = 0; kj < k; kj++) {
+          if (kj === k - 1 && k < kids.length) {
+            var fm = kids.slice(kj);
+            var fsum = 0;
+            fm.forEach(function (m) { fsum += m.value > 0 ? m.value : 0; });
+            // Three labels, and the WHOLE-FOLD case is tested FIRST because
+            // it is not a fold of a tail — it is the entire breakdown in one
+            // block, which happens on any band under ROW2_MIN·2+GAP_IN (five
+            // of the seven drawn rows on the real Devices payload). Labelling
+            // that "<1y → 5y+" was a bug: the full range is typographically
+            // identical to a genuine partial fold ("2-3y → 5y+") one row
+            // above it, so four blocks read as four age ranges instead of as
+            // "all five bands, not broken out". "5 age bands" says what it
+            // is. Below that, an ORDINAL breakdown (device age bands,
+            // AGE_ORDER in OverviewFlow.js) folds from one end and is
+            // labelled as the RANGE it covers — never "+2 more", which for an
+            // ordered scale would stand for two non-adjacent bands and read
+            // as a category that does not exist. A nominal breakdown folds
+            // its smallest members (flowModel_ sorted them) and says so.
+            kidSlots.push({
+              raw: row.raw, agg: fm, value: fsum,
+              name: fm.length === kids.length
+                ? flowPlural_(kids.length, levels.l2.toLowerCase(), levels.l2s)
+                : (levels.ordinal2
+                    ? String(fm[0].name) + ' → ' + String(fm[fm.length - 1].name)
+                    : '+' + fm.length + ' more')
+            });
+          } else {
+            kidSlots.push({ raw: kids[kj], agg: null, value: kids[kj].value, name: String(kids[kj].name) });
+          }
+        }
+      } else if (isAgg) {
+        // The level-1 tail aggregate stands for several categories at once,
+        // so there is nothing single to decompose. It still gets a
+        // placeholder and a ribbon, because that is what keeps BOTH columns
+        // spanning exactly the same extent — the identity the whole
+        // alignment argument rests on.
+        kidSlots.push({ raw: null, agg: null, value: 0, flat: true, flatKind: 'agg', name: 'aggregated' });
+      } else {
+        // Every row keeps the same structure, so the ribbon always has
+        // somewhere to land and a level-1 leaf ("Others", an empty
+        // ServiceWRK) stops being a special case in the geometry. Note the
+        // three distinct reasons, which the tooltip tells apart: the row has
+        // no records at all; it has children but every one of them is zero;
+        // or the payload simply carries no breakdown for it.
+        kidSlots.push(s.value <= 0
+          ? { raw: row.raw, agg: null, value: 0, flat: true, flatKind: 'zero', name: 'No records' }
+          : (row.hadChildren
+              ? { raw: row.raw, agg: null, value: 0, flat: true, flatKind: 'allzero', name: 'no ' + levels.l2s + ' with records' }
+              : { raw: row.raw, agg: null, value: 0, flat: true, flatKind: 'none', name: 'not broken out' }));
+      }
+
+      var k2 = kidSlots.length;
+      var avail2 = B - (k2 - 1) * F.GAP_IN;
+      var free2 = avail2 - k2 * F.ROW2_MIN;
+      if (!(free2 > 0)) free2 = 0;
+      // Scaled by the PARENT's value, never by the sum of its children:
+      // buildDevicesTree_ drops devices whose age is null (ageBandForDays_
+      // returns null and `if (band)` skips them), so a type's bands can sum
+      // BELOW the type. That shortfall must show as unfilled band, not be
+      // normalised away into a row that claims 100%.
+      var pv = row.value;
+      // Exact bracket when the children genuinely account for the parent —
+      // tested as an exact sum, not a tolerance. A single full-band
+      // placeholder brackets too, trivially.
+      // The drawn slots always cover EVERY child — a fold moves them into
+      // the tail aggregate rather than dropping them — so the slot values
+      // always sum to row.kidSum, and the only question is whether the
+      // children account for the parent.
+      var exact = (k2 === 1 && kidSlots[0].flat) || (kids.length > 0 && row.kidSum === row.value);
+      var cy = y;
+      var py = y;                      // ribbons leave the parent contiguously
+      var firstTop = null;
+
+      kidSlots.forEach(function (ks, kidx) {
+        var h2;
+        if (ks.flat) {
+          h2 = B;                      // the placeholder spans the whole band
+        } else {
+          var sh = pv > 0 ? ks.value / pv : 1 / k2;
+          h2 = F.ROW2_MIN + free2 * sh;
+          if (kidx === k2 - 1 && exact) h2 = (y + B) - cy;
+        }
+        if (firstTop === null) firstTop = cy;
+        var isKidAgg = !!ks.agg;
+        var kc = {
+          kind: 'block',
+          role: ks.flat ? 'flat' : (isKidAgg ? 'agg2' : 'l2'),
+          flatKind: ks.flatKind,
+          x: x2l, y: cy, w: colW, h: h2,
+          fill: ks.flat ? P.trackFill : (isKidAgg ? P.aggFill : P.l2Fill),
+          textFill: ks.flat ? P.trackText : (isKidAgg ? P.aggText : P.l2Text),
+          stroke: ks.flat ? P.trackEdge : null,   // see the level-1 note
+          // A folded level-2 block and a placeholder both click through to
+          // their PARENT — the state in which those members become large
+          // enough to draw, which turns a fold into a drill-down instead of
+          // a dead end. Never a clone: `ks.raw` is a payload node.
+          raw: ks.raw,
+          value: ks.value, name: ks.name, agg: ks.agg,
+          parentName: s.name, parentValue: pv, row: isAgg ? null : row, depth: 2,
+          share: ks.flat ? '' : decompShare_(ks.value, pv),
+          shareAll: ks.flat ? '' : decompShare_(ks.value, model.rootValue)
+        };
+        // ONE denominator on the canvas. A level-1 block prints its share of
+        // the card total, so a level-2 block prints the same thing — printing
+        // share-of-PARENT here put "Closed 84,334 · 100%" in identical type
+        // next to "Zoho 84,545 · 69%", with nothing on the canvas to say the
+        // two percentages were measured against different totals ("SME 200 ·
+        // 67%" for 1.0% of all customers was the same trap). The
+        // within-parent share is the more interesting number and it is not
+        // lost: flowTip_ prints BOTH, with each denominator named ("64% of
+        // India · 59% of all").
+        flowFitLabel_(kc, ks.name, ks.flat ? '' : FMT.format(ks.value),
+          ks.flat ? '' : flowCompact_(ks.value),
+          isKidAgg ? '' : kc.shareAll, colW, FLOW_FONTS.name2, FLOW_FONTS.val2);
+        out.byIndex[row.kidIdx[kidx]] = kc;
+
+        // The ribbon is the only mark that carries the parent→child mapping,
+        // so it (a) takes its role from the slot it lands on rather than
+        // always painting in the live data tone — a zero row's full-band
+        // ribbon used to claim a quantity the row does not have — and (b) is
+        // a first-class mark: hoverable, with its own tooltip, and clicking
+        // through to the same node its block does. It is not `silent` any
+        // more; nothing else occupies the gutter, so it cannot steal a hit
+        // from a block.
+        var muted = ks.flat || !(ks.value > 0);
+        out.byIndex[row.ribbonIdx[kidx]] = {
+          kind: 'ribbon',
+          points: flowRibbonPoints_(rx0, rx1, py, cy, h2),
+          fill: muted ? P.ribbonMuted : P.ribbon,
+          stroke: muted ? P.ribbonMutedEdge : P.ribbonEdge,
+          raw: ks.raw, link: kc
+        };
+        py += h2;
+        cy += h2 + F.GAP_IN;
+
+        /* ── (5) the level-2 postconditions, which the first version of this
+           function advertised and did not check: a block under its floor, a
+           non-finite coordinate, or a child that overruns the band it was
+           bracketed into (the one overrun class the assertions exist for). */
+        if (!ks.flat && !(h2 >= F.ROW2_MIN - 0.5)) out.warn.push('level-2 block "' + ks.name + '" under "' + s.name + '" is ' + h2.toFixed(1) + 'px, under the ' + F.ROW2_MIN + 'px floor');
+        if (!isFinite(h2) || !isFinite(cy)) out.warn.push('non-finite level-2 geometry for "' + ks.name + '" under "' + s.name + '"');
+        if (cy - F.GAP_IN > y + B + 0.5) out.warn.push('level-2 overrun under "' + s.name + '": "' + ks.name + '" ends at ' + (cy - F.GAP_IN).toFixed(2) + ', band ends at ' + (y + B).toFixed(2));
+      });
+
+      // One arrow per GROUP, not per leaf, and only where the band is tall
+      // enough to hold it — at a 16-18px pitch a stub-and-arrowhead per
+      // child is more ink than data. Direction is named once in the caption
+      // row regardless, so nothing depends on this firing.
+      if (B >= F.ARROW_MIN) {
+        out.byIndex[row.arrowIdx] = {
+          kind: 'arrow', fill: P.l1Fill,
+          points: flowArrowPoints_(gutterMid, y + (py - y) / 2, F.ARROW_W, F.ARROW_H)
+        };
+      }
+
+      /* ── (5) postconditions, checked rather than argued. */
+      if (!(h >= F.ROW1_MIN - 0.5)) out.warn.push('level-1 block "' + s.name + '" is ' + h.toFixed(1) + 'px, under the ' + F.ROW1_MIN + 'px floor');
+      if (!isFinite(y) || !isFinite(h)) out.warn.push('non-finite level-1 geometry for "' + s.name + '"');
+      if (firstTop !== null && Math.abs(firstTop - y) > 0.01) out.warn.push('band top ' + y.toFixed(2) + ' != first child top ' + firstTop.toFixed(2) + ' for "' + s.name + '"');
+      if (exact && Math.abs(cy - F.GAP_IN - (y + B)) > 0.01) out.warn.push('bracket broken for "' + s.name + '": children end at ' + (cy - F.GAP_IN).toFixed(2) + ', band ends at ' + (y + B).toFixed(2));
+
+      y += h + F.GAP_OUT;
+    });
+
+    if (Math.abs((y - F.GAP_OUT) - colBottom) > 0.01) {
+      out.warn.push('left column ends at ' + (y - F.GAP_OUT).toFixed(2) + ', expected ' + colBottom.toFixed(2));
+    }
+
+    /* ── rank captions: the cheapest possible "this is a flowchart, read it
+       left to right" cue, and the only chrome on the card. The right
+       caption starts on the same vertical line as every right-hand label,
+       so the two columns read as two named ranks. */
+    var capY = F.INSET_Y + F.CAP_H / 2;
+    out.byIndex[model.capIdx[0]] = {
+      kind: 'cap', x: x1 + F.PAD_X, y: capY, align: 'left',
+      text: flowTrunc_(String(levels.l1).toUpperCase(), colW - 2 * F.PAD_X, FLOW_FONTS.cap),
+      fill: P.cap, font: FLOW_FONTS.cap
+    };
+    out.byIndex[model.capIdx[1]] = {
+      kind: 'cap', x: x2l + F.PAD_X, y: capY, align: 'left',
+      text: flowTrunc_(String(levels.l2).toUpperCase(), colW - 2 * F.PAD_X, FLOW_FONTS.cap),
+      fill: P.cap, font: FLOW_FONTS.cap
+    };
+    out.byIndex[model.capIdx[2]] = {
+      kind: 'arrow', fill: P.cap,
+      points: flowArrowPoints_(gutterMid, capY, 9, 10)
+    };
+    return out;
+  }
+
+  /* ── tooltip: the table view this card would otherwise lack ─────── */
+
+  /**
+   * A full row readout — the mark's name and count, both denominators, the
+   * hover stats bundle, and for a parent every child with its value and
+   * share, plus whatever was folded, enumerated by name. Two obligations
+   * meet here: the palette's relief rule (fills under 3:1 owe a channel
+   * that is not colour) and the standing rule that a tooltip may enhance a
+   * value but never be the only way to reach it — which is why the count is
+   * also printed on the mark itself.
+   */
+  function flowTip_(cell, model, levels) {
+    if (!cell) return '';
+    // A ribbon stands for exactly one parent→child pair, and its block's
+    // readout already opens with "Parent › Child", so it reads the same
+    // tooltip rather than a second, near-duplicate one.
+    if (cell.kind === 'ribbon') return flowTip_(cell.link, model, levels);
+    if (cell.kind !== 'block') return '';
+    var lines = [];
+    var path = cell.depth === 2 ? cell.parentName + ' › ' + cell.name : cell.name;
+    lines.push('<strong>' + decompEsc_(path) + '</strong>: ' +
+      (cell.role === 'flat' ? '—' : FMT.format(cell.value)));
+
+    if (cell.role === 'flat') {
+      if (cell.flatKind === 'agg') {
+        lines.push('Several ' + levels.l1s + ' at once — no single breakdown to show.');
+        return lines.join('<br/>');
+      }
+      lines.push(cell.flatKind === 'zero'
+        ? 'No records for this ' + levels.l1.toLowerCase() + ' in the current filter.'
+        : (cell.flatKind === 'allzero'
+            ? 'Every ' + levels.l2.toLowerCase() + ' here is at zero.'
+            : 'The payload carries no ' + levels.l2.toLowerCase() + ' breakdown for this ' + levels.l1.toLowerCase() + '.'));
+      // Gated on the node CARRYING click metadata, not on the node existing:
+      // the server's inert buckets (an "Others" country, a source with no
+      // filterDim) arrive as perfectly good nodes that handleTreeNodeClick_
+      // falls straight through, so "Click to filter" on those was a promise
+      // nothing kept.
+      if (flowClickable_(cell.raw)) lines.push('Click to filter the page to it.');
+      return lines.join('<br/>');
+    }
+
+    if (cell.depth === 1) {
+      if (cell.share) lines.push(cell.share + ' of ' + FMT.format(model.rootValue));
+    } else {
+      var both = [];
+      if (cell.share) both.push(cell.share + ' of ' + decompEsc_(cell.parentName));
+      if (cell.shareAll) both.push(cell.shareAll + ' of all');
+      if (both.length) lines.push(both.join('  ·  '));
+    }
+
+    var d = (cell.raw && !cell.agg) ? cell.raw : null;
+    if (d && d.stats) {
+      if (d.stats.devices != null) lines.push(FMT.format(d.stats.devices) + ' devices');
+      if (d.stats.uptimePct != null) lines.push(d.stats.uptimePct + '% uptime');
+      if (d.stats.openTickets != null) lines.push(FMT.format(d.stats.openTickets) + ' open tickets');
+      if (d.stats.topCity) lines.push('Top city: ' + decompEsc_(d.stats.topCity));
+    }
+
+    if (cell.agg) {
+      var one = cell.depth === 1 ? levels.l1.toLowerCase() : levels.l2.toLowerCase();
+      var many = cell.depth === 1 ? levels.l1s : levels.l2s;
+      lines.push('<em>Aggregate of ' + flowPlural_(cell.agg.length, one, many) + ':</em>');
+      cell.agg.slice(0, 8).forEach(function (m) {
+        lines.push('&nbsp;&nbsp;' + decompEsc_(m.name) + ' — ' + FMT.format(m.value > 0 ? m.value : 0));
+      });
+      if (cell.agg.length > 8) lines.push('&nbsp;&nbsp;+' + (cell.agg.length - 8) + ' more');
+      if (cell.depth === 1) {
+        lines.push('Too many ' + many + ' to draw at this height — not clickable; pick a named block.');
+      } else if (flowClickable_(cell.raw)) {
+        lines.push('Click to filter to ' + decompEsc_(cell.parentName) + ', where these split out.');
+      }
+      return lines.join('<br/>');
+    }
+
+    // A parent's own children, listed with both numbers — the table-view
+    // twin for anything that folded, plus the two cases the geometry can
+    // only hint at: a shortfall (unfilled band) and zero-valued children
+    // (which are never given height at all).
+    // ALL THREE gated on depth === 1, because all three are properties of the
+    // PARENT. A level-2 cell carries `row` too — deliberately, so it can name
+    // its parent — so an ungated shortfall line printed the parent's
+    // unallocated count under a child ("SIM Card › <1y: 400 … 640 not broken
+    // down by age band", where the 640 is SIM Card's, not <1y's, and the line
+    // carries no denominator to say so), and an ungated zero line listed a
+    // child's SIBLINGS as if they were its own ("Zoho › Open … 0 records:
+    // Closed").
+    if (cell.depth === 1 && cell.row && cell.row.kids.length) {
+      lines.push('<em>' + flowPlural_(cell.row.kids.length, levels.l2.toLowerCase(), levels.l2s) + ':</em>');
+      cell.row.kids.slice(0, 8).forEach(function (m) {
+        lines.push('&nbsp;&nbsp;' + decompEsc_(m.name) + ' — ' + FMT.format(m.value) +
+          '  ' + decompShare_(m.value, cell.value));
+      });
+      if (cell.row.kids.length > 8) lines.push('&nbsp;&nbsp;+' + (cell.row.kids.length - 8) + ' more');
+    }
+    if (cell.depth === 1 && cell.row && cell.row.unallocated > 0) {
+      lines.push(FMT.format(cell.row.unallocated) + ' not broken down by ' + levels.l2.toLowerCase());
+    }
+    if (cell.depth === 1 && cell.row && cell.row.zeroKids.length) {
+      lines.push('0 records: ' + cell.row.zeroKids.map(function (z) { return decompEsc_(z.name); }).join(', '));
+    }
+    return lines.join('<br/>');
+  }
+
+  /* ── the renderer ────────────────────────────────────────────── */
+
+  var FLOW_LEVELS_DEFAULT = { l1: 'Group', l1s: 'groups', l2: 'Breakdown', l2s: 'parts', ordinal2: false };
+
+  /**
+   * Renders one Overview card as a two-rank flow: `treeNode`'s children
+   * become the left column, each child's own children the right column, and
+   * one ribbon per relationship crosses between them.
    *
    * `treeNode` is the exact {name, value, children, stats?, filterDim?,
-   * filterValue?, clearDims?, navTab?, navDeviceType?} shape
-   * OverviewFlow.js's builders return — the metadata fields ride along on
-   * ECharts' node data untouched, so handleTreeNodeClick_ still reads them
-   * straight off `params.data`. The server payload needed no change.
+   * filterValue?, clearDims?, resetSet?, filterSet?, navTab?,
+   * navDeviceType?} shape OverviewFlow.js's builders return. The server
+   * needed no change: the metadata rides along on the node object, which
+   * this renderer carries by reference and hands back to opts.onNodeClick
+   * untouched.
    *
-   * Replaces the `tree`-series renderer this file shipped through @76. That
-   * series lays out by TOPOLOGY, not by value: every node drew at a fixed
-   * 88×52 / 70×48 box whatever its count, so magnitude lived only in the
-   * label text, and same-depth siblings split one span whether a branch held
-   * 3% or 65% of its parent. Six passes tried to buy the labels room (size by
-   * depth @69, hard-wrapped names @70, 8%→2% margins @72, TB→LR + depth
-   * colour ramp @76, 34px→72px leaf slots in c977a00) and each moved the
-   * collision instead of removing it, because the layout never consulted the
-   * numbers. Rectangles that partition their parent by share cannot collide:
-   * skew changes a rectangle's proportions, and the worst case is a tile too
-   * small to caption — its tooltip still carries the value — rather than a
-   * label overrunning its neighbour or a node clipped off the canvas edge.
-   * Two further things fall out of the swap: the root box is gone (it used to
-   * restate the total already printed in the card header), and the canvas
-   * fills whatever width it is given instead of needing a minimum, so a
-   * narrow viewport reshapes the tiles rather than cutting them off.
+   * opts.levels names the two ranks ({l1, l1s, l2, l2s, ordinal2}); the
+   * plurals are explicit because "Country" does not pluralise by suffix (and
+   * both forms are used — a type really can have exactly "1 age band"), and
+   * `ordinal2` marks a breakdown whose order is meaningful (device age
+   * bands): it holds the level-2 children in server order and turns a
+   * partial fold into a range rather than a bag. Without it, level-2
+   * children are re-sorted by count in flowModel_, so a fold folds the
+   * smallest members even when the server returned them unordered.
    */
-  function decompTreemap(id, treeNode, opts) {
+  function decompFlow(id, treeNode, opts) {
     opts = opts || {};
-    if (!treeNode || !treeNode.children || !treeNode.children.length) return showEmpty(id);
-    var P = decompPalette_();
-    var total = treeNode.value || 0;
+    var levels = Object.assign({}, FLOW_LEVELS_DEFAULT, opts.levels || {});
+    var P = flowPalette_();
+    var model;
+    try {
+      model = flowModel_(treeNode, levels);
+    } catch (e) {
+      model = null;
+      if (window.console) console.error('decompFlow(' + id + '): model build failed', e);
+    }
+    if (!model) return showEmpty(id);
+    var items = flowItems_(model);
+
+    // The layout is memoised on the canvas size and rebuilt whenever it
+    // changes, so the module's existing resize listener (which only calls
+    // instance.resize()) is enough: resize re-runs renderItem, the key
+    // misses, and every coordinate is recomputed. Nothing width-derived can
+    // go stale.
+    var geoKey = null, geo = null;
+    function geoFor(api) {
+      var w = api.getWidth(), h = api.getHeight();
+      var key = w + 'x' + h;
+      if (key !== geoKey) {
+        geoKey = key;
+        try {
+          geo = flowLayout_(model, w, h, levels, P);
+        } catch (e) {
+          // Contained on purpose. An exception escaping renderItem
+          // propagates out of setOption → apply_ → render →
+          // renderOverviewFlowCard_ → renderOverviewFlow's forEach, which
+          // would abort the remaining cards AND the rest of applyTheme —
+          // leaving the maps on the old theme. One bad payload blanks its
+          // own card and nothing else.
+          geo = { byIndex: {}, warn: [], bad: 'layout threw' };
+          if (window.console) console.error('decompFlow(' + id + '): layout failed', e);
+        }
+        if (window.console && geo.bad) console.warn('decompFlow(' + id + '): ' + geo.bad);
+        if (window.console && geo.warn && geo.warn.length) {
+          console.warn('decompFlow(' + id + '): alignment postcondition violated — ' + geo.warn.join(' | '));
+        }
+      }
+      return geo;
+    }
 
     render(id, base({
       tooltip: {
@@ -854,100 +1856,111 @@ var Charts = (function () {
         backgroundColor: C.tooltipBg, borderColor: C.axis,
         textStyle: { color: C.tooltipText, fontSize: 13 },
         formatter: function (info) {
-          var d = info.data || {};
-          var value = d.value != null ? d.value : info.value;
-          // treePathInfo[0] is the series' own synthetic root (we pass the
-          // children as `data`, so the payload root is never a node); the
-          // rest is the real path, e.g. "India › SME".
-          var path = (info.treePathInfo || []).slice(1).map(function (n) { return n.name; });
-          var lines = ['<strong>' + decompEsc_(path.join(' › ') || d.name) + '</strong>: ' + FMT.format(value)];
-          var share = decompShare_(value, total);
-          if (share) lines.push(share + ' of ' + FMT.format(total));
-          if (d.stats) {
-            if (d.stats.devices != null) lines.push(FMT.format(d.stats.devices) + ' devices');
-            if (d.stats.uptimePct != null) lines.push(d.stats.uptimePct + '% uptime');
-            if (d.stats.openTickets != null) lines.push(FMT.format(d.stats.openTickets) + ' open tickets');
-            if (d.stats.topCity) lines.push('Top city: ' + decompEsc_(d.stats.topCity));
-          }
-          if (d.__collapsed) {
-            lines.push('Too small to break out here · click to see its ' + d.__collapsed + ' sub-categories');
-          }
-          return lines.join('<br/>');
+          return flowTip_(geo && geo.byIndex[info.dataIndex], model, levels);
         }
       },
       series: [{
-        type: 'treemap', data: decompPrepLevel1_(treeNode.children, total, P),
-        left: 0, top: 0, right: 0, bottom: 0,
-        // Clicks belong to onNodeClick (filter / tab switch) — the default
-        // 'zoomToNode' would swallow them and drill in instead.
-        nodeClick: false, roam: false, breadcrumb: { show: false },
-        // 0, not the default 10px²: a category small enough to fall under
-        // that threshold would vanish from the page with nothing to say it
-        // had been dropped. A one-pixel sliver is honest; a silent omission
-        // from a total the card header still counts is not.
-        visibleMin: 0,
-        itemStyle: { borderColor: C.sliceBorder, borderWidth: 0, gapWidth: 2 },
-        levels: [
-          {
-            // levels[0] is the SYNTHETIC ROOT, not the first row of data:
-            // passing an array as `data` makes ECharts wrap it in a root node
-            // of its own, and every levels[] index shifts down by one to
-            // match. Left unlabelled and uncoloured — the total is already in
-            // the card header, and giving this level an upperLabel reserves a
-            // 26px strip of empty band across the top of the whole chart.
-            itemStyle: { color: 'transparent', gapWidth: 0, borderWidth: 0 },
-            upperLabel: { show: false }, label: { show: false }
-          },
-          {
-            // Level 1 (country / device type / ticket source). borderColor,
-            // not just color, carries the band tone: ECharts paints a
-            // parent's upperLabel strip out of its BORDER region, so a band
-            // left on the chrome colour renders as a dark empty bar over
-            // every block (seen in the preview before this line). color
-            // matters too — it's what shows through the gaps between this
-            // node's children, which is what makes them read as sitting
-            // inside their parent rather than merely next to each other.
-            itemStyle: { color: P.band, borderColor: P.band, borderWidth: 0, gapWidth: 3 },
-            upperLabel: {
-              show: true, height: 26, padding: [0, 8], align: 'left', overflow: 'truncate',
-              color: P.bandText, fontSize: 12, fontWeight: 700,
-              formatter: function (p) {
-                var share = decompShare_(p.value, total);
-                return p.name + '  ' + FMT.format(p.value) + (share ? '  ·  ' + share : '');
-              }
-            },
-            // Reached only by a level-1 node with nothing under it, which
-            // decompPrepLevel1_ has already repainted in the tile tone —
-            // ECharts picks label vs upperLabel per node, so the two cases
-            // are covered without branching on the data here.
-            label: decompTileLabel_(P.tileText)
-          },
-          {
-            // Level 2 (segment / age band / outcome). No band of its own —
-            // these are leaves — so borderWidth stays 0 and the 1px gaps show
-            // the parent's band tone through.
-            itemStyle: { color: P.tile, borderColor: P.band, borderWidth: 0, gapWidth: 1 },
-            label: decompTileLabel_(P.tileText)
+        type: 'custom',
+        // No coordinate system, no axes, no grid: the renderer owns every
+        // pixel. clip:false because there is nothing to clip to.
+        coordinateSystem: 'none', clip: false,
+        data: items,
+        renderItem: function (params, api) {
+          var g = geoFor(api);
+          var cell = g.byIndex[params.dataIndex];
+          if (!cell) return;                       // folded out at this size
+          if (cell.kind === 'ribbon') {
+            // Pre-composited fill plus a 1px edge, and NOT silent. The alpha
+            // wash this replaced composited to 1.32:1 (light) / 1.59:1 (dark)
+            // against the card — the faintest mark on the canvas was the one
+            // that carries the parent→child mapping — and being silent it had
+            // no hover or tooltip to fall back on either. Nothing else
+            // occupies the gutter, so a hoverable ribbon cannot steal a hit
+            // target from a block.
+            return {
+              type: 'polygon', shape: { points: cell.points },
+              style: { fill: cell.fill, stroke: cell.stroke, lineWidth: FLOW.EDGE },
+              emphasis: { style: { lineWidth: 2 } }
+            };
           }
-        ]
+          if (cell.kind === 'arrow') {
+            return {
+              type: 'polygon', shape: { points: cell.points }, silent: true,
+              style: { fill: cell.fill }
+            };
+          }
+          if (cell.kind === 'cap') {
+            return {
+              type: 'text', silent: true,
+              style: {
+                x: cell.x, y: cell.y, text: cell.text, fill: cell.fill,
+                font: cell.font, align: cell.align, verticalAlign: 'middle'
+              }
+            };
+          }
+          // A block: one rect plus up to two text runs, as a group whose
+          // children are positioned in the rect's own coordinates. No
+          // border is drawn — the 2px surface gaps do the separating. The
+          // text children are silent so the rect underneath owns the whole
+          // row as one hit target.
+          var kids = [{
+            type: 'rect',
+            shape: { x: 0, y: 0, width: cell.w, height: cell.h, r: FLOW.RADIUS },
+            // cell.stroke is set on the no-quantity role only, where the fill
+            // is ~1:1 against the card by design. The hover ring wears the
+            // block's OWN label ink, which is the one value guaranteed to
+            // clear WCAG 1.4.11's 3:1 against this exact fill — the accent
+            // teal it replaces measured 1.39:1 on the light level-1 tone.
+            style: {
+              fill: cell.fill, stroke: cell.stroke,
+              lineWidth: cell.stroke ? FLOW.EDGE : 0
+            },
+            emphasis: { style: { stroke: cell.textFill, lineWidth: 2 } }
+          }];
+          if (cell.nameText) {
+            kids.push({
+              type: 'text', silent: true,
+              style: {
+                x: FLOW.PAD_X, y: cell.h / 2, text: cell.nameText, fill: cell.textFill,
+                font: cell.nameFont, align: 'left', verticalAlign: 'middle'
+              }
+            });
+          }
+          if (cell.valText) {
+            kids.push({
+              type: 'text', silent: true,
+              style: {
+                x: cell.w - FLOW.PAD_X, y: cell.h / 2, text: cell.valText, fill: cell.textFill,
+                font: cell.valFont, align: 'right', verticalAlign: 'middle'
+              }
+            });
+          }
+          return { type: 'group', x: cell.x, y: cell.y, children: kids };
+        }
       }]
     }));
 
     if (opts.onNodeClick) {
       onClick(id, function (params) {
-        if (params.data) {
-          // Explicitly tear down the tooltip on THIS instance before the click
-          // handler (which mutates global filters and re-renders via
-          // renderOverviewFlow → Charts.decompTreemap → render()/apply_())
-          // swaps the option out from under it — otherwise ECharts can still
-          // be mid-flight showing/moving the old tooltip when apply_()
-          // replaces the option, and throws trying to update a tooltip DOM
-          // node that no longer matches (TypeError: Cannot set properties of
-          // null (setting 'innerHTML'), confirmed reproducible via
-          // hover-then-click in the local preview).
-          if (instances[id]) instances[id].dispatchAction({ type: 'hideTip' });
-          opts.onNodeClick(params.data);
-        }
+        var cell = geo && geo.byIndex[params.dataIndex];
+        // Gated on the node carrying metadata handleTreeNodeClick_ can act
+        // on — the same test the tooltip uses to decide whether to promise a
+        // click, so the two can never disagree. The node itself is then
+        // handed over UNTOUCHED, by reference, exactly as it arrived from the
+        // server.
+        if (!cell || !flowClickable_(cell.raw)) return;
+        // Carried over verbatim from the treemap, for the identical reason
+        // and still load-bearing: the handler mutates global filters and
+        // re-renders through renderOverviewFlow → Charts.decompFlow →
+        // render() → apply_(), which calls setOption(staged, true) on THIS
+        // SAME instance. ECharts can still be mid-flight showing or moving
+        // the old tooltip when the option is replaced, and throws trying to
+        // update a tooltip DOM node that no longer matches (TypeError:
+        // Cannot set properties of null (setting 'innerHTML'), reproducible
+        // by hover-then-click in the local preview). Nothing about swapping
+        // the series for a flow makes that safe.
+        if (instances[id]) instances[id].dispatchAction({ type: 'hideTip' });
+        opts.onNodeClick(cell.raw);
       });
     }
   }
@@ -956,7 +1969,7 @@ var Charts = (function () {
     setLoading: setLoading,
     flushVisible: flushVisible,
     showEmpty: showEmpty,
-    decompTreemap: decompTreemap,
+    decompFlow: decompFlow,
     svcTatBands: svcTatBands,
     svcResolution: svcResolution,
     // Exported for the TOM monthly-volume chart; previously only used

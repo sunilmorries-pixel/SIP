@@ -135,13 +135,13 @@
 
   <!-- ══════════════ VIEW 0 · OVERVIEW (landing) ══════════════
        Three KPI cards — each header carries the metric's total; expanding a
-       card lazily renders its decomposition treemap (Charts.decompTreemap,
+       card lazily renders its decomposition FLOW DIAGRAM (Charts.decompFlow,
        which draws the payload root's CHILDREN, so the total appears once per
        card and only in the header). An expanded card grows to the full page
-       width (.flow-card:has(details[open]) in Styles.html); the treemap
-       spends that width captioning small tiles. Overview still has its own
-       endpoint, apiGetOverviewFlowCD, not shared with Asset/Customers/
-       Support/Service.
+       width (.flow-card:has(details[open]) in Styles.html); the flow spends
+       that width on two labelled rank columns and the ribbon span between
+       them. Overview still has its own endpoint, apiGetOverviewFlowCD, not
+       shared with Asset/Customers/Support/Service.
 
        "All tickets" is named apart from the Numbers page's "Tickets" card on
        purpose: this one sums three separate systems, that one is Zoho only.
@@ -160,7 +160,7 @@
             <span class="flow-number" id="flowTotalCustomers">0</span>
           </summary>
           <div id="flowCustomers" class="chart chart-flow" role="img"
-               aria-label="Treemap of customers by country and segment, sized by share of the total"></div>
+               aria-label="Flow diagram of customers: a column of country blocks on the left, ordered largest first, a column of segment blocks on the right, and a ribbon from each country to each of its segments. Every block is labelled with its name and its exact count and share of the total. Taller blocks are larger, but heights are compressed so small categories stay readable, and they are only comparable within one column; countries with no room to draw are folded into one labelled block whose tooltip names each member."></div>
         </details>
       </article>
 
@@ -174,7 +174,7 @@
             <span class="flow-number" id="flowTotalDevices">0</span>
           </summary>
           <div id="flowDevices" class="chart chart-flow" role="img"
-               aria-label="Treemap of devices by type and age band, sized by share of the total"></div>
+               aria-label="Flow diagram of devices: a column of device-type blocks on the left, ordered largest first, a column of age-band blocks on the right in age order, and a ribbon from each device type to each of its age bands. Every block is labelled with its name and its exact count and share of the total. Taller blocks are larger, but heights are compressed so small categories stay readable, and they are only comparable within one column; a type with no room to split is drawn as one block labelled with how many age bands it stands for, and its tooltip lists them."></div>
         </details>
       </article>
 
@@ -192,7 +192,7 @@
             <span class="flow-number" id="flowTotalTickets">0</span>
           </summary>
           <div id="flowTickets" class="chart chart-flow" role="img"
-               aria-label="Treemap of tickets by source system and outcome, sized by share of the total"></div>
+               aria-label="Flow diagram of tickets: a column of source-system blocks on the left, ordered largest first, a column of outcome blocks on the right, and a ribbon from each source to each of its outcomes. Every block is labelled with its name and its exact count and share of the total. Taller blocks are larger, but heights are compressed so small categories stay readable, and they are only comparable within one column; the outcomes with no room to draw are folded into one labelled block whose tooltip names each of them with its count."></div>
         </details>
       </article>
     </div>

@@ -539,41 +539,147 @@
     }
     if (fn === 'apiGetOverviewFlow') {
       function leaf(name, value, extra) { return Object.assign({ name: name, value: value }, extra || {}); }
+      // The default payload deliberately carries the SHAPES the Overview flow
+      // has to survive, because the old two-device-type / three-country mock
+      // exercised none of them and made the renderer look correct while every
+      // hard case went untested:
+      //   · 13 device types (buildDevicesTree_ applies no top-N cap, so 12-14
+      //     is the real shape) including a ~0.1% tail, one type with NO age
+      //     bands at all, and one (SIM Card) whose bands sum BELOW its own
+      //     value — the null-age shortfall from ageBandForDays_.
+      //   · a 43-character ServiceWRK closure_type (raw BigQuery text), ten
+      //     of them (its maxRows), and in BigQuery's own unsorted order —
+      //     that query has no ORDER BY (see the swKids note below).
+      //   · the live 64:1 / 400:1 ticket ratios (TOM, and Zoho's Open).
+      //   · a 27-character country name.
+      // Append ?flowcase=zeros or ?flowcase=empty to the preview URL for the
+      // two payloads that cannot coexist with a realistic one: a source with
+      // value 0 and children [], a zero-valued outcome, and a whole payload
+      // whose root total is 0 (any filter matching nothing).
+      var flowCase = (String(location.search).match(/flowcase=(\w+)/) || [])[1] || '';
+      var AGE_B = ['<1y', '1-2y', '2-3y', '3-5y', '5y+'];
+      function devType(name, counts, nullAged) {
+        var kids = AGE_B.map(function (b, i) {
+          return leaf(b, counts[i], { navTab: 'tab-asset', navDeviceType: name });
+        });
+        var sum = counts.reduce(function (s, c) { return s + c; }, 0) + (nullAged || 0);
+        return leaf(name, sum, { filterDim: 'deviceTypes', filterValue: name, children: kids });
+      }
+      var devKids = [
+        devType('ECG Machine', [2100, 4200, 5400, 4330, 2000]),
+        devType('Connector', [1200, 2400, 3100, 2500, 1214]),
+        devType('SIM Card', [400, 900, 700, 300, 100], 640),   // 640 with a null age
+        devType('UPS', [120, 300, 260, 180, 90]),
+        devType('Printer', [80, 150, 140, 90, 40]),
+        devType('BP Machine', [60, 120, 110, 70, 30]),
+        devType('Tab', [40, 90, 80, 50, 20]),
+        devType('Mobile', [30, 70, 60, 40, 15]),
+        devType('IV Trolley', [20, 50, 40, 30, 10]),
+        devType('Laptop', [15, 40, 30, 20, 8]),
+        devType('WiFi Dongle', [10, 25, 20, 15, 5]),
+        devType('TriCare Assets', [5, 12, 10, 8, 3]),
+        // A level-1 node that is itself a leaf — the "Others"/no-breakdown case.
+        leaf('Decommissioned rig', 38, { filterDim: 'deviceTypes', filterValue: 'Decommissioned rig' })
+      ];
+      var devTotal = devKids.reduce(function (s, c) { return s + c.value; }, 0);
+      // DELIBERATELY NOT value-sorted. buildTicketsQuerySpecs issues
+      // `SELECT ... closure_type ... GROUP BY label` with maxRows 10 and no
+      // ORDER BY, and nestTicketsTree_ maps the result straight into
+      // `children`, so on the live card these ten arrive in whatever order
+      // BigQuery returned them. A pre-sorted mock made the renderer look
+      // correct while hiding the case that matters: the smallest outcome
+      // first and the dominant one buried in the middle. (Charts.html's
+      // flowModel_ is what makes that safe now — it sorts a nominal
+      // breakdown by value so the fold folds the genuinely smallest
+      // members; the preview is where that gets seen.)
+      var swKids = [
+        leaf('PENDING_PARTS', 50, { navTab: 'tab-service' }),
+        leaf('Unknown', 1500, { navTab: 'tab-service' }),
+        leaf('REMOTE_RESOLUTION_WITH_CUSTOMER_CONFIRMATION', 4100, { navTab: 'tab-service' }),
+        leaf('CANCELLED', 700, { navTab: 'tab-service' }),
+        leaf('CENTER_VISIT', 20822, { navTab: 'tab-service' }),
+        leaf('DUPLICATE', 400, { navTab: 'tab-service' }),
+        leaf('SPARE_REPLACED', 2200, { navTab: 'tab-service' }),
+        leaf('NO_FAULT_FOUND', 150, { navTab: 'tab-service' }),
+        leaf('OVERCALL_RESOLUTION', 5259, { navTab: 'tab-service' }),
+        leaf('ESCALATED', 900, { navTab: 'tab-service' })
+      ];
+      var swTotal = swKids.reduce(function (s, c) { return s + c.value; }, 0);
+      if (flowCase === 'empty') {
+        return Promise.resolve({
+          customers: { name: 'Total customers', value: 0, clearDims: ['countries', 'segments'], children: [leaf('India', 0), leaf('Nepal', 0)] },
+          devices: { name: 'Total devices', value: 0, resetSet: { deviceTypes: [] }, children: [] },
+          tickets: { name: 'Total tracked records', value: 0, children: [leaf('Zoho', 0, { children: [] })] }
+        });
+      }
+      if (flowCase === 'zeros') {
+        return Promise.resolve({
+          customers: {
+            name: 'Total customers', value: 1500, clearDims: ['countries', 'segments'],
+            children: [
+              leaf('India', 1500, { filterDim: 'countries', filterValue: 'India',
+                children: [leaf('SME', 1500, { filterSet: { countries: ['India'], segments: ['SME'] } }),
+                           leaf('LE', 0, { filterSet: { countries: ['India'], segments: ['LE'] } })] }),
+              leaf('Nepal', 0, { filterDim: 'countries', filterValue: 'Nepal', children: [] })
+            ]
+          },
+          devices: { name: 'Total devices', value: 0, resetSet: { deviceTypes: [] }, children: [leaf('ECG Machine', 0, { filterDim: 'deviceTypes', filterValue: 'ECG Machine', children: [] })] },
+          tickets: {
+            name: 'Total tracked records', value: 1500,
+            children: [
+              leaf('Zoho', 1500, { navTab: 'tab-support', children: [leaf('Open', 1500, { navTab: 'tab-support' }), leaf('Closed', 0, { navTab: 'tab-support' })] }),
+              leaf('ServiceWRK', 0, { navTab: 'tab-service', children: [] }),
+              leaf('TOM', 0, { navTab: 'tab-tom', children: [leaf('Resolved', 0), leaf('Unresolved', 0), leaf('Visit needed', 0)] })
+            ]
+          }
+        });
+      }
       return Promise.resolve({
         customers: {
-          name: 'Total customers', value: 1842, clearDims: ['countries', 'segments'],
+          name: 'Total customers', value: 19413, clearDims: ['countries', 'segments'],
           children: [
-            leaf('India', 1203, { filterDim: 'countries', filterValue: 'India', stats: { devices: 14880, uptimePct: 97.2, openTickets: 340, topCity: 'Mumbai' },
+            leaf('India', 18124, { filterDim: 'countries', filterValue: 'India', stats: { devices: 14880, uptimePct: 97.2, openTickets: 340, topCity: 'Mumbai' },
               children: [
-                leaf('SME', 612, { filterDim: 'segments', filterValue: 'SME', stats: { devices: 5200, uptimePct: 96.8, openTickets: 140, topCity: 'Mumbai' } }),
-                leaf('LE', 401, { filterDim: 'segments', filterValue: 'LE', stats: { devices: 7100, uptimePct: 98.1, openTickets: 150, topCity: 'Pune' } }),
-                leaf('Government', 140, { filterDim: 'segments', filterValue: 'Government', stats: { devices: 1900, uptimePct: 95.0, openTickets: 40, topCity: 'Delhi' } }),
-                leaf('ECHO', 50, { filterDim: 'segments', filterValue: 'ECHO', stats: { devices: 680, uptimePct: 99.0, openTickets: 10, topCity: 'Mumbai' } })
+                leaf('SME', 11548, { filterSet: { countries: ['India'], segments: ['SME'] }, stats: { devices: 5200, uptimePct: 96.8, openTickets: 140, topCity: 'Mumbai' } }),
+                leaf('LE', 4120, { filterSet: { countries: ['India'], segments: ['LE'] }, stats: { devices: 7100, uptimePct: 98.1, openTickets: 150, topCity: 'Pune' } }),
+                leaf('Government', 1380, { filterSet: { countries: ['India'], segments: ['Government'] }, stats: { devices: 1900, uptimePct: 95.0, openTickets: 40, topCity: 'Delhi' } }),
+                leaf('ECHO', 520, { filterSet: { countries: ['India'], segments: ['ECHO'] }, stats: { devices: 680, uptimePct: 99.0, openTickets: 10, topCity: 'Mumbai' } }),
+                leaf('Diagnostics', 380, { filterSet: { countries: ['India'], segments: ['Diagnostics'] } }),
+                leaf('Corporate', 120, { filterSet: { countries: ['India'], segments: ['Corporate'] } }),
+                leaf('(blank)', 56, { filterSet: { countries: ['India'], segments: ['(blank)'] } })
               ] }),
-            leaf('Nepal', 312, { filterDim: 'countries', filterValue: 'Nepal', stats: { devices: 3800, uptimePct: 94.5, openTickets: 60, topCity: 'Kathmandu' },
-              children: [leaf('SME', 200, { filterDim: 'segments', filterValue: 'SME', stats: { devices: 2400, uptimePct: 94.0, openTickets: 40, topCity: 'Kathmandu' } })] }),
-            leaf('Others', 327, { stats: { devices: 4100, uptimePct: 93.1, openTickets: 90, topCity: '—' } })
+            leaf('Nepal', 412, { filterDim: 'countries', filterValue: 'Nepal', stats: { devices: 3800, uptimePct: 94.5, openTickets: 60, topCity: 'Kathmandu' },
+              children: [
+                leaf('SME', 300, { filterSet: { countries: ['Nepal'], segments: ['SME'] } }),
+                leaf('LE', 80, { filterSet: { countries: ['Nepal'], segments: ['LE'] } }),
+                leaf('Government', 32, { filterSet: { countries: ['Nepal'], segments: ['Government'] } })
+              ] }),
+            leaf('Bangladesh', 300, { filterDim: 'countries', filterValue: 'Bangladesh',
+              children: [
+                leaf('SME', 200, { filterSet: { countries: ['Bangladesh'], segments: ['SME'] } }),
+                leaf('LE', 100, { filterSet: { countries: ['Bangladesh'], segments: ['LE'] } })
+              ] }),
+            leaf('Sri Lanka', 210, { filterDim: 'countries', filterValue: 'Sri Lanka',
+              children: [leaf('SME', 210, { filterSet: { countries: ['Sri Lanka'], segments: ['SME'] } })] }),
+            // 27 characters — the long-name truncation case.
+            leaf('United Republic of Tanzania', 180, { filterDim: 'countries', filterValue: 'United Republic of Tanzania',
+              children: [leaf('SME', 180, { filterSet: { countries: ['United Republic of Tanzania'], segments: ['SME'] } })] }),
+            // The server's inert bucket: no filterDim, no children.
+            leaf('Others', 187, { stats: { devices: 4100, uptimePct: 93.1, openTickets: 90, topCity: '—' } })
           ]
         },
         devices: {
-          name: 'Total devices', value: 28444,
-          children: [
-            leaf('Connector', 10414, { filterDim: 'deviceTypes', filterValue: 'Connector',
-              children: ['<1y', '1-2y', '2-3y', '3-5y', '5y+'].map(function (b, i) {
-                return leaf(b, [1200, 2400, 3100, 2500, 1214][i], { navTab: 'tab-asset', navDeviceType: 'Connector' });
-              }) }),
-            leaf('ECG Machine', 18030, { filterDim: 'deviceTypes', filterValue: 'ECG Machine',
-              children: ['<1y', '1-2y', '2-3y', '3-5y', '5y+'].map(function (b, i) {
-                return leaf(b, [2100, 4200, 5400, 4330, 2000][i], { navTab: 'tab-asset', navDeviceType: 'ECG Machine' });
-              }) })
-          ]
+          name: 'Total devices', value: devTotal, resetSet: { deviceTypes: [] }, children: devKids
         },
         tickets: {
-          name: 'Total tracked records', value: 84545 + 36081 + 1325,
+          name: 'Total tracked records', value: 84545 + swTotal + 1325,
           children: [
-            leaf('Zoho', 84545, { navTab: 'tab-support', children: [leaf('Open', 211), leaf('Closed', 84334)] }),
-            leaf('ServiceWRK', 36081, { navTab: 'tab-service', children: [leaf('CENTER_VISIT', 30822), leaf('OVERCALL_RESOLUTION', 5259)] }),
-            leaf('TOM', 1325, { navTab: 'tab-tom', children: [leaf('Resolved', 256), leaf('Unresolved', 68), leaf('Visit needed', 1001)] })
+            leaf('Zoho', 84545, { navTab: 'tab-support', children: [
+              leaf('Open', 211, { navTab: 'tab-support' }), leaf('Closed', 84334, { navTab: 'tab-support' })] }),
+            leaf('ServiceWRK', swTotal, { navTab: 'tab-service', children: swKids }),
+            leaf('TOM', 1325, { navTab: 'tab-tom', children: [
+              leaf('Resolved', 256, { navTab: 'tab-tom' }), leaf('Unresolved', 68, { navTab: 'tab-tom' }),
+              leaf('Visit needed', 1001, { navTab: 'tab-tom' })] })
           ]
         }
       });
@@ -1503,7 +1609,7 @@
       'tomPageIndicator', 'tomPrevBtn', 'tomNextBtn', 'issues');
   }
 
-  /* ── Overview page (decomposition treemaps) ──────────────────── */
+  /* ── Overview page (decomposition flow diagrams) ─────────────── */
   var overviewFlowRequestId = 0;
   function loadOverviewFlow() {
     var requestId = ++overviewFlowRequestId;
@@ -1582,22 +1688,42 @@
    * Each card's header carries the metric's total; the breakdown renders
    * lazily the first time that card is expanded, not eagerly for all three on
    * load. An expanded card takes the full page width (see
-   * .flow-card:has(details[open]) in Styles.html), which the treemap spends on
-   * captioning small tiles rather than on the horizontal reach a node-and-edge
-   * tree needed. The total lives here and only here — Charts.decompTreemap
-   * draws the payload root's children, not the root itself, so the number
-   * isn't printed twice on the same card.
+   * .flow-card:has(details[open]) in Styles.html), which the flow spends on
+   * two label columns and the ribbon span between them — the horizontal reach
+   * that makes the decomposition read as a flow rather than as an indented
+   * list. The total lives here and only here: Charts.decompFlow draws the
+   * payload root's children, never the root itself, so the number isn't
+   * printed twice on the same card.
+   *
+   * `levels` names the two ranks for each card. It is not decoration —
+   * decompFlow prints them as the two column captions (which is what tells a
+   * reader which way the diagram flows), uses the singular AND the plural in
+   * its aggregate labels and tooltips (a device type really can have exactly
+   * "1 age band"), and needs `ordinal2` to know that device age bands are an
+   * ORDERED scale. That flag does two things: it keeps the breakdown in
+   * server order (the other two cards' level-2 children are re-sorted by
+   * count, so their fold folds the genuinely smallest members — ServiceWRK's
+   * outcomes arrive unsorted from BigQuery), and it makes a partial fold a
+   * contiguous range ("2-3y → 5y+") rather than a "+2 more" bag that would
+   * stand for two non-adjacent bands. A band too short to split at all is
+   * labelled by COUNT either way ("5 age bands"), never by its full range,
+   * which would read as one band. Plurals are spelled out because "Country"
+   * does not pluralise by suffix.
    */
   var OVERVIEW_FLOW_CARDS = [
-    { details: 'flowDetailsCustomers', chart: 'flowCustomers', total: 'flowTotalCustomers', key: 'customers' },
-    { details: 'flowDetailsDevices', chart: 'flowDevices', total: 'flowTotalDevices', key: 'devices' },
-    { details: 'flowDetailsTickets', chart: 'flowTickets', total: 'flowTotalTickets', key: 'tickets' }
+    { details: 'flowDetailsCustomers', chart: 'flowCustomers', total: 'flowTotalCustomers', key: 'customers',
+      levels: { l1: 'Country', l1s: 'countries', l2: 'Segment', l2s: 'segments', ordinal2: false } },
+    { details: 'flowDetailsDevices', chart: 'flowDevices', total: 'flowTotalDevices', key: 'devices',
+      levels: { l1: 'Device type', l1s: 'device types', l2: 'Age band', l2s: 'age bands', ordinal2: true } },
+    { details: 'flowDetailsTickets', chart: 'flowTickets', total: 'flowTotalTickets', key: 'tickets',
+      levels: { l1: 'Source system', l1s: 'source systems', l2: 'Outcome', l2s: 'outcomes', ordinal2: false } }
   ];
 
   function renderOverviewFlowCard_(card) {
     var payload = state.overviewFlowData;
     if (!payload) return;
-    Charts.decompTreemap(card.chart, payload[card.key], { onNodeClick: handleTreeNodeClick_ });
+    Charts.decompFlow(card.chart, payload[card.key],
+      { onNodeClick: handleTreeNodeClick_, levels: card.levels });
   }
 
   // Wired once: an open card's flow re-renders whenever fresh data arrives
@@ -4085,7 +4211,7 @@
    */
   var SEARCH_TAB_INFO = {
     // Filters the map card (merged in from the old Map tab, 2026-08-21); the
-    // Customers/Devices/Tickets treemaps above it aren't searchable.
+    // Customers/Devices/Tickets flow diagrams above it aren't searchable.
     'tab-overview': { placeholder: 'Search the map: center, hub, device or serial…' },
     'tab-asset': { disabled: true, placeholder: "Search isn't available on this page" },
     'tab-cdm': { placeholder: 'Search communicators by ID, center or hub…' },

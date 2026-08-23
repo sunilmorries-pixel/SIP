@@ -37,20 +37,34 @@ for the full sequence and the reasoning behind each layout change before "fixing
 layout issue — several apparent bugs there were already tried, measured against real production
 data, and deliberately reverted once.
 
-**As of @77/v5.48 the renderer is a treemap, not a tree** — `Charts.decompTreemap`
-(`src/client/Charts.html`), replacing `Charts.decompTree`, which is deleted along with its five
-tree-only helpers. The payload shape is unchanged, so `OverviewFlow.js` and the click handler were
-untouched. This ends the layout churn above rather than continuing it: the `tree` series laid out by
-topology, drawing every node at a fixed 88×52 / 70×48 box whatever its count, so magnitude existed
-only as label text and same-depth siblings split one span whether a branch held 3% or 65% of its
-parent. Six passes (@69–@76 plus `c977a00`) each moved the resulting label collision instead of
-removing it. Rectangles that partition their parent by share cannot collide, so the page dropped
-from 2,436px to ~1,365px and label clipping is structurally gone. Two consequences worth knowing:
-`c977a00` (72px leaf slots) is **superseded and was never deployed** — it fixed a renderer that no
-longer exists; and a level-1 block under 5% of the total is folded to a single tile by
-`decompPrepLevel1_`, because ECharts draws a parent's `upperLabel` band at full height even on a
-7px-tall node and clips it (`childrenVisibleMin` does not fix this — verified at 340/420/500px).
-Folded tiles say so in their tooltip and still click through.
+**@77/v5.48–@88 the renderer was a treemap** — `Charts.decompTreemap`, replacing `Charts.decompTree`.
+That ended the layout churn above rather than continuing it: the `tree` series laid out by topology,
+drawing every node at a fixed 88×52 / 70×48 box whatever its count, so magnitude existed only as
+label text and same-depth siblings split one span whether a branch held 3% or 65% of its parent. Six
+passes (@69–@76 plus `c977a00`) each moved the resulting label collision instead of removing it.
+Rectangles that partition their parent by share cannot collide, so the page dropped from 2,436px to
+~1,365px and label clipping went away structurally. (`c977a00`, 72px leaf slots, is **superseded and
+was never deployed** — it fixed a renderer that no longer exists.)
+
+**As of @90 the renderer is a hand-laid FLOW, not a treemap** — `Charts.decompFlow`
+(`src/client/Charts.html`), replacing `Charts.decompTreemap`, which is deleted along with
+`decompPalette_`, `decompTileLabel_`, `decompPrepLevel1_` and the 5% `DECOMP_COLLAPSE_SHARE` fold
+(`decompEsc_` and `decompShare_` survive and now serve the flow's labels and tooltip). The payload
+shape is unchanged again, so `OverviewFlow.js` and the click handler were untouched — the renderer
+still hands `opts.onNodeClick` the raw payload node by reference. The treemap was correct but was a
+*mosaic*: no total flowing into parts and no connector anywhere on the card, which is what the user
+asked to replace. The flow is one ECharts `custom` series with `coordinateSystem: 'none'`: a left
+column of level-1 blocks, a right column of level-2 blocks, and one polygon ribbon per parent→child
+relationship, every pixel computed inside `renderItem` from `api.getWidth()/getHeight()`. "Rectangle
+area = share of the total" is therefore no longer the encoding: a row's height is a floor
+(`ROW1_MIN`) plus an exactly-proportional share of the remaining free height, one scale for the left
+column, and level 2 is normalised within its parent — compressed rather than ratio-true, which is
+why every drawn block prints its own count and share and the tooltip prints both denominators. Read
+the comment block above `flowPalette_` in `Charts.html` before changing any of it: it carries the
+alignment argument (five arithmetic identities plus runtime postcondition checks), the measured
+role-palette ΔE/contrast numbers, and the label-fitting ladder. Capacity is bounded by the card
+height, so a folded tail is drawn as its own block sized by the tail's true sum, labelled with what
+it stands for, listing its members in its tooltip, and clicking through to where they split out.
 
 **Overview's map gained an FSE (Field Service Engineer) coverage layer at v5.54/@83–84**
 (`src/server/Fse.js`) — pins for engineers from a hand-maintained roster (`FSE_ROSTER`, ships

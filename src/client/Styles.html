@@ -1058,49 +1058,24 @@ body[data-theme="light"] .kpi-delta.is-bad  { color: #C81E1E; }
   border-radius: var(--radius-sm);
 }
 .map-wrap { position: relative; overflow: hidden; padding: 0; }
-/* .map-legend anchors to THIS element (position:absolute, left/bottom), not
-   to #assetMap — they're siblings, so #assetMap going narrower/centered
-   below would otherwise leave the legend stranded at the corner of a
-   full-width transparent card, detached from the actual map. Shrinking the
-   wrap to match keeps the legend flush with the map's real edge. Scoped with
-   :has() (already used elsewhere in this file) so tcMap/cdmMap's wraps,
-   which stay full-width, are untouched. */
-.map-wrap:has(#assetMap) { width: min(100%, 82vh, 900px); margin: 0 auto; }
 #assetMap, #tcMap, #cdmMap {
   width: 100%; height: 72vh; min-height: 480px;
   background: #0B111E; z-index: 0;
 }
-/* The Overview map is sized to India's own proportions rather than to a slice
-   of viewport height (per user, 2026-08-21 and again 2026-08-23: "make map
-   size bigger where india map can fit perfectly" / "resize map to adjust to
-   full size india map"). India's bounding box is ~29.3° of longitude by
-   ~30.6° of latitude — near square — so a 16:9-ish container fits it by HEIGHT
-   and wastes the left and right thirds on empty ocean and neighbours. A square
-   container spends almost every pixel on the subcontinent.
-
-   FIRST ATTEMPT (2026-08-23, reverted here): drove HEIGHT from the card's
-   full width via aspect-ratio, capped by max-height: min(76vh, 900px). Never
-   actually squared up — reaching 1:1 at a ~900-1450px-wide card needs a
-   900-1450px max-height, i.e. a ~1180-1900px-tall VIEWPORT, which no real
-   desktop has; max-height binds first every time, so the box stayed the same
-   ~2:1 rectangle as before the change (measured live: 1066×520). Flagged in
-   the commit as "NOT verified visually" — verifying it is what caught this.
-
-   FIX: drive WIDTH from the viewport height instead (via vh) and centre it.
-   The box is square by construction — height simply follows width via
-   aspect-ratio — and is bounded by whichever is smaller of the card width,
-   82vh, or 900px, so it can't force the page to scroll past it on a short
-   screen. On a wide card this leaves gutters at the sides; that's the
-   correct trade-off for a near-square subcontinent on a wide monitor, not a
-   bug. tcMap/cdmMap keep the 72vh/full-width rule above — those two sit
-   under other page content and are not India-framed. */
-#assetMap {
-  width: min(100%, 82vh, 900px);
-  aspect-ratio: 1 / 1;
-  height: auto;
-  min-height: 380px;
-  margin: 0 auto;
-}
+/* Two earlier attempts (2026-08-23, both reverted here) shrank #assetMap down
+   to a width-capped square (min(100%, 82vh, 900px), centered with gutters at
+   the sides) to match India's near-square bounding box (~29.3° lon x ~30.6°
+   lat). Per user: that read as the map itself getting smaller/cut off, not
+   "sized to fit India" — the ask was to EXPAND the box to fit India better,
+   never to reduce its footprint below the plain full-width rule above.
+   #assetMap now only differs from tcMap/cdmMap by being taller: more vertical
+   room brings its proportions closer to square than the flat 72vh slice,
+   without shrinking width or capping it below the card's full size on any
+   screen. India stays centered via MapView.ensureMap's setView([21.5, 79], 5)
+   and setData's fitBounds — both unchanged, and both already show every
+   center in the data (Nepal/Philippines/Kenya/Malaysia/Nigeria included),
+   never just India. */
+#assetMap { height: 85vh; min-height: 620px; }
 /* ── FSE coverage layer ───────────────────────────────────────────
    Violet #8B5CF6 is the one hue this map had left: teal read as the "no open
    tickets" green (1.13 contrast), and the app's own lighter violet #A78BFA

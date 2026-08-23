@@ -26,6 +26,22 @@ function MapView(containerId) {
 
   var map = null, cluster = null, tileLayer = null;
   var centers = [], pendingRender = null, theme = 'dark';
+  // FSE layer state. fseGroup holds the engineer pins (a plain LayerGroup, NOT
+  // the marker cluster — engineers must never collapse into a count bubble the
+  // way centers do; there are tens of them, and the whole point is that a named
+  // person stays visible). reachGroup holds the focus-mode lines. markerById
+  // lets focus mode restyle individual centers, which setData alone can't do.
+  var fseGroup = null, reachGroup = null, fseMarkers = {}, markerById = {};
+  var fseFocused = null, fseSelectHandler = null;
+  var REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Violet, not the brand teal. Measured against both CARTO basemaps and the
+  // three severity hues already on this map: teal #04E0B8 scores 1.13 against
+  // the "no open tickets" green #34D399 — adjacent hue, near-identical
+  // luminance — so every engineer would have read as another healthy center.
+  // #8B5CF6 was the only candidate clearing 3:1 on dark (3.49) AND light (3.72)
+  // while staying separable from green/amber/red (2.20/2.54/1.53).
+  var FSE_COLOR = '#8B5CF6';
 
   // Leaflet renders string tooltip/popup content as HTML, so any field that
   // originates from data (e.g. a center name) MUST be escaped first.
@@ -77,24 +93,200 @@ function MapView(containerId) {
     var colorFn = (opts && opts.colorFn) || function (c) { return ticketColor(c[6]); };
     var tooltipFn = (opts && opts.tooltipFn) || defaultTooltip;
     cluster.clearLayers();
+    markerById = {};
     var markers = centers.map(function (c) {
       var radius = Math.min(18, 5 + Math.sqrt(c[4] || 1) * 1.9);
       var color = colorFn(c);
       // approx (proxy-coordinate) centers render lighter/dashed — a
       // neighborhood-level guess, not the center's real geocoded spot.
-      var marker = L.circleMarker([c[2], c[3]], {
+      var base = {
         radius: radius, color: color, weight: c[12] ? 1 : 1.5,
         fillColor: color, fillOpacity: c[12] ? 0.2 : 0.4,
         dashArray: c[12] ? '2,3' : null
-      });
+      };
+      var marker = L.circleMarker([c[2], c[3]], base);
+      // Kept so FSE focus mode can ring/dim this marker and then put it back
+      // exactly as it was, rather than re-deriving a style and drifting from
+      // the rules above.
+      marker._baseStyle = base;
+      marker._latlng2 = [c[2], c[3]];
+      markerById[String(c[0])] = marker;
       marker.bindTooltip(tooltipFn(c), { direction: 'top' });
       marker.on('click', function () { onClick(c); });
       return marker;
     });
     cluster.addLayers(markers);
+    if (fseFocused) applyFseFocus_(fseFocused);   // survive a data refresh
     if (centers.length) {
       try { map.fitBounds(L.latLngBounds(centers.map(function (c) { return [c[2], c[3]]; })).pad(0.1)); } catch (e) {}
     }
+  }
+
+  /* ── FSE coverage layer ──────────────────────────────────────────
+     Engineers get the one visual channel this map has left. Position, size
+     (devices), fill (ticket severity) and opacity/dash (approximate location)
+     are all spoken for by centers, so an engineer is distinguished by SHAPE —
+     a figure glyph, not another circle. That also means the layer does not
+     depend on colour vision to be readable. */
+
+  /**
+   * Humanoid pin. A 24px glyph centred in a 44×44 transparent box so the tap
+   * target meets the 44px minimum without drawing a 44px blob, plus the name
+   * as a permanent pill (engineers are few, and an unnamed figure is useless).
+   * `extra` > 0 collapses same-HQ colleagues into one pin with a count.
+   */
+  function fseIcon_(name, extra, isFocused) {
+    var label = esc(name) + (extra ? ' +' + extra : '');
+    return L.divIcon({
+      className: 'fse-pin' + (isFocused ? ' is-focused' : ''),
+      iconSize: [44, 44], iconAnchor: [22, 22],
+      html:
+        '<span class="fse-glyph" aria-hidden="true">' +
+          '<svg viewBox="0 0 24 24" width="24" height="24">' +
+            '<circle cx="12" cy="7" r="3.4"/>' +
+            '<path d="M5.5 21v-4.2A6.5 6.5 0 0 1 12 10.3a6.5 6.5 0 0 1 6.5 6.5V21"/>' +
+          '</svg>' +
+        '</span>' +
+        '<span class="fse-name">' + label + '</span>'
+    });
+  }
+
+  /**
+   * Draws the engineer pins. `engineers` is the payload's fse.engineers array
+   * ({name, hq, lat, lng, centers[], tickets}). Called with a falsy/empty list
+   * this clears the layer — which is the production state until FSE_ROSTER is
+   * filled, so the whole feature is inert rather than half-drawn.
+   */
+  function setFse(engineers, onSelect) {
+    fseSelectHandler = onSelect || null;
+    if (!map) { pendingRender = function () { setFse(engineers, onSelect); }; return; }
+    if (!fseGroup) { fseGroup = L.layerGroup().addTo(map); }
+    fseGroup.clearLayers();
+    fseMarkers = {};
+    clearFseFocus();
+    var list = engineers || [];
+    if (!list.length) return;
+
+    // Same-HQ colleagues would otherwise stack their name pills into an
+    // illegible pile — Leaflet has no label decluttering. One pin per
+    // coordinate, labelled with the first name and a "+n", expanding via the
+    // tooltip; the click handler still reports the whole group.
+    var byCoord = {};
+    list.forEach(function (e) {
+      var k = Number(e.lat).toFixed(3) + ',' + Number(e.lng).toFixed(3);
+      (byCoord[k] = byCoord[k] || []).push(e);
+    });
+
+    Object.keys(byCoord).forEach(function (k) {
+      var group = byCoord[k];
+      var lead = group[0];
+      var marker = L.marker([lead.lat, lead.lng], {
+        icon: fseIcon_(lead.name, group.length - 1, false),
+        keyboard: true, riseOnHover: true, zIndexOffset: 1000
+      });
+      marker.bindTooltip(group.map(function (e) {
+        return '<strong>' + esc(e.name) + '</strong><br>' + esc(e.hq) +
+          '<br>' + e.centers.length + ' center' + (e.centers.length === 1 ? '' : 's') +
+          ' · ' + e.tickets + ' ticket' + (e.tickets === 1 ? '' : 's');
+      }).join('<hr class="fse-tip-rule">'), { direction: 'top', className: 'fse-tip' });
+      marker.on('click', function () {
+        // Toggle: clicking the focused engineer clears focus, so the pin is
+        // itself one of the three escape routes.
+        if (fseFocused === lead.name) { clearFseFocus(); if (fseSelectHandler) fseSelectHandler(null); return; }
+        focusFse(lead.name);
+        if (fseSelectHandler) fseSelectHandler(group);
+      });
+      group.forEach(function (e) { fseMarkers[e.name] = { marker: marker, data: e, group: group }; });
+      fseGroup.addLayer(marker);
+    });
+  }
+
+  /** Restores every center marker and removes the reach fan. */
+  function clearFseFocus() {
+    fseFocused = null;
+    if (reachGroup) { reachGroup.clearLayers(); }
+    Object.keys(markerById).forEach(function (id) {
+      var m = markerById[id];
+      if (m && m._baseStyle) m.setStyle(m._baseStyle);
+    });
+    Object.keys(fseMarkers).forEach(function (n) {
+      var rec = fseMarkers[n];
+      rec.marker.setIcon(fseIcon_(rec.group[0].name, rec.group.length - 1, false));
+    });
+  }
+
+  function applyFseFocus_(name) {
+    var rec = fseMarkers[name];
+    if (!rec || !map) return;
+    if (!reachGroup) { reachGroup = L.layerGroup().addTo(map); }
+    reachGroup.clearLayers();
+
+    var covered = {};
+    rec.data.centers.forEach(function (id) { covered[String(id)] = true; });
+
+    // Covered centers gain a violet ring; everything else recedes. Fill colour
+    // (severity) and radius (devices) are untouched — coverage is added as a
+    // STROKE so it displaces none of the encodings already on the marker.
+    Object.keys(markerById).forEach(function (id) {
+      var m = markerById[id];
+      if (!m || !m._baseStyle) return;
+      if (covered[id]) {
+        m.setStyle({ color: FSE_COLOR, weight: 2.5, opacity: 1, fillOpacity: m._baseStyle.fillOpacity });
+        m.bringToFront();
+      } else {
+        m.setStyle({ opacity: 0.25, fillOpacity: 0.08 });
+      }
+    });
+
+    // The reach fan: a hairline from HQ to each center actually worked. Solid,
+    // deliberately — dashes already mean "approximate location" here, and
+    // overloading that would make a confident line look like a guess. No radius
+    // or hull: both would claim coverage of ground the engineer has never been
+    // to, which the ticket data cannot support.
+    var hq = [rec.data.lat, rec.data.lng];
+    var targets = rec.data.centers
+      .map(function (id) { return markerById[String(id)]; })
+      .filter(function (m) { return !!m; });
+    function addLine(m) {
+      reachGroup.addLayer(L.polyline([hq, m._latlng2], {
+        color: FSE_COLOR, weight: 1.25, opacity: 0.5, interactive: false
+      }));
+    }
+    if (REDUCED_MOTION) {
+      targets.forEach(addLine);
+    } else {
+      // Staggered so the fan reads as reaching outward FROM the engineer —
+      // cause and effect, not decoration. setTimeout rather than a CSS/SVG
+      // stroke animation because the map runs preferCanvas, where polylines
+      // have no DOM node to animate.
+      targets.forEach(function (m, i) { setTimeout(function () { if (fseFocused === name) addLine(m); }, i * 15); });
+    }
+
+    rec.marker.setIcon(fseIcon_(rec.group[0].name, rec.group.length - 1, true));
+  }
+
+  function focusFse(name) {
+    clearFseFocus();
+    fseFocused = name;
+    applyFseFocus_(name);
+  }
+
+  /** Focuses the first engineer whose name contains `query`. */
+  function focusFseByName(query) {
+    var q = String(query || '').toLowerCase().trim();
+    if (!q) return false;
+    var hit = Object.keys(fseMarkers).filter(function (n) { return n.toLowerCase().indexOf(q) !== -1; })[0];
+    if (!hit) return false;
+    var rec = fseMarkers[hit];
+    map.setView([rec.data.lat, rec.data.lng], 8);
+    focusFse(hit);
+    if (fseSelectHandler) fseSelectHandler(rec.group);
+    return true;
+  }
+
+  function setFseVisible(visible) {
+    if (!fseGroup || !map) return;
+    if (visible) { fseGroup.addTo(map); } else { clearFseFocus(); map.removeLayer(fseGroup); }
   }
 
   function focusByName(query, onClick) {
@@ -115,6 +307,10 @@ function MapView(containerId) {
     if (tileLayer) tileLayer.setUrl(TILES[theme]);
   }
 
-  return { ensureMap: ensureMap, setData: setData, focusByName: focusByName, setTheme: setTheme };
+  return {
+    ensureMap: ensureMap, setData: setData, focusByName: focusByName, setTheme: setTheme,
+    setFse: setFse, focusFse: focusFse, clearFseFocus: clearFseFocus,
+    focusFseByName: focusFseByName, setFseVisible: setFseVisible
+  };
 }
 </script>

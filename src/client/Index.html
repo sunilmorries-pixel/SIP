@@ -207,11 +207,36 @@
       <div id="assetMap" role="application"
            aria-label="Map of centers. Click a marker to see center and asset details."></div>
 
-      <div class="map-legend" role="group" aria-label="Filter map by open tickets">
+      <div class="map-legend" id="ticketLegend" role="group" aria-label="Filter map by open tickets">
         <button class="legend-filter" type="button" data-bucket="none" aria-pressed="false"><span class="legend-dot" style="background:#34D399"></span>No open tickets</button>
         <button class="legend-filter" type="button" data-bucket="low" aria-pressed="false"><span class="legend-dot" style="background:#FBBF24"></span>1–3 open</button>
         <button class="legend-filter" type="button" data-bucket="high" aria-pressed="false"><span class="legend-dot" style="background:#F87171"></span>4+ open</button>
         <span class="legend-note">size = devices · faded/dashed = approximate location · click to filter</span>
+      </div>
+
+      <!-- Engineer layer controls, kept in their own row rather than appended
+           to the ticket-bucket legend above: those three are one mutually
+           exclusive filter, these are a layer toggle and a separate filter, and
+           crowding them into one strip made all six read as one control group.
+           Both are hidden entirely until a payload actually carries engineers
+           (FSE_ROSTER ships empty), so the map gains no dead chrome. -->
+      <div class="map-legend map-legend-fse" id="fseLegend" role="group" aria-label="Engineer coverage" hidden>
+        <button id="fseToggle" class="legend-filter" type="button" aria-pressed="true">
+          <span class="legend-dot legend-dot-fse"></span><span id="fseToggleLabel">Engineers</span>
+        </button>
+        <button class="legend-filter" type="button" id="fseGapFilter" data-bucket="gap" aria-pressed="false">
+          <span class="legend-dot legend-dot-gap"></span>Coverage gaps
+        </button>
+        <span class="legend-note" id="fseWindowNote"></span>
+      </div>
+
+      <!-- Focus bar: appears only while one engineer is selected. Carries the
+           Clear action, which is one of three escape routes from focus mode
+           (the others being Esc and re-clicking the pin). -->
+      <div class="fse-focus-bar" id="fseFocusBar" role="status" hidden>
+        <span class="fse-focus-name" id="fseFocusName"></span>
+        <span class="fse-focus-meta" id="fseFocusMeta"></span>
+        <button class="btn btn-ghost btn-sm" type="button" id="fseFocusClear">Clear</button>
       </div>
     </div>
   </section>

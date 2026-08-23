@@ -1062,6 +1062,105 @@ body[data-theme="light"] .kpi-delta.is-bad  { color: #C81E1E; }
   width: 100%; height: 72vh; min-height: 480px;
   background: #0B111E; z-index: 0;
 }
+/* The Overview map is sized to India's own proportions rather than to a slice
+   of viewport height (per user, 2026-08-21: "make map size bigger where india
+   map can fit perfectly"). India's bounding box is ~29.3° of longitude by
+   ~30.6° of latitude — near square — so a 16:9-ish container fits it by HEIGHT
+   and wastes the left and right thirds on empty ocean and neighbours. A square
+   container spends almost every pixel on the subcontinent.
+
+   aspect-ratio drives the height off the real card width, so it holds whether
+   the sidebar is pinned (~900px) or not (~1450px) instead of guessing a vh
+   that only suits one of them. min()'s vh term is the escape hatch on short
+   screens: a laptop at 800px tall gets a 76vh map instead of a 1450px one it
+   would have to scroll past. tcMap/cdmMap keep the 72vh rule above — those two
+   sit under other page content and are not India-framed. */
+#assetMap {
+  aspect-ratio: 1 / 1;
+  height: auto;
+  max-height: min(76vh, 900px);
+  min-height: 520px;
+}
+/* ── FSE coverage layer ───────────────────────────────────────────
+   Violet #8B5CF6 is the one hue this map had left: teal read as the "no open
+   tickets" green (1.13 contrast), and the app's own lighter violet #A78BFA
+   fails on the light basemap (2.39) and collides with the danger red (1.02).
+   #8B5CF6 clears 3:1 on both CARTO basemaps and separates from all three
+   severity hues. The casing — a stroke in the opposite direction to the
+   basemap — is what keeps the glyph readable over roads, water and tile
+   labels rather than merely over most tiles. */
+.fse-pin {
+  display: grid; place-items: center;
+  background: none; border: 0;   /* Leaflet divIcon defaults */
+}
+.fse-glyph { display: grid; place-items: center; width: 44px; height: 44px; }
+.fse-glyph svg {
+  fill: none; stroke: #8B5CF6; stroke-width: 2.2;
+  stroke-linecap: round; stroke-linejoin: round;
+  paint-order: stroke;
+  /* casing: dark halo on the dark basemap, light on the light one */
+  filter: drop-shadow(0 0 1.5px #0B1220) drop-shadow(0 0 1.5px #0B1220);
+}
+body[data-theme="light"] .fse-glyph svg {
+  filter: drop-shadow(0 0 1.5px #FFFFFF) drop-shadow(0 0 1.5px #FFFFFF);
+}
+.fse-name {
+  position: absolute; left: 40px; top: 50%; transform: translateY(-50%);
+  white-space: nowrap; pointer-events: none;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.01em;
+  padding: 2px 7px; border-radius: 999px;
+  color: #F5F3FF; background: rgba(11, 18, 32, 0.82);
+  border: 1px solid rgba(139, 92, 246, 0.55);
+}
+body[data-theme="light"] .fse-name {
+  color: #3B1E86; background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(139, 92, 246, 0.6);
+}
+/* Focused engineer: the glyph fills in and the pill goes solid, so the
+   selected person is identifiable without relying on the dimming alone. */
+.fse-pin.is-focused .fse-glyph svg { stroke-width: 2.8; }
+.fse-pin.is-focused .fse-name {
+  color: #fff; background: #8B5CF6; border-color: #8B5CF6;
+}
+.fse-pin:focus-visible .fse-glyph {
+  outline: 2px solid #8B5CF6; outline-offset: 2px; border-radius: 50%;
+}
+.fse-tip-rule { border: 0; border-top: 1px solid var(--border); margin: 5px 0; }
+
+/* Second legend row — its own strip, not appended to the ticket buckets: those
+   three are one mutually exclusive filter, these are a layer toggle plus a
+   separate filter, and one six-item strip read as a single control group. */
+.map-legend-fse { top: auto; bottom: 12px; }
+.legend-dot-fse { background: #8B5CF6; }
+.legend-dot-gap {
+  background: transparent; border: 2px solid #F87171; box-sizing: border-box;
+}
+
+.fse-focus-bar {
+  position: absolute; left: 12px; top: 12px; z-index: 500;
+  display: flex; align-items: center; gap: 10px;
+  max-width: calc(100% - 24px);
+  padding: 8px 10px 8px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(4, 18, 34, 0.9);
+  border: 1px solid rgba(139, 92, 246, 0.55);
+  box-shadow: var(--shadow-card);
+  animation: rise 200ms var(--ease-out) both;
+}
+body[data-theme="light"] .fse-focus-bar {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(139, 92, 246, 0.5);
+}
+.fse-focus-name {
+  font-family: var(--font-head); font-weight: 700; font-size: 13px;
+  color: var(--text-1); white-space: nowrap;
+}
+.fse-focus-meta {
+  font-size: 12px; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
 .leaflet-container { font-family: var(--font-body); background: #0B111E; }
 .leaflet-control-attribution {
   background: rgba(4, 18, 34, 0.75) !important;

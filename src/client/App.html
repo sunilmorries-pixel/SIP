@@ -44,6 +44,8 @@
     segmentOptions: [], stateOptions: [], cityOptions: [], countryOptions: [],
     deviceTypeOptions: [], deviceStatusOptions: [], machineTypeOptions: [],
     ticketBucket: '', // '' | none | low | high — clickable map legend
+    fseVisible: true,   // engineer pins on the map (layer toggle)
+    mapGapsOnly: false, // show only centers with open tickets and no FSE coverage
     activeTab: 'tab-overview',
     // Default sort: open tickets most->least (server tiebreaks 0-ticket rows
     // by uptime ascending — see sortRows/EditionCD.js, per user 2026-08-13).
@@ -478,7 +480,37 @@
         }
       }
       return Promise.resolve({
-        centers: pts, assets: asset,
+        // Demo FSE layer. PREVIEW ONLY — src/server/Fse.js ships FSE_ROSTER
+        // empty on purpose (an entry there draws a named human on a production
+        // ops map), so these exist solely to exercise the layer locally. Names
+        // are obviously fake for exactly that reason. HQs are real cities so
+        // the pins land somewhere sensible; each engineer is given a slice of
+        // the demo centers as coverage.
+        fse: (function () {
+          var roster = [
+            { name: 'Demo FSE North', hq: 'Delhi, Delhi', lat: 28.61, lng: 77.21 },
+            { name: 'Demo FSE West', hq: 'Pune, Maharashtra', lat: 18.52, lng: 73.85 },
+            { name: 'Demo FSE South', hq: 'Bengaluru, Karnataka', lat: 12.97, lng: 77.59 },
+            { name: 'Demo FSE Coast', hq: 'Kochi, Kerala', lat: 9.93, lng: 76.27 }
+          ];
+          var coveredAll = {};
+          var engineers = roster.map(function (e, i) {
+            // Every 4th center from a rotating offset — deterministic, so the
+            // fan doesn't reshuffle on each refresh, and overlapping enough to
+            // leave some centers uncovered (the coverage gaps the layer is for).
+            var mine = [];
+            for (var k = i; k < 140; k += 4) { mine.push(String(pts[k][0])); coveredAll[String(pts[k][0])] = true; }
+            return {
+              name: e.name, hq: e.hq, lat: e.lat, lng: e.lng,
+              centers: mine, tickets: mine.length * rnd(1, 4), territory: []
+            };
+          });
+          return {
+            engineers: engineers,
+            unmatchedReps: [{ rep: 'Unrostered Demo Rep', tickets: 12 }],
+            unlocatedRoster: [], coveredCenterIds: Object.keys(coveredAll), windowDays: 90
+          };
+        })(),
         filters: (args && args.filters) || { segments: [], statuses: [], states: [], hubs: [], cities: [], countries: [], centers: [], deviceTypes: [], deviceStatusExclude: [], billable: [], machineTypes: [], deviceIds: [], macSerialIds: [], dateFrom: '', dateTo: '' }
       });
     }
@@ -2471,11 +2503,20 @@
       });
     }
 
+    // Coverage-gap set: centers with open tickets that no engineer has worked
+    // inside the coverage window. Computed from the payload's own
+    // coveredCenterIds rather than re-derived here, so the client and
+    // buildFseLayer_ can't disagree about who covers what.
+    var fse = state.mapBundle.fse || null;
+    var coveredIds = {};
+    if (fse) (fse.coveredCenterIds || []).forEach(function (id) { coveredIds[String(id)] = true; });
+
     var centers = state.mapBundle.centers.filter(function (c) {
       var ot = c[CI.tickets] || 0;
       if (state.ticketBucket === 'none' && ot !== 0) return false;
       if (state.ticketBucket === 'low' && !(ot >= 1 && ot <= 3)) return false;
       if (state.ticketBucket === 'high' && ot < 4) return false;
+      if (state.mapGapsOnly && (ot === 0 || coveredIds[String(c[CI.id])])) return false;
       if (q) {
         var textHit = String(c[CI.name]).toLowerCase().indexOf(q) !== -1 ||
           String(c[CI.id]).indexOf(q) !== -1 ||
@@ -2488,6 +2529,56 @@
     });
 
     mainMap.setData(centers, CenterDetail.open);
+    renderFseLayer_(fse);
+  }
+
+  /**
+   * Draws the engineer layer and its controls, or hides both when the payload
+   * carries no engineers — which is the production state until FSE_ROSTER is
+   * filled, so this feature adds no empty chrome to the map in the meantime.
+   * `fse` is null on a payload cached before the layer existed (see the
+   * mapcd_v15 note in EditionCD.js), which is why the guard tests for the
+   * object rather than for an empty engineers array.
+   */
+  function renderFseLayer_(fse) {
+    var legend = $('fseLegend');
+    if (!legend) return;
+    var engineers = (fse && fse.engineers) || [];
+    legend.hidden = !engineers.length;
+    if (!engineers.length) { mainMap.setFse([]); setFseFocusBar_(null); return; }
+
+    $('fseWindowNote').textContent = engineers.length + ' engineer' +
+      (engineers.length === 1 ? '' : 's') + ' · coverage = last ' + (fse.windowDays || 90) + ' days';
+    mainMap.setFse(engineers, setFseFocusBar_);
+    mainMap.setFseVisible(state.fseVisible !== false);
+    $('fseToggle').setAttribute('aria-pressed', String(state.fseVisible !== false));
+    $('fseGapFilter').setAttribute('aria-pressed', String(!!state.mapGapsOnly));
+
+    // A roster name that matched no ticket, or a ticket name in nobody's
+    // roster, both surface as "this engineer has no coverage" on the map —
+    // which looks like a staffing fact rather than a spelling mismatch. Say so
+    // once, quietly, instead of letting it read as data.
+    if (fse.unmatchedReps && fse.unmatchedReps.length) {
+      console.info('[SIP] ServiceWRK representatives with no roster entry (add to FSE_ROSTER or alias them):',
+        fse.unmatchedReps);
+    }
+    if (fse.unlocatedRoster && fse.unlocatedRoster.length) {
+      console.warn('[SIP] roster entries whose HQ could not be located (add lat/lng, or geocode the city):',
+        fse.unlocatedRoster);
+    }
+  }
+
+  /** Shows/hides the focus bar. `group` is the clicked pin's engineers, or null. */
+  function setFseFocusBar_(group) {
+    var bar = $('fseFocusBar');
+    if (!bar) return;
+    if (!group || !group.length) { bar.hidden = true; return; }
+    var total = group.reduce(function (s, e) { return s + e.centers.length; }, 0);
+    var tickets = group.reduce(function (s, e) { return s + e.tickets; }, 0);
+    $('fseFocusName').textContent = group.map(function (e) { return e.name; }).join(' · ');
+    $('fseFocusMeta').textContent = group[0].hq + ' — ' + FMT.format(total) + ' center' +
+      (total === 1 ? '' : 's') + ' covered · ' + FMT.format(tickets) + ' ticket' + (tickets === 1 ? '' : 's');
+    bar.hidden = false;
   }
 
   function statBox_(value, label) {
@@ -3712,14 +3803,51 @@
       if (event.key === 'Escape' && !$('centerDrawer').hidden) CenterDetail.close();
     });
 
-    // Clickable ticket-bucket legend on the map.
-    Array.prototype.forEach.call(document.querySelectorAll('.legend-filter'), function (btn) {
+    // Clickable ticket-bucket legend on the map. SCOPED to #ticketLegend: the
+    // engineer row below reuses .legend-filter for its own toggles, and an
+    // unscoped query set ticketBucket from those too — the layer toggle (no
+    // data-bucket) blanked it to null and the gap filter set it to 'gap',
+    // filtering every center off the map.
+    Array.prototype.forEach.call(document.querySelectorAll('#ticketLegend .legend-filter'), function (btn) {
       btn.addEventListener('click', function () {
         var b = btn.getAttribute('data-bucket');
         state.ticketBucket = (state.ticketBucket === b) ? '' : b;
         syncLegendActive();
         applyMapFilters();
       });
+    });
+
+    // Engineer layer: show/hide the pins.
+    $('fseToggle').addEventListener('click', function () {
+      state.fseVisible = !state.fseVisible;
+      $('fseToggle').setAttribute('aria-pressed', String(state.fseVisible));
+      mainMap.setFseVisible(state.fseVisible);
+      if (!state.fseVisible) setFseFocusBar_(null);
+    });
+
+    // Coverage gaps: centers with open tickets that no engineer has worked in
+    // the window. Re-filters the center set rather than restyling, so the map
+    // shows the gap list and nothing else.
+    $('fseGapFilter').addEventListener('click', function () {
+      state.mapGapsOnly = !state.mapGapsOnly;
+      $('fseGapFilter').setAttribute('aria-pressed', String(state.mapGapsOnly));
+      applyMapFilters();
+    });
+
+    // Escape routes out of focus mode, all three of them: this button, Esc
+    // (below), and re-clicking the focused pin (handled in MapView).
+    $('fseFocusClear').addEventListener('click', function () {
+      mainMap.clearFseFocus();
+      setFseFocusBar_(null);
+    });
+    document.addEventListener('keydown', function (event) {
+      // Ordered after the drawer's own Escape handler above: with the drawer
+      // open, Escape should close the drawer and leave the engineer focused,
+      // which is why this checks the drawer is already shut.
+      if (event.key === 'Escape' && $('centerDrawer').hidden && !$('fseFocusBar').hidden) {
+        mainMap.clearFseFocus();
+        setFseFocusBar_(null);
+      }
     });
 
     window.addEventListener('hashchange', applyHashRoute);
@@ -3838,7 +3966,10 @@
   }
 
   function syncLegendActive() {
-    Array.prototype.forEach.call(document.querySelectorAll('.legend-filter'), function (btn) {
+    // #ticketLegend only — see the scoping note on the click wiring. An
+    // unscoped loop here also stamped aria-pressed="false" onto the engineer
+    // toggles, silently un-pressing them whenever a bucket was clicked.
+    Array.prototype.forEach.call(document.querySelectorAll('#ticketLegend .legend-filter'), function (btn) {
       btn.setAttribute('aria-pressed', String(btn.getAttribute('data-bucket') === state.ticketBucket));
     });
   }

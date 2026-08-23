@@ -875,6 +875,84 @@ function buildCenterDetailSpecs(centerId) {
         "WHERE CenterID = @cid " +
         "ORDER BY CreatedAt DESC " +
         "LIMIT 50"
+    },
+    {
+      // Zoho tickets whose IssueCategory marks them a device swap — same
+      // '%swap%' convention as centerTickets' `swapped` column (Center-360),
+      // so this list is exactly what that count is counting. All-time, not
+      // status-scoped, mirroring svcSwappedTickets below.
+      key: 'swappedTickets',
+      params: p,
+      sql:
+        "SELECT ticketNumber AS ticket, status, IFNULL(NULLIF(TRIM(priority),''),'—') AS priority, " +
+        " IFNULL(NULLIF(TRIM(subject),''),'(no subject)') AS subject, " +
+        " IFNULL(NULLIF(TRIM(IssueCategory),''),'') AS category, " +
+        " IFNULL(TicketLink,'') AS link, " +
+        " CAST(CreatedAt AS STRING) AS created " +
+        "FROM " + zohoDedupSql_() + " " +
+        "WHERE CenterID = @cid AND LOWER(IFNULL(IssueCategory, '')) LIKE '%swap%' " +
+        "ORDER BY CreatedAt DESC " +
+        "LIMIT 50"
+    },
+    {
+      // ServiceWRK tickets for this center, via customer_id -> CenterID (join
+      // verified live via profileJoinKeys() 2026-08-23: 87.7% of all rows
+      // resolve to a real center, 7,786 distinct centers hit — high enough to
+      // build on, per the decision rule in
+      // docs/superpowers/specs/2026-08-13-service-tom-pages-design.md §7.
+      // customer_id is TEXT in servicewrk_Tickets and CenterID is numeric in
+      // center_details, same CAST-to-STRING join as Fse.js's coverage layer.
+      key: 'svcTickets',
+      params: p,
+      sql:
+        "SELECT COUNT(*) AS total_tickets, " +
+        " COUNTIF(status = 'Open') AS open_tickets, " +
+        " COUNTIF(status = 'Closed') AS closed_tickets, " +
+        // Swapped mirrors centerTickets' Zoho `swapped` convention (LIKE
+        // '%swap%', all-time not status-scoped — a swap is a completed
+        // action, not a backlog item) but over ServiceWRK's own service_type
+        // column rather than Zoho's IssueCategory.
+        " COUNTIF(LOWER(IFNULL(service_type, '')) LIKE '%swap%') AS swapped " +
+        "FROM " + swTable_() + " WHERE customer_id = CAST(@cid AS STRING)"
+    },
+    {
+      key: 'svcOpenTickets',
+      params: p,
+      sql:
+        "SELECT ticket_id AS ticket, status, " +
+        " IFNULL(NULLIF(TRIM(service_type),''),'(unspecified)') AS category, " +
+        " IFNULL(NULLIF(TRIM(representative),''),'Unassigned') AS representative, " +
+        " FORMAT_DATE('%Y-%m-%d', DATE(created_on)) AS created " +
+        "FROM " + swTable_() + " " +
+        "WHERE customer_id = CAST(@cid AS STRING) AND status = 'Open' " +
+        "ORDER BY created_on DESC " +
+        "LIMIT 25"
+    },
+    {
+      key: 'svcClosedTickets',
+      params: p,
+      sql:
+        "SELECT ticket_id AS ticket, status, " +
+        " IFNULL(NULLIF(TRIM(service_type),''),'(unspecified)') AS category, " +
+        " IFNULL(NULLIF(TRIM(representative),''),'Unassigned') AS representative, " +
+        " FORMAT_DATE('%Y-%m-%d', DATE(created_on)) AS created " +
+        "FROM " + swTable_() + " " +
+        "WHERE customer_id = CAST(@cid AS STRING) AND status = 'Closed' " +
+        "ORDER BY created_on DESC " +
+        "LIMIT 50"
+    },
+    {
+      key: 'svcSwappedTickets',
+      params: p,
+      sql:
+        "SELECT ticket_id AS ticket, status, " +
+        " IFNULL(NULLIF(TRIM(service_type),''),'(unspecified)') AS category, " +
+        " IFNULL(NULLIF(TRIM(representative),''),'Unassigned') AS representative, " +
+        " FORMAT_DATE('%Y-%m-%d', DATE(created_on)) AS created " +
+        "FROM " + swTable_() + " " +
+        "WHERE customer_id = CAST(@cid AS STRING) AND LOWER(IFNULL(service_type, '')) LIKE '%swap%' " +
+        "ORDER BY created_on DESC " +
+        "LIMIT 50"
     }
   ];
 }

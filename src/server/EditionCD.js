@@ -1274,7 +1274,7 @@ function apiGetCenterDetailCD(options) {
   var centerId = parseInt(options && options.centerId, 10);
   return respond_(function () {
     if (!isFinite(centerId)) throw new Error('centerId is required');
-    return withCache('ctrdetcd_v6_' + centerId, function () { // v6: dropped cloud_devices `devices` spec (unread by the client) — cloud_devices data is CDM/Numbers/Raw-Data only now
+    return withCache('ctrdetcd_v7_' + centerId, function () { // v7: added ServiceWRK ticket specs (svcTickets/svcOpenTickets/svcClosedTickets/svcSwappedTickets) and the matching Zoho swappedTickets (same '%swap%' IssueCategory match as centerTickets' swapped count)
       // Reuse the original detail specs (tickets/openTickets are keyed by
       // CenterID, center-table-agnostic); swap only the `info` query.
       var specs = buildCenterDetailSpecs(centerId).map(function (s) {
@@ -1301,6 +1301,11 @@ function apiGetCenterDetailCD(options) {
         tickets: (detail.tickets && detail.tickets[0]) || null,
         openTickets: detail.openTickets || [],
         allTickets: detail.allTickets || [],
+        swappedTickets: detail.swappedTickets || [],
+        svcTickets: (detail.svcTickets && detail.svcTickets[0]) || null,
+        svcOpenTickets: detail.svcOpenTickets || [],
+        svcClosedTickets: detail.svcClosedTickets || [],
+        svcSwappedTickets: detail.svcSwappedTickets || [],
         assets: assets,
         edition: 'center_details', flags: FLAGS_CD
       };

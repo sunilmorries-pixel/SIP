@@ -603,13 +603,39 @@
           { ticket: '148102', status: 'Closed', priority: 'Medium', subject: 'Firmware update failed', category: 'Device Issue', link: '', created: '2026-02-20 09:00:00' },
           { ticket: '147988', status: 'Closed', priority: 'Low', subject: 'Report formatting query', category: 'Billing', link: '', created: '2026-01-30 16:40:00' }
         ],
+        swappedTickets: [
+          { ticket: '148300', status: 'Closed', priority: 'Low', subject: 'SIM swap request', category: 'Network — Sim Card Swapping', link: '', created: '2026-03-14 11:05:00' },
+          { ticket: '147650', status: 'Closed', priority: 'Medium', subject: 'Mac 600 to V-Cardia swap completed', category: 'Mac 600 To V-Cardia(Swapping)', link: 'https://desk.zoho.com/support/demo#Cases/dv/5', created: '2026-01-05 09:30:00' },
+          { ticket: '146980', status: 'In Progress', priority: 'High', subject: 'Temporary battery swap while unit under repair', category: 'Temporary swapping', link: '', created: '2025-12-11 13:15:00' }
+        ],
         assets: Array.from({ length: 8 }, function (_, i) {
           var age = rnd(90, 1400);
           var birth = new Date(Date.now() - age * 864e5);
           return { key: 'TA-' + (45000 + i), serial: 'B2-DEMO' + (1000 + i), type: ['VCARDIA', 'HE', 'H4'][rnd(0, 3)],
                    category: ['ECG Machine', 'Connector', 'SIM Card'][rnd(0, 3)],
                    birthday: birth.toISOString().slice(0, 10), age_days: age };
-        }).sort(function (a, b) { return b.age_days - a.age_days; })
+        }).sort(function (a, b) { return b.age_days - a.age_days; }),
+        svcTickets: { total_tickets: 14, open_tickets: 2, closed_tickets: 12, swapped: 3 },
+        svcOpenTickets: [
+          { ticket: 'SW-88231', status: 'Open', category: 'Preventive maintenance', representative: 'R Kulkarni', created: '2026-08-19' },
+          { ticket: 'SW-88190', status: 'Open', category: 'Network issue', representative: 'S Nair', created: '2026-08-15' }
+        ],
+        // 8 (not 5) so the drawer's >5-items pager is exercisable in preview.
+        svcClosedTickets: [
+          { ticket: 'SW-88102', status: 'Closed', category: 'Document collection', representative: 'R Kulkarni', created: '2026-08-10' },
+          { ticket: 'SW-87911', status: 'Closed', category: 'Training', representative: 'S Nair', created: '2026-07-28' },
+          { ticket: 'SW-87850', status: 'Closed', category: 'Lead cable replacement', representative: 'A Verma', created: '2026-07-20' },
+          { ticket: 'SW-87790', status: 'Closed', category: 'Communicator issue', representative: 'R Kulkarni', created: '2026-07-11' },
+          { ticket: 'SW-87622', status: 'Closed', category: 'Preventive maintenance', representative: 'S Nair', created: '2026-06-30' },
+          { ticket: 'SW-87500', status: 'Closed', category: 'Installation', representative: 'A Verma', created: '2026-06-14' },
+          { ticket: 'SW-87344', status: 'Closed', category: 'Network issue', representative: 'R Kulkarni', created: '2026-05-29' },
+          { ticket: 'SW-87201', status: 'Closed', category: 'Document collection', representative: 'S Nair', created: '2026-05-02' }
+        ],
+        svcSwappedTickets: [
+          { ticket: 'SW-86980', status: 'Closed', category: 'Battery swap', representative: 'R Kulkarni', created: '2026-04-18' },
+          { ticket: 'SW-86711', status: 'Closed', category: 'Battery swap', representative: 'A Verma', created: '2026-03-22' },
+          { ticket: 'SW-86340', status: 'Open', category: 'Mac 600 to V-Cardia swap', representative: 'S Nair', created: '2026-02-27' }
+        ]
       });
     }
     var months = [];
@@ -2618,6 +2644,23 @@
     }).join('');
   }
 
+  /** Renders a ServiceWRK ticket list — no subject/priority/link on this
+   *  source, so the row shows service type + representative instead. */
+  function svcTicketRowsHtml_(tickets) {
+    if (!tickets.length) return '<p class="card-sub">No tickets.</p>';
+    return tickets.map(function (t) {
+      var cls = ZOHO_TERMINAL_RE.test(t.status || '') ? 'ok' : 'warn';
+      return '<div class="ticket-row" data-svc-ticket="' + escapeHtml(t.ticket) + '">' +
+        '<div class="ticket-row-top"><span class="ticket-id">#' + escapeHtml(t.ticket) +
+        ' · ' + escapeHtml(t.status) + '</span>' +
+        '<span class="badge badge-' + cls + '">' + escapeHtml(t.status) + '</span></div>' +
+        '<div class="ticket-subj">' + escapeHtml(t.category) +
+        (t.representative ? ' · ' + escapeHtml(t.representative) : '') +
+        (t.created ? ' <span class="ticket-date">· ' + escapeHtml(t.created) + '</span>' : '') + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
   /**
    * The single app-level center-detail drawer, opened from map markers and
    * Center 360 rows. `c` is a compact array [id, name, ?, ?, devices, online,
@@ -2646,9 +2689,10 @@
   }
 
   function makeCenterDetail(ids) {
-    var PAGE_SIZE = 5; // "paginate if more than 5" — Jira devices + both ticket tabs
-    var listPage = { assets: 0, open: 0, all: 0 };
+    var PAGE_SIZE = 5; // "paginate if more than 5" — Jira devices + Zoho/Service ticket tabs
+    var listPage = { assets: 0, open: 0, all: 0, swapped: 0, svcOpen: 0, svcClosed: 0, svcSwapped: 0 };
     var activeTix = 'open';
+    var activeSvcTix = 'open';
 
     /**
      * @param {Array} c compact center row (see class doc below).
@@ -2659,8 +2703,9 @@
      *   buildCenterDetailSpecs, so a very old ticket may not appear at all).
      */
     function open(c, opts) {
-      listPage = { assets: 0, open: 0, all: 0 };
+      listPage = { assets: 0, open: 0, all: 0, swapped: 0, svcOpen: 0, svcClosed: 0, svcSwapped: 0 };
       activeTix = 'open';
+      activeSvcTix = 'open';
       $(ids.panel).hidden = false;
       if (ids.scrim) $(ids.scrim).hidden = false;
       $(ids.title).textContent = c[1];
@@ -2733,21 +2778,62 @@
       // Each tab is independently paginated (5/page) — see listPage.open/all.
       var openList = d.openTickets || [];
       var allList = d.allTickets || [];
-      if (openList.length || allList.length) {
+      // Swapped mirrors the Service-tickets block below and Center-360's own
+      // `swapped` column (Queries.js centerTickets) — same '%swap%'
+      // IssueCategory match, just the underlying ticket list for that count.
+      var swappedList = d.swappedTickets || [];
+      if (openList.length || allList.length || swappedList.length) {
         listPage.open = clampPage_(listPage.open, openList.length, PAGE_SIZE);
         listPage.all = clampPage_(listPage.all, allList.length, PAGE_SIZE);
+        listPage.swapped = clampPage_(listPage.swapped, swappedList.length, PAGE_SIZE);
         var openSlice = openList.slice(listPage.open * PAGE_SIZE, listPage.open * PAGE_SIZE + PAGE_SIZE);
         var allSlice = allList.slice(listPage.all * PAGE_SIZE, listPage.all * PAGE_SIZE + PAGE_SIZE);
+        var swappedSlice = swappedList.slice(listPage.swapped * PAGE_SIZE, listPage.swapped * PAGE_SIZE + PAGE_SIZE);
         html += '<div class="panel-section-title-row">' +
           '<span class="panel-section-title">Tickets</span>' +
           '<div class="ticket-toggle" role="group" aria-label="Ticket list filter">' +
           '<button type="button" class="ticket-toggle-btn' + (activeTix === 'open' ? ' is-active' : '') + '" data-tix="open">Open (' + openList.length + ')</button>' +
           '<button type="button" class="ticket-toggle-btn' + (activeTix === 'all' ? ' is-active' : '') + '" data-tix="all">All (' + allList.length + (allList.length >= 50 ? '+' : '') + ')</button>' +
+          '<button type="button" class="ticket-toggle-btn' + (activeTix === 'swapped' ? ' is-active' : '') + '" data-tix="swapped">Swapped (' + swappedList.length + (swappedList.length >= 50 ? '+' : '') + ')</button>' +
           '</div></div>' +
           '<div class="ticket-list" data-tix-panel="open"' + (activeTix === 'open' ? '' : ' hidden') + '>' +
           ticketRowsHtml_(openSlice, 'priority') + listPagerHtml_('open', listPage.open, PAGE_SIZE, openList.length) + '</div>' +
           '<div class="ticket-list" data-tix-panel="all"' + (activeTix === 'all' ? '' : ' hidden') + '>' +
-          ticketRowsHtml_(allSlice, 'status') + listPagerHtml_('all', listPage.all, PAGE_SIZE, allList.length) + '</div>';
+          ticketRowsHtml_(allSlice, 'status') + listPagerHtml_('all', listPage.all, PAGE_SIZE, allList.length) + '</div>' +
+          '<div class="ticket-list" data-tix-panel="swapped"' + (activeTix === 'swapped' ? '' : ' hidden') + '>' +
+          ticketRowsHtml_(swappedSlice, 'status') + listPagerHtml_('swapped', listPage.swapped, PAGE_SIZE, swappedList.length) + '</div>';
+      }
+
+      // Service (ServiceWRK) tickets — separate source from Zoho above, joined
+      // to this center via customer_id (see buildCenterDetailSpecs). Swapped
+      // is all-time and can overlap Open/Closed, same convention as the
+      // Center-360 `swapped` column (Queries.js centerTickets).
+      var svcOpenList = d.svcOpenTickets || [];
+      var svcClosedList = d.svcClosedTickets || [];
+      var svcSwappedList = d.svcSwappedTickets || [];
+      if (svcOpenList.length || svcClosedList.length || svcSwappedList.length) {
+        listPage.svcOpen = clampPage_(listPage.svcOpen, svcOpenList.length, PAGE_SIZE);
+        listPage.svcClosed = clampPage_(listPage.svcClosed, svcClosedList.length, PAGE_SIZE);
+        listPage.svcSwapped = clampPage_(listPage.svcSwapped, svcSwappedList.length, PAGE_SIZE);
+        var svcOpenSlice = svcOpenList.slice(listPage.svcOpen * PAGE_SIZE, listPage.svcOpen * PAGE_SIZE + PAGE_SIZE);
+        var svcClosedSlice = svcClosedList.slice(listPage.svcClosed * PAGE_SIZE, listPage.svcClosed * PAGE_SIZE + PAGE_SIZE);
+        var svcSwappedSlice = svcSwappedList.slice(listPage.svcSwapped * PAGE_SIZE, listPage.svcSwapped * PAGE_SIZE + PAGE_SIZE);
+        html += '<div class="panel-section-title-row">' +
+          '<span class="panel-section-title">Service tickets</span>' +
+          '<div class="ticket-toggle" role="group" aria-label="Service ticket list filter">' +
+          '<button type="button" class="ticket-toggle-btn' + (activeSvcTix === 'open' ? ' is-active' : '') + '" data-svctix="open">Open (' + svcOpenList.length + ')</button>' +
+          '<button type="button" class="ticket-toggle-btn' + (activeSvcTix === 'closed' ? ' is-active' : '') + '" data-svctix="closed">Closed (' + svcClosedList.length + (svcClosedList.length >= 50 ? '+' : '') + ')</button>' +
+          '<button type="button" class="ticket-toggle-btn' + (activeSvcTix === 'swapped' ? ' is-active' : '') + '" data-svctix="swapped">Swapped (' + svcSwappedList.length + (svcSwappedList.length >= 50 ? '+' : '') + ')</button>' +
+          '</div></div>' +
+          '<div class="ticket-list" data-svctix-panel="open"' + (activeSvcTix === 'open' ? '' : ' hidden') + '>' +
+          svcTicketRowsHtml_(svcOpenSlice) + listPagerHtml_('svcOpen', listPage.svcOpen, PAGE_SIZE, svcOpenList.length) + '</div>' +
+          '<div class="ticket-list" data-svctix-panel="closed"' + (activeSvcTix === 'closed' ? '' : ' hidden') + '>' +
+          svcTicketRowsHtml_(svcClosedSlice) + listPagerHtml_('svcClosed', listPage.svcClosed, PAGE_SIZE, svcClosedList.length) + '</div>' +
+          '<div class="ticket-list" data-svctix-panel="swapped"' + (activeSvcTix === 'swapped' ? '' : ' hidden') + '>' +
+          svcTicketRowsHtml_(svcSwappedSlice) + listPagerHtml_('svcSwapped', listPage.svcSwapped, PAGE_SIZE, svcSwappedList.length) + '</div>';
+      } else {
+        html += '<div class="panel-section-title">Service tickets</div>' +
+          '<p class="card-sub">No ServiceWRK tickets are linked to this center.</p>';
       }
 
       if (assetsList.length) {
@@ -2777,9 +2863,15 @@
       }
 
       $(ids.body).innerHTML = html;
-      Array.prototype.forEach.call($(ids.body).querySelectorAll('.ticket-toggle-btn'), function (btn) {
+      Array.prototype.forEach.call($(ids.body).querySelectorAll('.ticket-toggle-btn[data-tix]'), function (btn) {
         btn.addEventListener('click', function () {
           activeTix = btn.getAttribute('data-tix');
+          renderInto(c, d);
+        });
+      });
+      Array.prototype.forEach.call($(ids.body).querySelectorAll('.ticket-toggle-btn[data-svctix]'), function (btn) {
+        btn.addEventListener('click', function () {
+          activeSvcTix = btn.getAttribute('data-svctix');
           renderInto(c, d);
         });
       });

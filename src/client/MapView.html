@@ -26,6 +26,23 @@ function MapView(containerId) {
 
   var map = null, cluster = null, tileLayer = null;
   var centers = [], pendingRender = null, theme = 'dark';
+
+  // fitBounds used to fit EVERY plotted center, including a handful of
+  // outliers in North/South America and central Europe that read as bad
+  // geocodes (a center whose real address is India/Nepal/Philippines/Kenya/
+  // Malaysia/Nigeria landing at some far-off default coordinate) — per user,
+  // 2026-08-24: "tighten the bounds to India and neighbors" rather than
+  // zooming out to whatever the worst-geocoded center happens to be. This
+  // box is deliberately generous (~12° margin past each known country's real
+  // extent) so it comfortably covers the actual service countries and any
+  // genuine new one nearby, not just India itself. Markers outside it still
+  // render and are still clickable — only the auto-fit VIEW ignores them;
+  // no data is hidden.
+  var SERVICE_REGION_BOUNDS_ = { latMin: -12, latMax: 40, lngMin: -5, lngMax: 130 };
+  function inServiceRegion_(c) {
+    return c[2] >= SERVICE_REGION_BOUNDS_.latMin && c[2] <= SERVICE_REGION_BOUNDS_.latMax &&
+      c[3] >= SERVICE_REGION_BOUNDS_.lngMin && c[3] <= SERVICE_REGION_BOUNDS_.lngMax;
+  }
   // FSE layer state. fseGroup holds the engineer pins (a plain LayerGroup, NOT
   // the marker cluster — engineers must never collapse into a count bubble the
   // way centers do; there are tens of them, and the whole point is that a named
@@ -117,8 +134,13 @@ function MapView(containerId) {
     });
     cluster.addLayers(markers);
     if (fseFocused) applyFseFocus_(fseFocused);   // survive a data refresh
-    if (centers.length) {
-      try { map.fitBounds(L.latLngBounds(centers.map(function (c) { return [c[2], c[3]]; })).pad(0.1)); } catch (e) {}
+    // Fit to the in-region centers only (see SERVICE_REGION_BOUNDS_ above);
+    // fall back to every center in the rare case none qualify, so the map
+    // still lands somewhere sane instead of skipping fitBounds entirely.
+    var forFit = centers.filter(inServiceRegion_);
+    if (!forFit.length) forFit = centers;
+    if (forFit.length) {
+      try { map.fitBounds(L.latLngBounds(forFit.map(function (c) { return [c[2], c[3]]; })).pad(0.1)); } catch (e) {}
     }
   }
 

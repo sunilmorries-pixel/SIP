@@ -95,6 +95,19 @@ var CONFIG = {
   SLA_DEFAULT_DAYS: 5,
 
   /**
+   * Rolling window (days) that defines FSE coverage on the Overview map — a
+   * center counts as covered if an engineer worked a ServiceWRK ticket there
+   * within this many days of today. Per user, 2026-08-21: "use last 90 days
+   * for coverage".
+   *
+   * Deliberately NOT the global date filter: coverage answers "is this center
+   * served now", so it must not stretch when someone widens the date range to
+   * look at history. The trade is that while a date filter is active this one
+   * layer disagrees with every other number on the page. See Fse.js.
+   */
+  FSE_COVERAGE_DAYS: 90,
+
+  /**
    * Keyword regex (lowercased IssueCategory) that classifies an UNLISTED
    * category as Tech/device. Used by SlaCatalog.slaFor + techBoolSql_ so JS
    * and SQL agree. Listed categories use their catalog `tech` flag directly.

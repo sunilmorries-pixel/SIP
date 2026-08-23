@@ -1013,7 +1013,12 @@ function apiGetMapDataCD(options) {
     // Index 12 (approx) flags these so the client can mark them visually
     // distinct — they're a neighborhood-level guess, not the center's real spot.
     // v14: billable/machineTypes/deviceIds/macSerialIds filters added.
-    var cacheKey = 'mapcd_v14_' + getCacheEpoch_() + '_' + filterHash_(filters);
+    // v15: payload gained `fse` (the coverage layer) — a v14 entry cached before
+    // this deploy has no such key, and the client would read it as "no
+    // engineers" for up to the 30-min TTL rather than as "not loaded yet".
+    // NOTE: the key does not hash FSE_ROSTER, so a roster edit can serve a
+    // stale layer until the entry expires (or getCacheEpoch_ moves).
+    var cacheKey = 'mapcd_v15_' + getCacheEpoch_() + '_' + filterHash_(filters);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -1083,8 +1088,28 @@ function apiGetMapDataCD(options) {
       assetRows.push([asset.center_id, asset.serial || '']);
     });
 
+    // FSE coverage layer (Fse.js). Guarded on a non-empty roster: FSE_ROSTER
+    // ships empty, and until it's filled this layer draws nothing, so there's
+    // no reason to pay for the query on every map load. To discover the names
+    // to seed the roster with, run fseListRepNames() from the editor.
+    //
+    // plottedIds, not every center: coverage of a center the current filter has
+    // hidden must not count, or an engineer's fan would draw to a marker that
+    // isn't there. Uses the SAME coordsForCD_ the centers above go through, so
+    // an HQ in a city that already has a geocoded center needs no new geocode.
+    var fse = null;
+    if (fseRosterActive_().length) {
+      var plottedIds = {};
+      located.forEach(function (c) { plottedIds[String(c[0])] = true; });
+      var fseRows = runQueriesParallel([buildFseCoverageSpec_()]).fseCoverage || [];
+      fse = buildFseLayer_(fseRows, function (entry) {
+        return coordsForCD_(
+          { lat: entry.lat, lng: entry.lng, city: entry.hqCity, state: entry.hqState }, geoStore);
+      }, plottedIds);
+    }
+
     var payload = {
-      centers: located, assets: assetRows,
+      centers: located, assets: assetRows, fse: fse,
       edition: 'center_details', flags: FLAGS_CD
     };
     cachePutLarge(cacheKey, payload, 1800); // outlives the 10-min warm interval

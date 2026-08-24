@@ -104,9 +104,6 @@ body[data-theme="light"] .leaflet-control-attribution {
 }
 body[data-theme="light"] .map-legend { background: rgba(255, 255, 255, 0.92); }
 body[data-theme="light"] .center-panel { background: rgba(255, 255, 255, 0.97); }
-body[data-theme="light"] .marker-cluster-small div,
-body[data-theme="light"] .marker-cluster-medium div,
-body[data-theme="light"] .marker-cluster-large div { color: #FFFFFF !important; }
 
 /* ── reset-ish base ─────────────────────────────────────────────── */
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1282,13 +1279,13 @@ body[data-theme="light"] .cp-focus-bar { border-color: rgba(194, 65, 12, 0.5); }
   box-shadow: var(--shadow-card);
 }
 .leaflet-tooltip-top:before { border-top-color: var(--border-strong); }
-.marker-cluster-small, .marker-cluster-medium, .marker-cluster-large {
-  background: rgba(46, 155, 214, 0.25) !important;
-}
-.marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div {
-  background: rgba(46, 155, 214, 0.8) !important;
-  color: #fff !important;
-  font-family: var(--font-head); font-weight: 600;
+/* Custom cluster icon (iconCreateFunction in MapView.html) replaces
+   Leaflet.markercluster's default marker-cluster-small/medium/large styling. */
+.center-cluster { background: none; border: 0; }
+.center-cluster-inner {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; color: #fff; font-family: var(--font-head); font-weight: 700;
+  font-size: 12px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
 .map-legend {

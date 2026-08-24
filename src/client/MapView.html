@@ -360,7 +360,21 @@ function MapView(containerId) {
     stateLayer = L.layerGroup();
     cluster = L.markerClusterGroup({
       chunkedLoading: true, maxClusterRadius: 46,
-      showCoverageOnHover: false, spiderfyOnMaxZoom: true
+      showCoverageOnHover: false, spiderfyOnMaxZoom: true,
+      iconCreateFunction: function (clusterObj) {
+        var count = clusterObj.getChildCount();
+        // City tier only ever has to represent a handful of nearby pins per cluster
+        // (state/country tiers absorb the low-zoom load now), so a modest fixed max
+        // for the bucket's "brightest" step reads better than the true global max.
+        var bucket = rampBucket_(count, Math.max(count, 60));
+        var color = MAP_RAMP_COLORS_[bucket === -1 ? 0 : bucket];
+        var size = Math.min(48, 28 + Math.sqrt(count) * 2);
+        return L.divIcon({
+          html: '<span class="center-cluster-inner" style="width:' + size + 'px;height:' + size + 'px;background:' + color + ';">' + count + '</span>',
+          className: 'center-cluster',
+          iconSize: [size, size]
+        });
+      }
     });
     map.on('zoomend', updateTier_);
     updateTier_(); // sets the correct initial tier for the map's starting zoom (5 -> state)

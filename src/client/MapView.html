@@ -100,7 +100,7 @@ function MapView(containerId) {
     light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
   };
 
-  var map = null, cluster = null, tileLayer = null, countryLayer = null;
+  var map = null, cluster = null, tileLayer = null, countryLayer = null, stateLayer = null;
   var centers = [], pendingRender = null, theme = 'dark';
   var countryCounts_ = {};  // country name -> center count (was countryHasCenter_ boolean)
 
@@ -177,6 +177,54 @@ function MapView(containerId) {
     { name: 'Uttarakhand', lat: 30.0668, lng: 79.0193 }
   ];
 
+  // All 28 states + 8 union territories, approximate centroids (public-domain
+  // administrative geography — hand-authored the same way GRAY_AREA_STATES above
+  // is, not extracted from any licensed dataset). Superset of GRAY_AREA_STATES;
+  // those 7 keep their own coordinates unchanged here. Used by the state-tier
+  // proportional-circle layer (renderStateLayer_ below) — matching is exact-name
+  // against each center row's own `state` field, same trust-the-data convention
+  // countryCounts_ already uses for COUNTRY_GEOJSON_'s `name` property. A row
+  // whose state isn't one of these 36 names (typo, blank, non-India) silently
+  // doesn't contribute to any circle.
+  var INDIA_STATE_CENTROIDS_ = [
+    { name: 'Andhra Pradesh', lat: 15.9129, lng: 79.7400 },
+    { name: 'Arunachal Pradesh', lat: 28.2180, lng: 94.7278 },
+    { name: 'Assam', lat: 26.2006, lng: 92.9376 },
+    { name: 'Bihar', lat: 25.0961, lng: 85.3131 },
+    { name: 'Chhattisgarh', lat: 21.2787, lng: 81.8661 },
+    { name: 'Goa', lat: 15.2993, lng: 74.1240 },
+    { name: 'Gujarat', lat: 22.2587, lng: 71.1924 },
+    { name: 'Haryana', lat: 29.0588, lng: 76.0856 },
+    { name: 'Himachal Pradesh', lat: 31.1048, lng: 77.1734 },
+    { name: 'Jharkhand', lat: 23.6102, lng: 85.2799 },
+    { name: 'Karnataka', lat: 15.3173, lng: 75.7139 },
+    { name: 'Kerala', lat: 10.8505, lng: 76.2711 },
+    { name: 'Madhya Pradesh', lat: 22.9734, lng: 78.6569 },
+    { name: 'Maharashtra', lat: 19.7515, lng: 75.7139 },
+    { name: 'Manipur', lat: 24.6637, lng: 93.9063 },
+    { name: 'Meghalaya', lat: 25.4670, lng: 91.3662 },
+    { name: 'Mizoram', lat: 23.1645, lng: 92.9376 },
+    { name: 'Nagaland', lat: 26.1584, lng: 94.5624 },
+    { name: 'Odisha', lat: 20.9517, lng: 85.0985 },
+    { name: 'Punjab', lat: 31.1471, lng: 75.3412 },
+    { name: 'Rajasthan', lat: 27.0238, lng: 74.2179 },
+    { name: 'Sikkim', lat: 27.5330, lng: 88.5122 },
+    { name: 'Tamil Nadu', lat: 11.1271, lng: 78.6569 },
+    { name: 'Telangana', lat: 18.1124, lng: 79.0193 },
+    { name: 'Tripura', lat: 23.9408, lng: 91.9882 },
+    { name: 'Uttar Pradesh', lat: 26.8467, lng: 80.9462 },
+    { name: 'Uttarakhand', lat: 30.0668, lng: 79.0193 },
+    { name: 'West Bengal', lat: 22.9868, lng: 87.8550 },
+    { name: 'Andaman & Nicobar Islands', lat: 11.7401, lng: 92.6586 },
+    { name: 'Chandigarh', lat: 30.7333, lng: 76.7794 },
+    { name: 'Dadra & Nagar Haveli and Daman & Diu', lat: 20.1809, lng: 73.0169 },
+    { name: 'Delhi', lat: 28.7041, lng: 77.1025 },
+    { name: 'Jammu & Kashmir', lat: 33.7782, lng: 76.5762 },
+    { name: 'Ladakh', lat: 34.1526, lng: 77.5770 },
+    { name: 'Lakshadweep', lat: 10.5667, lng: 72.6417 },
+    { name: 'Puducherry', lat: 11.9416, lng: 79.8083 }
+  ];
+
   // Slate, chosen to literally match "gray area" as well as clear contrast:
   // #64748B scores 3.93 (dark) / 4.76 (light) against the two basemaps, same
   // bar FSE_COLOR/CP_COLOR clear. It sits closer to violet/orange by raw
@@ -237,6 +285,37 @@ function MapView(containerId) {
     countryLayer.setStyle(countryStyle_);
   }
 
+  /**
+   * Rebuilds the state proportional-circle layer from the current rows. Requires
+   * opts.stateIdx (the array index holding each row's state name) — with no stateIdx,
+   * this draws nothing (silent no-op), same convention as an unmatched country name.
+   */
+  function renderStateLayer_(rows, stateIdx) {
+    if (!stateLayer) return;
+    stateLayer.clearLayers();
+    if (stateIdx == null) return;
+    var counts = {};
+    for (var i = 0; i < rows.length; i++) {
+      var s = rows[i][stateIdx];
+      if (s) counts[s] = (counts[s] || 0) + 1;
+    }
+    var maxCount = 0;
+    for (var name in counts) { if (counts[name] > maxCount) maxCount = counts[name]; }
+    INDIA_STATE_CENTROIDS_.forEach(function (st) {
+      var count = counts[st.name] || 0;
+      if (count <= 0) return; // proportional-symbol convention: no symbol for zero
+      var bucket = rampBucket_(count, maxCount);
+      var radius = 6 + 14 * Math.sqrt(count / maxCount);
+      var color = MAP_RAMP_COLORS_[bucket];
+      L.circleMarker([st.lat, st.lng], {
+        radius: radius, color: color, weight: 1,
+        fillColor: color, fillOpacity: 0.55, interactive: true
+      }).bindTooltip(esc(st.name) + ': ' + count + ' center' + (count === 1 ? '' : 's'),
+        { direction: 'top' }
+      ).addTo(stateLayer);
+    });
+  }
+
   function ensureMap() {
     if (map) { setTimeout(function () { map.invalidateSize(); }, 80); return true; }
     if (typeof L === 'undefined') return false;
@@ -250,6 +329,7 @@ function MapView(containerId) {
     // be clickable itself (interactive:false) so it never steals a click
     // meant for a marker or the tiles beneath it.
     countryLayer = L.geoJSON(COUNTRY_GEOJSON_, { style: countryStyle_, interactive: false }).addTo(map);
+    stateLayer = L.layerGroup(); // NOT added to map yet — Task 4's updateTier_ controls visibility
     cluster = L.markerClusterGroup({
       chunkedLoading: true, maxClusterRadius: 46,
       showCoverageOnHover: false, spiderfyOnMaxZoom: true
@@ -323,6 +403,7 @@ function MapView(containerId) {
     });
     cluster.addLayers(markers);
     refreshCountryFill_(centers);
+    renderStateLayer_(centers, opts && opts.stateIdx);
     if (fseFocused) applyFseFocus_(fseFocused);   // survive a data refresh
     // Fit to the in-region centers only (see SERVICE_REGION_BOUNDS_ above);
     // fall back to every center in the rare case none qualify, so the map

@@ -2119,6 +2119,9 @@
   // trimmed to just what the map's serial search needs (2026-08-21): type/
   // category/age only fed the Map page's now-removed charts.
   var AI = { center: 0, serial: 1 };
+  // Compact center array indices for Top Customers' mapCenters (EditionCD.js
+  // computeTopCustomersCD_) — same 12-element shape as CI minus `approx`.
+  var TCI = { id: 0, name: 1, lat: 2, lng: 3, devices: 4, online: 5, tickets: 6, assets: 7, hub: 8, hubId: 9, segment: 10, state: 11 };
 
   function loadMapData() {
     gsCall(ep('apiGetMapData'), { filters: state.globalFilters })
@@ -2169,7 +2172,7 @@
         Charts.jiraStatus(payload.battery, 'chartCdmBattery');
         Charts.cdmHardware(payload.hardware);
         Charts.cdmEcg(payload.ecg);
-        cdmMap.setData(payload.centers, CenterDetail.open, { tooltipFn: cdmTooltip_ });
+        cdmMap.setData(payload.centers, CenterDetail.open, { tooltipFn: cdmTooltip_, stateIdx: CDMI.state });
       })
       .catch(function (err) {
         toast('CDM data failed: ' + err.message, 'error');
@@ -2764,7 +2767,7 @@
       return true;
     });
 
-    mainMap.setData(centers, CenterDetail.open);
+    mainMap.setData(centers, CenterDetail.open, { stateIdx: CI.state });
     renderFseLayer_(fse);
     renderCpLayer_(state.mapBundle.cp || null);
   }
@@ -3276,7 +3279,7 @@
     setKpi('tcTicketCount', t.ticket_count, FMT.format(t.open_tickets || 0) + ' currently open');
     setKpi('tcSlaBreach', t.sla_breach, (t.sla_within_pct != null ? t.sla_within_pct + '% within SLA' : 'past target'));
 
-    tcMap.setData(payload.mapCenters || [], CenterDetail.open);
+    tcMap.setData(payload.mapCenters || [], CenterDetail.open, { stateIdx: TCI.state });
 
     // Charts use the top ~15 by the relevant metric.
     var withDevices = payload.customers.filter(function (c) { return c.devices > 0; });

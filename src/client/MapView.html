@@ -316,6 +316,33 @@ function MapView(containerId) {
     });
   }
 
+  // Zoom breakpoints: country <=4, state 5-6, city >=7 — starting values (design
+  // spec §5), tunable here if a tier switch reads as premature/delayed once real
+  // data is on screen.
+  var MAP_TIER_COUNTRY_MAX_ = 4;
+  var MAP_TIER_STATE_MAX_ = 6;
+
+  /** Shows exactly one of countryLayer/stateLayer/cluster based on the current
+   *  zoom level — the three-tier drill-down (country -> state -> city). */
+  function updateTier_() {
+    if (!map) return;
+    var z = map.getZoom();
+    var tier = z <= MAP_TIER_COUNTRY_MAX_ ? 'country' : (z <= MAP_TIER_STATE_MAX_ ? 'state' : 'city');
+    if (tier === 'country') {
+      if (!map.hasLayer(countryLayer)) map.addLayer(countryLayer);
+      if (map.hasLayer(stateLayer)) map.removeLayer(stateLayer);
+      if (map.hasLayer(cluster)) map.removeLayer(cluster);
+    } else if (tier === 'state') {
+      if (map.hasLayer(countryLayer)) map.removeLayer(countryLayer);
+      if (!map.hasLayer(stateLayer)) map.addLayer(stateLayer);
+      if (map.hasLayer(cluster)) map.removeLayer(cluster);
+    } else {
+      if (map.hasLayer(countryLayer)) map.removeLayer(countryLayer);
+      if (map.hasLayer(stateLayer)) map.removeLayer(stateLayer);
+      if (!map.hasLayer(cluster)) map.addLayer(cluster);
+    }
+  }
+
   function ensureMap() {
     if (map) { setTimeout(function () { map.invalidateSize(); }, 80); return true; }
     if (typeof L === 'undefined') return false;
@@ -327,14 +354,16 @@ function MapView(containerId) {
     // Below the markers/clusters (added next), above the base tiles — a wash
     // showing which countries have at least one plotted center. Not meant to
     // be clickable itself (interactive:false) so it never steals a click
-    // meant for a marker or the tiles beneath it.
-    countryLayer = L.geoJSON(COUNTRY_GEOJSON_, { style: countryStyle_, interactive: false }).addTo(map);
-    stateLayer = L.layerGroup(); // NOT added to map yet — Task 4's updateTier_ controls visibility
+    // meant for a marker or the tiles beneath it. Neither this nor stateLayer
+    // is unconditionally added to the map — updateTier_ (above) owns visibility.
+    countryLayer = L.geoJSON(COUNTRY_GEOJSON_, { style: countryStyle_, interactive: false });
+    stateLayer = L.layerGroup();
     cluster = L.markerClusterGroup({
       chunkedLoading: true, maxClusterRadius: 46,
       showCoverageOnHover: false, spiderfyOnMaxZoom: true
     });
-    map.addLayer(cluster);
+    map.on('zoomend', updateTier_);
+    updateTier_(); // sets the correct initial tier for the map's starting zoom (5 -> state)
     if (pendingRender) { var run = pendingRender; pendingRender = null; run(); }
     return true;
   }
@@ -413,6 +442,7 @@ function MapView(containerId) {
     if (forFit.length) {
       try { map.fitBounds(L.latLngBounds(forFit.map(function (c) { return [c[2], c[3]]; })).pad(0.1)); } catch (e) {}
     }
+    updateTier_(); // fitBounds may have changed the zoom level — resync the visible tier
   }
 
   /* ── FSE coverage layer ──────────────────────────────────────────

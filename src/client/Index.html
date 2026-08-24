@@ -218,7 +218,7 @@
         <button class="legend-filter" type="button" data-bucket="none" aria-pressed="false"><span class="legend-dot" style="background:#34D399"></span>No open tickets</button>
         <button class="legend-filter" type="button" data-bucket="low" aria-pressed="false"><span class="legend-dot" style="background:#FBBF24"></span>1–3 open</button>
         <button class="legend-filter" type="button" data-bucket="high" aria-pressed="false"><span class="legend-dot" style="background:#F87171"></span>4+ open</button>
-        <span class="legend-note"><span class="legend-ramp"></span>Fewer&nbsp;&rarr;&nbsp;more centers <span class="legend-swatch" style="background:#869AB2"></span>No data · size = devices · faded/dashed = approximate location · click to filter</span>
+        <span class="legend-note"><span class="legend-swatch" style="background:#2E9BD6"></span>Country has centers <span class="legend-swatch" style="background:#869AB2"></span>No centers · size = devices · faded/dashed = approximate location · click to filter</span>
       </div>
 
       <!-- Engineer layer controls, kept in their own row rather than appended
@@ -382,7 +382,7 @@
         <span><span class="legend-dot" style="background:#34D399"></span>No low-battery devices</span>
         <span><span class="legend-dot" style="background:#FBBF24"></span>1–3 low-battery</span>
         <span><span class="legend-dot" style="background:#F87171"></span>4+ low-battery</span>
-        <span class="legend-note"><span class="legend-ramp"></span>Fewer&nbsp;&rarr;&nbsp;more centers <span class="legend-swatch" style="background:#869AB2"></span>No data · size = communicators</span>
+        <span class="legend-note"><span class="legend-swatch" style="background:#2E9BD6"></span>Country has centers <span class="legend-swatch" style="background:#869AB2"></span>No centers · size = communicators</span>
       </div>
     </div>
 
@@ -855,24 +855,15 @@
         <span><span class="legend-dot" style="background:#34D399"></span>No open tickets</span>
         <span><span class="legend-dot" style="background:#FBBF24"></span>1–3 open</span>
         <span><span class="legend-dot" style="background:#F87171"></span>4+ open</span>
-        <span class="legend-note"><span class="legend-ramp"></span>Fewer&nbsp;&rarr;&nbsp;more centers <span class="legend-swatch" style="background:#869AB2"></span>No data · Bubble size = devices</span>
+        <span class="legend-note"><span class="legend-swatch" style="background:#2E9BD6"></span>Country has centers <span class="legend-swatch" style="background:#869AB2"></span>No centers · Bubble size = devices</span>
       </div>
     </div>
 
     <div class="card-grid" style="margin-top:var(--gap)">
-      <!-- Three peer "per customer" charts: span-4 each so all three share one
-           row. At span-6 they packed 2 + 1, leaving the third orphaned beside
-           half a row of empty grid. -->
-      <article class="card span-4">
-        <header class="card-head">
-          <h2 class="card-title">Devices per customer</h2>
-          <p class="card-sub">Live devices across each Top LE hub</p>
-        </header>
-        <div id="chartTcDevices" class="chart chart-tall" role="img"
-             aria-label="Horizontal bar chart of devices per top customer"></div>
-      </article>
-
-      <article class="card span-4">
+      <!-- Two peer "per customer" charts: span-6 each so they share one row.
+           A third (Devices per customer) sat here until 2026-08-24, when
+           devices/assets were dropped from this page's own metrics. -->
+      <article class="card span-6">
         <header class="card-head">
           <h2 class="card-title">Centers per customer</h2>
           <p class="card-sub">Deployment footprint by hub</p>
@@ -881,7 +872,7 @@
              aria-label="Horizontal bar chart of centers per top customer"></div>
       </article>
 
-      <article class="card span-4">
+      <article class="card span-6">
         <header class="card-head">
           <h2 class="card-title">Open tickets per customer</h2>
           <p class="card-sub">Active support load by hub</p>
@@ -890,7 +881,6 @@
              aria-label="Horizontal bar chart of open tickets per top customer"></div>
       </article>
 
-
       <article class="card span-12">
         <header class="card-head">
           <h2 class="card-title">Customer leaderboard</h2>
@@ -898,7 +888,7 @@
         </header>
         <div class="table-scroll">
           <table class="data-table" id="tcTable">
-            <caption class="sr-only">Top customers with centers, devices, tickets and assets</caption>
+            <caption class="sr-only">Top customers with centers, open tickets and MRR</caption>
             <thead><tr id="tcTableHead"></tr></thead>
             <tbody></tbody>
           </table>

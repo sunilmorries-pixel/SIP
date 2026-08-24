@@ -70,11 +70,16 @@ function pointInGeometry_(geom, lat, lng) {
 // 5-step sequential ramp (light -> dark), one hue, validated as an ordinal ramp
 // against both basemap surfaces via the dataviz skill's scripts/validate_palette.js
 // (node validate_palette.js "<hex,...>" --mode light|dark --ordinal — all checks
-// pass both modes). Index 0 = fewest centers, index 4 = most.
+// pass both modes). Index 0 = fewest centers, index 4 = most. Used by the state
+// proportional-circle layer and the cluster bubbles — NOT by the country layer,
+// which reverted to a plain has-center/no-center fill below (per user, 2026-08-24).
 var MAP_RAMP_COLORS_ = ['#6eb5dd', '#419dd2', '#2b83b6', '#236b95', '#1d597c'];
 // Fixed "no data" tone, separate from the 5-step progression (standard choropleth
-// convention) — same value as the old COUNTRY_NO_CENTER_COLOR_ it replaces.
+// convention) — same value as COUNTRY_NO_CENTER_COLOR_ below.
 var MAP_NO_DATA_COLOR_ = '#869AB2';
+
+var COUNTRY_HAS_CENTER_COLOR_ = '#2E9BD6';  // existing info-blue accent (.btn-ghost:hover)
+var COUNTRY_NO_CENTER_COLOR_ = '#869AB2';   // --text-3, the app's existing muted tone
 
 /**
  * Buckets a count into one of MAP_RAMP_COLORS_'s 5 steps, or -1 ("no data") for a
@@ -102,7 +107,7 @@ function MapView(containerId) {
 
   var map = null, cluster = null, tileLayer = null, countryLayer = null, stateLayer = null;
   var centers = [], pendingRender = null, theme = 'dark';
-  var countryCounts_ = {};  // country name -> center count (was countryHasCenter_ boolean)
+  var countryHasCenter_ = {};
 
   // fitBounds used to fit EVERY plotted center, including a handful of
   // outliers in North/South America and central Europe that read as bad
@@ -183,7 +188,7 @@ function MapView(containerId) {
   // those 7 keep their own coordinates unchanged here. Used by the state-tier
   // proportional-circle layer (renderStateLayer_ below) — matching is exact-name
   // against each center row's own `state` field, same trust-the-data convention
-  // countryCounts_ already uses for COUNTRY_GEOJSON_'s `name` property. A row
+  // countryHasCenter_ already uses for COUNTRY_GEOJSON_'s `name` property. A row
   // whose state isn't one of these 36 names (typo, blank, non-India) silently
   // doesn't contribute to any circle.
   var INDIA_STATE_CENTROIDS_ = [
@@ -249,39 +254,36 @@ function MapView(containerId) {
   }
 
   function countryStyle_(feature) {
-    var count = countryCounts_[feature.properties.name] || 0;
-    var maxCount = 0;
-    for (var name in countryCounts_) { if (countryCounts_[name] > maxCount) maxCount = countryCounts_[name]; }
-    var bucket = rampBucket_(count, maxCount);
-    // Equal-ish opacity on both — a "no data" fill at a much lower alpha
+    var has = countryHasCenter_[feature.properties.name];
+    // Equal-ish opacity on both — a "no centers" fill at a much lower alpha
     // just blended into the basemap on both themes (measured: unreadable as
     // an intentional fill, not merely absent tiles) and defeated the point.
     return {
-      fillColor: bucket === -1 ? MAP_NO_DATA_COLOR_ : MAP_RAMP_COLORS_[bucket],
-      fillOpacity: bucket === -1 ? 0.16 : 0.22,
+      fillColor: has ? COUNTRY_HAS_CENTER_COLOR_ : COUNTRY_NO_CENTER_COLOR_,
+      fillOpacity: has ? 0.22 : 0.16,
       color: 'transparent', weight: 0
     };
   }
 
-  /** Recomputes per-country center counts from the bundled country polygons, then
-   *  repaints the fill layer with the count-based ramp (countryStyle_ above). Bbox
-   *  reject first, then stops testing a country the moment one center lands inside
-   *  it — with up to ~19k centers and 135 country polygons this still runs in a
-   *  handful of milliseconds, not per-frame, just once per setData(). */
+  /** Recomputes which bundled country polygons contain at least one plotted
+   *  center, then repaints the fill layer. Bbox reject first, then stops
+   *  testing a country the moment one center lands inside it — with up to
+   *  ~19k centers and 135 country polygons this still runs in a handful of
+   *  milliseconds, not per-frame, just once per setData(). */
   function refreshCountryFill_(rows) {
     if (!countryLayer) return;
-    var counts = {};
+    countryHasCenter_ = {};
     var features = COUNTRY_GEOJSON_.features;
     for (var i = 0; i < rows.length; i++) {
       var lat = rows[i][2], lng = rows[i][3];
       for (var j = 0; j < features.length; j++) {
         var f = features[j], name = f.properties.name;
+        if (countryHasCenter_[name]) continue;
         var b = f._bbox;
         if (lat < b.minLat || lat > b.maxLat || lng < b.minLng || lng > b.maxLng) continue;
-        if (pointInGeometry_(f.geometry, lat, lng)) { counts[name] = (counts[name] || 0) + 1; break; }
+        if (pointInGeometry_(f.geometry, lat, lng)) countryHasCenter_[name] = true;
       }
     }
-    countryCounts_ = counts;
     countryLayer.setStyle(countryStyle_);
   }
 

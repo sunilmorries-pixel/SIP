@@ -67,8 +67,30 @@ function pointInGeometry_(geom, lat, lng) {
   return false;
 }
 
-var COUNTRY_HAS_CENTER_COLOR_ = '#2E9BD6';  // existing info-blue accent (.btn-ghost:hover)
-var COUNTRY_NO_CENTER_COLOR_ = '#869AB2';   // --text-3, the app's existing muted tone
+// 5-step sequential ramp (light -> dark), one hue, validated as an ordinal ramp
+// against both basemap surfaces via the dataviz skill's scripts/validate_palette.js
+// (node validate_palette.js "<hex,...>" --mode light|dark --ordinal — all checks
+// pass both modes). Index 0 = fewest centers, index 4 = most.
+var MAP_RAMP_COLORS_ = ['#6eb5dd', '#419dd2', '#2b83b6', '#236b95', '#1d597c'];
+// Fixed "no data" tone, separate from the 5-step progression (standard choropleth
+// convention) — same value as the old COUNTRY_NO_CENTER_COLOR_ it replaces.
+var MAP_NO_DATA_COLOR_ = '#869AB2';
+
+/**
+ * Buckets a count into one of MAP_RAMP_COLORS_'s 5 steps, or -1 ("no data") for a
+ * non-positive count. Log-scaled against the current render's own max so one dominant
+ * region (e.g. India) doesn't flatten every other region to the palest step.
+ * @param {number} count
+ * @param {number} maxCount
+ * @return {number} -1..4
+ */
+function rampBucket_(count, maxCount) {
+  if (!count || count <= 0) return -1;
+  if (!maxCount || maxCount <= 1) return 0;
+  var t = Math.log(count + 1) / Math.log(maxCount + 1);
+  var idx = Math.floor(t * MAP_RAMP_COLORS_.length);
+  return idx >= MAP_RAMP_COLORS_.length ? MAP_RAMP_COLORS_.length - 1 : idx;
+}
 
 function MapView(containerId) {
   'use strict';
@@ -80,7 +102,7 @@ function MapView(containerId) {
 
   var map = null, cluster = null, tileLayer = null, countryLayer = null;
   var centers = [], pendingRender = null, theme = 'dark';
-  var countryHasCenter_ = {};
+  var countryCounts_ = {};  // country name -> center count (was countryHasCenter_ boolean)
 
   // fitBounds used to fit EVERY plotted center, including a handful of
   // outliers in North/South America and central Europe that read as bad
@@ -179,36 +201,39 @@ function MapView(containerId) {
   }
 
   function countryStyle_(feature) {
-    var has = countryHasCenter_[feature.properties.name];
-    // Equal-ish opacity on both — a "no centers" fill at a much lower alpha
+    var count = countryCounts_[feature.properties.name] || 0;
+    var maxCount = 0;
+    for (var name in countryCounts_) { if (countryCounts_[name] > maxCount) maxCount = countryCounts_[name]; }
+    var bucket = rampBucket_(count, maxCount);
+    // Equal-ish opacity on both — a "no data" fill at a much lower alpha
     // just blended into the basemap on both themes (measured: unreadable as
     // an intentional fill, not merely absent tiles) and defeated the point.
     return {
-      fillColor: has ? COUNTRY_HAS_CENTER_COLOR_ : COUNTRY_NO_CENTER_COLOR_,
-      fillOpacity: has ? 0.22 : 0.16,
+      fillColor: bucket === -1 ? MAP_NO_DATA_COLOR_ : MAP_RAMP_COLORS_[bucket],
+      fillOpacity: bucket === -1 ? 0.16 : 0.22,
       color: 'transparent', weight: 0
     };
   }
 
-  /** Recomputes which bundled country polygons contain at least one plotted
-   *  center, then repaints the fill layer. Bbox reject first, then stops
-   *  testing a country the moment one center lands inside it — with up to
-   *  ~19k centers and 135 country polygons this still runs in a handful of
-   *  milliseconds, not per-frame, just once per setData(). */
+  /** Recomputes per-country center counts from the bundled country polygons, then
+   *  repaints the fill layer with the count-based ramp (countryStyle_ above). Bbox
+   *  reject first, then stops testing a country the moment one center lands inside
+   *  it — with up to ~19k centers and 135 country polygons this still runs in a
+   *  handful of milliseconds, not per-frame, just once per setData(). */
   function refreshCountryFill_(rows) {
     if (!countryLayer) return;
-    countryHasCenter_ = {};
+    var counts = {};
     var features = COUNTRY_GEOJSON_.features;
     for (var i = 0; i < rows.length; i++) {
       var lat = rows[i][2], lng = rows[i][3];
       for (var j = 0; j < features.length; j++) {
         var f = features[j], name = f.properties.name;
-        if (countryHasCenter_[name]) continue;
         var b = f._bbox;
         if (lat < b.minLat || lat > b.maxLat || lng < b.minLng || lng > b.maxLng) continue;
-        if (pointInGeometry_(f.geometry, lat, lng)) countryHasCenter_[name] = true;
+        if (pointInGeometry_(f.geometry, lat, lng)) { counts[name] = (counts[name] || 0) + 1; break; }
       }
     }
+    countryCounts_ = counts;
     countryLayer.setStyle(countryStyle_);
   }
 

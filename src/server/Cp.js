@@ -8,7 +8,8 @@
  * name-reconciliation step, and no "unmatched" bucket the way Fse.js has for
  * ServiceWRK representatives — buildCpLayer_ only has to resolve coordinates.
  *
- * CP_ROSTER SHIPS POPULATED (unlike FSE_ROSTER's deliberate empty start):
+ * CP_ROSTER SHIPS POPULATED (FSE_ROSTER deliberately started empty and was only
+ * filled later, in 78ed2f8/@89; this one was populated from the start):
  * this data comes from a named, real source — "Progress on the Service
  * Dealer Network - BRM 2026.xlsx", 'CP' sheet, imported 2026-08-24 — not
  * placeholder content, so there is no "drawing a company that doesn't exist"

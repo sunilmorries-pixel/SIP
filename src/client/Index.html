@@ -226,7 +226,9 @@
            exclusive filter, these are a layer toggle and a separate filter, and
            crowding them into one strip made all six read as one control group.
            Both are hidden entirely until a payload actually carries engineers
-           (FSE_ROSTER ships empty), so the map gains no dead chrome. -->
+           (an empty FSE_ROSTER yields none), so the map gains no dead chrome.
+           Populated since 78ed2f8/@89, so these controls now do appear in
+           production; before that they were correctly absent, not merely quiet. -->
       <div class="map-legend map-legend-fse" id="fseLegend" role="group" aria-label="Engineer coverage" hidden>
         <button id="fseToggle" class="legend-filter" type="button" aria-pressed="true">
           <span class="legend-dot legend-dot-fse"></span><span id="fseToggleLabel">Engineers</span>

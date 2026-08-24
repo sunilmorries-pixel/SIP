@@ -11,12 +11,16 @@
  * Same rules apply: edit it here, note where the values came from, and keep it
  * ordered so diffs read cleanly.
  *
- * FSE_ROSTER SHIPS EMPTY ON PURPOSE. An entry here draws a named human being
+ * NEVER PLACEHOLDERS - REAL ROWS ONLY. An entry here draws a named human being
  * on a production operations map, so a placeholder would put a person who does
- * not exist in front of the people who staff the field. Until real roster rows
- * are pasted in, the map simply has no FSE layer. The local preview supplies
- * its own demo engineers from the mock in App.html, which never reaches
- * production.
+ * not exist in front of the people who staff the field. This roster therefore
+ * shipped EMPTY from @83/@84 through @88 -- and while it was empty the guard in
+ * EditionCD.js sent `fse: null`, so production drew NO engineer pins for six
+ * deploys. Everything the docs recorded about this layer in that window was
+ * verified against the preview mock, not production. Real rows arrived in
+ * 78ed2f8 and shipped @89, so the layer is live now; hold anything added later
+ * to the same bar. The local preview supplies its own demo engineers from the
+ * mock in App.html, which never reaches production.
  *
  * Entry shape:
  *   name      {string}  REQUIRED. Must reconcile with servicewrk_Tickets

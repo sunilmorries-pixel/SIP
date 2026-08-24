@@ -1091,9 +1091,12 @@ function apiGetMapDataCD(options) {
       assetRows.push([asset.center_id, asset.serial || '']);
     });
 
-    // FSE coverage layer (Fse.js). Guarded on a non-empty roster: FSE_ROSTER
-    // ships empty, and until it's filled this layer draws nothing, so there's
-    // no reason to pay for the query on every map load. To discover the names
+    // FSE coverage layer (Fse.js). Guarded on a non-empty roster so an empty one
+    // costs nothing. That guard was load-bearing for six deploys: FSE_ROSTER was
+    // empty from @83/@84 through @88, so this sent fse: null and production drew
+    // no pins at all. 78ed2f8/@89 filled it, so the query now really runs -- on
+    // every cache MISS, not every map load (Warm.js re-warms the default filter
+    // set every 10 min, so users normally hit a hot cache). To discover the names
     // to seed the roster with, run fseListRepNames() from the editor.
     //
     // plottedIds, not every center: coverage of a center the current filter has

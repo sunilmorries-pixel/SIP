@@ -37,7 +37,7 @@ for the full sequence and the reasoning behind each layout change before "fixing
 layout issue — several apparent bugs there were already tried, measured against real production
 data, and deliberately reverted once.
 
-**@77/v5.48–@88 the renderer was a treemap** — `Charts.decompTreemap`, replacing `Charts.decompTree`.
+**@77/v5.48–@89 the renderer was a treemap** — `Charts.decompTreemap`, replacing `Charts.decompTree`.
 That ended the layout churn above rather than continuing it: the `tree` series laid out by topology,
 drawing every node at a fixed 88×52 / 70×48 box whatever its count, so magnitude existed only as
 label text and same-depth siblings split one span whether a branch held 3% or 65% of its parent. Six

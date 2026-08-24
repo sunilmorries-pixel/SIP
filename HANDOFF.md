@@ -1,22 +1,34 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-23 · **Live version:** 5.55 · **Status:** ✅ Production, `main` and
-`origin/main` all agree at `921d39b`. Production
-(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always)
-serves Apps Script **@84 / v5.55**, deployed 2026-08-23 8:09 PM. Working tree is clean. **@81/v5.52
+**Last updated:** 2026-08-24 · **Live version:** 5.61 · **Status:** ✅ Production. **`36a38e4` is cited
+here and below as the *last-deployed commit*, never as a tip** — the two happened to coincide when
+this was written and stop coinciding at the next commit, so read it as "what production ships" and
+re-derive currency with the gap command below. Production
+(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always —
+the stable deployment ID has never changed) serves Apps Script **@90 / v5.61**, deployed
+2026-08-24 5:28 AM (`APP_VERSION: '90'` / `APP_DEPLOYED_AT: 'Aug 24, 2026, 5:28 AM'`,
+`src/server/Config.js:134-135`). Working tree is clean. **@81/v5.52
 was never deployed standalone** — see its entry below; the version-bump discipline held (nobody
 shipped code claiming to be `'81'`), it was simply superseded by `'82'` before a deploy ever ran.
 
-**There is deliberately no tip SHA and no commit count in this header.** It kept going stale, twice
-because of commits that edited nothing but this file — any "N commits ahead of production" figure is
-falsified by the very commit that corrects it. Cite what a deploy would actually ship instead:
+**No figure in this header is measured against a moving ref — no tip SHA, and no "N commits ahead
+of production" count.** It kept going stale, twice because of commits that edited nothing but this
+file, so anything counted from `HEAD` is falsified by the very commit that corrects it. (A count
+between two *fixed* SHAs is exempt, and there is one two paragraphs down: the ban is on the moving
+end, not on arithmetic.) Cite what a deploy would actually ship instead:
 
 ```
 git log <last-deployed-commit>..HEAD -- src/
 ```
 
 The `-- src/` pathspec is the point: `rootDir` is `src/`, so nothing outside it can reach production
-and doc-only commits never show up in the deployable gap.
+and doc-only commits never show up in the deployable gap. **As of this pass that gap is empty:**
+`git log 36a38e4..HEAD -- src/` returns nothing, because @90's version bump lives *inside* `36a38e4`
+rather than in a separate marker commit — HEAD **is** the last-deployed commit and nothing is staged
+for a @91. (This catch-up covers `921d39b..36a38e4`, written as a **closed** range on purpose: 16 of
+its 20 commits touch `src/`, and because both ends are fixed SHAs that figure stays true forever
+instead of rotting at the next commit. It is history, not a pending-deploy count — never respell it
+against `HEAD`, and never read a *pending* gap out of this file; recompute that one.)
 
 **RETIRED (was a live blocker through @81, resolved @82, 2026-08-21/22):** this header used to carry
 ~90 lines describing a silently-wrong-data bug — `filtersEqual_`/`filterActiveCount_`/
@@ -32,11 +44,28 @@ this exact bug has now recurred at least twice with different dimensions.
 
 **The `v5.x` label lives only in these docs.** There is no semantic-version constant anywhere in
 `src/` — `CONFIG.APP_VERSION` holds the Apps Script deployment number and nothing else, so don't go
-hunting for a `5.55` string in the source. The @N → v5.x mapping is maintained here by hand: @78 =
+hunting for a `5.61` string in the source (grep confirms no `5.6x` string exists anywhere under
+`src/`; `Config.js:134-135` are the only definitions, consumed by `WebApp.js:23-24` and
+`EditionCD.js:764`). The @N → v5.x mapping is maintained here by hand: @78 =
 v5.49, @79 = v5.50, @80 = v5.51, **@81 = v5.52 (never deployed — see below)**, @82 = v5.53, @83 =
-v5.54, @84 = v5.55.
+v5.54, @84 = v5.55, @85 = v5.56, @86 = v5.57, @87 = v5.58, @88 = v5.59, @89 = v5.60, @90 = v5.61.
+Five of those six were read off their own `Config.js` bump commit: `e09f959` (@85), `af323a1` (@86),
+`6ee4506` (@87), `0119b04` (@88), `8dc6f69` (@89) — and **@90 has no separate bump commit at all**,
+the `'89'` → `'90'` change is inside `36a38e4` with the feature. That's a deviation from @85–@89's
+code-commit-plus-marker-commit pattern; it isn't a version-bump *mistake* (the value shipped is
+correct), but it does mean `git log --oneline` no longer shows a "Config: bump …(@N)" line for every
+deploy, so don't infer the deploy list from those markers alone.
 
-**This handoff was stale for three deploys again** (@78–@80) before this catch-up pass — its header
+**This handoff went stale for SIX deploys this time** (@85–@90, first deployed 2026-08-23 11:12 PM,
+last 2026-08-24 5:28 AM — all six inside about six and a quarter hours), caught up in the pass dated
+above. Its header still claimed `921d39b`/@84/v5.55 was live while production had shipped six more
+versions and `main` had moved on by the 16 `src/` commits of `921d39b..36a38e4`. **That is worse
+than the three-deploy episode described in the rest of this paragraph, and second only to the
+ten-deploy one** — so the pattern below is not historical, it is
+the file's steady state whenever a burst of deploys lands faster than anyone updates this doc. The
+previous catch-up's closing note ("caught up once for the same reason at v5.48") did not prevent the
+next gap; assume the same of this sentence and re-derive currency from `git`.
+**Prior episode, for the shape:** stale for three deploys (@78–@80) — its header
 still claimed `cd29dc6`/@77/v5.48 was live and that "git, GitHub, and production all agree", while
 `main` had moved 15 commits ahead and production had shipped three more versions. It had already
 been caught up once for the same reason at v5.48, when it sat **ten** deploys stale (v5.38–v5.47,
@@ -54,14 +83,19 @@ branch `qa-findings-stale` (`ffbce3a`) was deleted too — its one substantive c
 `src/server/EditionCD.js:172` (`COUNT(DISTINCT IF(deactivationdate IS NULL, CenterID, NULL))`), so
 nothing was lost. `git branch -r` is now just `origin/HEAD -> origin/main` and `origin/main`.
 
-**Worktrees as of 2026-08-23** (`git worktree list`): `audit-data-correctness` is **gone** — it was
+**Worktrees as of 2026-08-24** (`git worktree list`, re-verified this pass — both are still present
+at **unchanged tips**, `4a0a30c` and `c622815`; nothing was added, advanced or removed across
+@85–@90): `audit-data-correctness` is **gone** — it was
 removed between the 2026-08-21 and 2026-08-23 passes (by whoever held that checkout; not tracked
 here mid-flight, same blind spot noted below for the concurrent-session pattern). Two remain:
 - `.claude/worktrees/ecstatic-austin-24c6f4` (branch `claude/ecstatic-austin-24c6f4`, tip
   `4a0a30c`) — **new since the last pass, not previously documented.** Clean working tree, **no
   unique commits** — its tip is already an ancestor of `main`, and `git diff --stat main` shows only
-  deletions (everything `main` has gained since — FSE, ServiceWRK ticket tabs, the 4 new filters —
-  reads as "removed" from this branch's frozen point of view). Looks like a `remote`/isolated-agent
+  deletions (everything `main` has gained since — FSE, ServiceWRK ticket tabs, the 4 new filters,
+  and now also the CP dealer layer, the embedded country-fill GeoJSON, `SERVICE_REGION_BOUNDS_` and
+  the Overview flow renderer — reads as "removed" from this branch's frozen point of view; the
+  deletion count only grows as `main` moves, which is why it is not evidence of anything). Looks
+  like a `remote`/isolated-agent
   worktree whose branch was never advanced past its starting commit. Safe-looking candidate for
   cleanup, but leave it — same rule as always, don't remove another session's checkout without
   confirming nobody's using it.
@@ -157,22 +191,315 @@ reverted by the other's save at least once. Consequences to know:
   — `git status`/`git log` after ANY multi-session gap, before assuming your own change is still
   pending.** Don't re-commit or re-push work you find already landed; verify with `git show --stat`
   first (byte-identical insertion counts to what you tested is the tell).
+- **Recurred 2026-08-24, 02:50–04:16 — the whole of @89 was the other session's work** (`78ed2f8`
+  FSE roster + `04d73cc`/`f5a21b0`/`143e6e6`/`8a4cf22`/`6df42c5` CP layer + bump `8dc6f69`, plus
+  docs `e4eca78`/`f6fb2d2`). **How that was established — and it was NOT from co-author trailers, so
+  do not reach for those first.** Only **6 of the 20** commits in `921d39b..36a38e4` carry a
+  `Co-Authored-By` trailer at all (**4 of the 16** that touch `src/`): `78ed2f8`, `e4eca78`,
+  `f6fb2d2`, `8dc6f69` say `Claude Sonnet 5`; `bba63c0`, `36a38e4` say `Claude Opus 5 (1M context)`.
+  **All five CP implementation commits carry no trailer whatsoever** — they have zero body lines, and
+  an empty body cannot hold a trailer — and neither do `612593b`, `15d6b72`, `46e6e82`, which are
+  *this* session's @86–@88 work. The blank set therefore straddles both sessions and discriminates
+  nothing, and `%an <%ae>` is `Sunil Morries J <sunil.morries@tricog.com>` on all 20, so there is no
+  fallback signal there either. **What actually attributes the CP layer is the clock plus the empty
+  bodies:** the five untrailered commits land 03:11–03:33, sandwiched between Sonnet-trailered
+  `f6fb2d2` (03:04, the plan doc) and `8dc6f69` (04:16, the bump), and that body-less commit style
+  appears nowhere else in the window. So reconstruct in this order —
+  `git log --format='%h %ad %s' --date=format:'%H:%M' 921d39b..36a38e4` first, then
+  `git log --format='%h|%(trailers:key=Co-Authored-By,valueonly)' 921d39b..36a38e4` — and read a
+  blank trailer field as "unattributed", never as "mine". **Consequence for reading the CP layer:**
+  those five body-less commits explain nothing, so the authoritative prose for it is `Cp.js`'s own
+  file header, the comment block in `EditionCD.js`, and the spec/plan docs — not the commit log. Of
+  the other session's eight commits only `78ed2f8`, `e4eca78` and `f6fb2d2` carry explanatory prose
+  at all; the bump `8dc6f69` has nothing below its subject line but the trailer.
 
-### v5.55 / @84 (2026-08-23) — ServiceWRK ticket tabs + Zoho Swapped tab on the center-detail drawer; FSE coverage layer on the Overview map — CURRENT LIVE
+### v5.61 / @90 (2026-08-24) — Overview treemaps become bracket-aligned flow diagrams — CURRENT LIVE
+
+> Deployed 2026-08-24 5:28 AM. **Single commit `36a38e4`**, which carries its own `Config.js` bump
+> (`'89'` → `'90'`) — no separate marker commit for this deploy (see the header note). It also
+> updated `README.md` and `docs/ARCHITECTURE.md` in the same commit. Touches `App.html`,
+> `Charts.html`, `Index.html`, `Styles.html`, `Config.js` (+1438/−269; `Charts.html` alone +1407).
+>
+> **`Charts.decompTreemap` → `Charts.decompFlow`** (`Charts.html:1808`, exported `:1972`, called
+> from `App.html:1725`): **one** ECharts `custom` series drawing a level-1 column, a level-2 column,
+> and one ribbon per parent→child. Per user: "change chart in overview to flow chart … build a
+> perfect flowchart with alignment". **Read `git log -1 36a38e4` in full before touching this card —
+> that message is the authoritative design record**, and this entry is a summary of it.
+>
+> **Why not the obvious candidates — this is the load-bearing part; do not re-run these.** The card
+> had failed on alignment **six times** before this (see the @67→@76 entries below for the churn):
+> - **`tree` (through @76)** positions by **topology, not value** — a fixed 88×52 box per node, so
+>   magnitude lived only in the label text and same-depth siblings split one span whether a branch
+>   held 3% or 65%.
+> - **`treemap` (shipped @78–@89)** *cannot* collide — rectangles partition their parent — but it is
+>   a **mosaic, not a flow**. (**Both ends of `36a38e4`'s own "@77-@88" are off by one, in opposite
+>   directions**, and `docs/ARCHITECTURE.md:40` inherits the same range — see closing item 26. @77 is
+>   where the code was authored, but it was stashed out of that deploy and first shipped as @78; and
+>   the treemap was still the live renderer at **@89**, so it did not end at @88. Derive the upper end
+>   from the code, not from a version list: `git show 8dc6f69:src/client/Charts.html` — `8dc6f69`
+>   being the @89 bump, `APP_VERSION: '89'` — still has `decompTreemap` and `type: 'treemap'` at its
+>   `:879`, and `git log --oneline 0119b04..36a38e4 -- src/client/Charts.html` returns exactly one
+>   commit, `36a38e4`/@90, so nothing between @88 and @90 touched the renderer. An earlier revision of this
+>   entry argued "@88" *from* the `Config.js` bumps; that reasoning was backwards — those bumps are
+>   precisely what shows @89 shipped the treemap. The commit is authoritative on design rationale, not
+>   on deploy numbering.)
+> - **`sankey` was explicitly REJECTED despite being prior art (`5ad63f3`, v5.44/@73).** Its
+>   vertical scale `ky = min over depths of (H − (n_d−1)·nodeGap)/S_d` is **GLOBAL**, so the level-1
+>   column ends up shorter than the level-2 column whenever the two have different node counts, and a
+>   parent's top edge drifts from its first child's by the accumulated `nodeGap`s of all preceding
+>   groups — **up to ~64px at H=340**. On top of that, three of the behaviours the alignment
+>   guarantee would rest on are library internals that cannot be asserted here.
+>
+> **The alignment guarantee is structural, not a tuned constant:** a level-1 block's extent **IS**
+> the exact bracket of its children's stack, so parent/child alignment is an identity of the
+> arithmetic rather than something to tune. All geometry is a pure function of (payload,
+> `api.getWidth()`, `api.getHeight()`) computed **inside `renderItem`** — deliberately **never** at
+> option-build time, because `render()` stages options for invisible elements and `.panel[hidden]`
+> yields a 0×0 div, which would bake permanent misalignment in with no recovery path.
+>
+> **There are no client-side tests, so the proof ships as runtime postconditions**
+> (`Charts.html:1845-1847`): `console.warn` on any block under the minimum height, any non-finite
+> coordinate, any parent whose band top differs from its first child's, and any column whose extent
+> leaves the plot box. If this card ever misaligns again, the console says so before a human notices.
+>
+> **Data-shape rules to carry over** (each one was forced by review, so don't "simplify" them away):
+> age bands are **ORDINAL** — folding merges **adjacent** bands inward and labels the range
+> ("2-3y → 5y+"), never a "+2 more" bag and never re-sorted by value, while non-ordinal breakdowns
+> *are* sorted by value descending; extreme skew stays legible (live Tickets shape is 64:1 across
+> sources and 400:1 Open-vs-Closed, and a minimum-size rule for a small aggregate must never pull a
+> drawable sibling into a fold); **level-2 is scaled by the PARENT's value**, never by the sum of its
+> children, so a shortfall (a device with a null age band) shows as unfilled band plus a tooltip line
+> instead of being normalised away; **a 0 never paints as a minimum-size mark** (that would be an
+> encoding lie); both columns print the same percentage denominator, and each block reserves a
+> right-aligned width for its count so truncation drops the name's tail, never the number.
+>
+> **Click-through is unchanged:** `params.data` carries the payload node **by reference, not a clone**
+> — sibling level-2 names collide across branches — so all five `handleTreeNodeClick_` branches still
+> work, and the `dispatchAction` `hideTip` teardown before the callback remains load-bearing against
+> the documented hover-then-click crash.
+>
+> **Retired with the treemap:** `DECOMP_COLLAPSE_SHARE`, `decompTileLabel_`, `decompPrepLevel1_` (the
+> sub-5% fold — small branches now get a full row and a readable name). `decompEsc_` and
+> `decompShare_` survive and are still used. Grep confirms zero hits for the three deleted names and
+> for `decompTreemap` anywhere under `src/`.
+>
+> **`.chart-flow`'s `min-height: 340px` (`Styles.html`) is now THE FLOW'S ONLY CAPACITY LEVER** — the
+> dependency inverted. The tree sized its container *from* the data (72px a leaf); `decompFlow` reads
+> the fixed height at runtime via `api.getHeight()` and folds the **DATA** to fit, so the height is a
+> design decision again. Raising it raises both capacities (level-1 rows before the tail folds, and
+> level-2 blocks per band) with no code change; nothing in `Charts.html` mirrors the 340. It must
+> stay `min-height`, not `height` — `.chart` sets `height: 280px` later in the same file at equal
+> specificity and would win on source order.
+>
+> **Still needs full page width, for a new reason:** the two rank columns are clamped to 26% of the
+> canvas each, and under ~600px they hit that floor and long names ("United Republic of Tanzania")
+> ellipsise (`Styles.html:559-565`). So the old "narrow widths reshape tiles instead of cutting them
+> off" property of the treemap **did not survive** — see the correction in the @78 entry below.
+>
+> **Verified:** `npm test` → **15 suites, 245 tests passing** (re-run at HEAD during this doc pass,
+> matching the commit's "245 tests green"). Designed and reviewed via a 12-agent workflow per the
+> commit message: three independent approaches, three judges (the flow ribbon won 2 of 3), then four
+> adversarial reviewers whose 20 findings (11 Important) were each reproduced offline before being
+> fixed; browser-verified in both themes on a hardened preview mock.
+
+### v5.60 / @89 (2026-08-24) — CP (Channel Partner) dealer coverage layer; FSE_ROSTER finally populated — **OTHER SESSION'S WORK**
+
+> Deployed 2026-08-24 4:13 AM (`8dc6f69`), built from `6df42c5`. **Built entirely by the other
+> concurrent session** (`Co-Authored-By: Claude Sonnet 5`); summarized here from a direct read of
+> `Cp.js`, `Fse.js`, `EditionCD.js` and the two docs, because **the five CP commits have empty
+> bodies**. Commits: `78ed2f8` (FSE roster), `04d73cc` + `f5a21b0` + `143e6e6` + `8a4cf22` +
+> `6df42c5` (CP layer), bump `8dc6f69`; docs `e4eca78` (design spec,
+> `docs/superpowers/specs/2026-08-24-cp-dealer-layer-design.md`, 181 lines) and `f6fb2d2`
+> (implementation plan, 1,413 lines).
+>
+> **⚠️ `78ed2f8` is the most user-visible change in @85–@90 and is easy to miss** — it is not part of
+> the CP work at all. It populates **`FSE_ROSTER` with 26 real named engineers** from "Progress on
+> the Service Dealer Network - BRM 2026.xlsx" ('direct' sheet, 27 rows; the **Manumaya Kumar / HQ
+> "Jaspur" / MANIPUR STEMI row was deliberately skipped** because Jaspur is not a Manipur city —
+> flagged in-file rather than guessed, so add it once the real HQ is confirmed). Every entry carries
+> an **explicit `lat`/`lng`** so pins render regardless of geo-store coverage, and `territory` is
+> derived from the sheet's STEMI-program column (KASTEMI→Karnataka, BIHAR STEMI→Bihar, ODISHA
+> STEMI→Odisha; "Private" engineers carry none); `MapView.html`'s FSE tooltip gained a territory
+> line. **Why this matters so much:** `apiGetMapDataCD` guards the entire FSE layer on
+> `if (fseRosterActive_().length)` (`EditionCD.js:1104`), and the roster was literally
+> `var FSE_ROSTER = [];` at @84 **and still empty at @88** — so production sent `fse: null` and drew
+> **no engineer pins at all** from @83/@84 through @88. Everything the @84 and @85 entries record
+> about the FSE layer was verified against `App.html`'s **preview mock**, not production data. @89 is
+> the deploy where that layer first actually appeared for users — and it also switches on a
+> **per-map-load BigQuery cost** (`buildFseCoverageSpec_` via `runQueriesParallel`, on every uncached
+> map load) that the empty-roster guard had been skipping for six deploys.
+>
+> **CP dealer layer — new `src/server/Cp.js` (223 lines) + `test/unit/cp-coverage.test.js` (12
+> tests).** `buildCpLayer_(roster, hqCoordFn, locationCoordFn)` → `{dealers, unlocatedRoster,
+> unlocatedLocations}`, dealers sorted by name for payload stability (same rationale as
+> `buildFseLayer_`). **Deliberately no BigQuery and no name reconciliation:** unlike FSE there is no
+> ticket field anywhere in the warehouse that names a CP, so coverage is a **DECLARED** list of
+> districts/cities per dealer rather than something computed from tickets worked — hence no coverage
+> query, no "unmatched" bucket, and `hqCoordFn`/`locationCoordFn` are trivial pass-throughs because
+> every HQ and location coordinate is explicit on the roster. `CP_ROSTER` (`Cp.js:33`) holds **11
+> companies**: SBM Corp, Chetan Healthcare, Horizon Technoworld, Hospilab Solution, Shree Sai
+> Healthcare, Hayana Enterprises, S S Medical System, Spandan Medi solutions, Techmed Solutions, AM
+> Agencies, Pioneer Medical Devices — each with HQ lat/lng plus a `locations` list, and in-file notes
+> on the data cleaning ("Sangli"/"Sangali" merged, "Chh. Sambajinagar"/"Aurangabad" merged to
+> Chhatrapati Sambhajinagar, a bare lowercase "pune" dropped as a dup of that CP's own HQ). No
+> `aliases`/`active` fields at this size — follow `Fse.js`'s pattern if the roster grows.
+>
+> **Server wiring (`143e6e6`) bumped the map cache key `mapcd_v15_` → `mapcd_v16_`**
+> (`EditionCD.js:1024`) — necessary, not cosmetic: a v15 entry cached before the deploy has no `cp`
+> key and would read as "no dealers" rather than "not loaded yet". An empty roster sends `cp: null`
+> rather than an empty-but-present layer, for the same reason.
+>
+> **Client (`8a4cf22` + `6df42c5`).** `CP_COLOR` `'#C2410C'` burnt orange (`MapView.html:135`),
+> documented as clearing 3:1 on both basemaps — 3.62 dark / 5.18 light — with a **briefcase glyph vs
+> FSE's person glyph**, so the two layers are shape-distinct, not merely hue-distinct.
+> `cpGroup`/`cpReachGroup`/`cpMarkers`; the focus fan draws **its own endpoint dots** because CP
+> coverage points are independent geocoded districts, not existing center markers, so unlike FSE
+> focus nothing already on the map gets re-styled; clicking the focused dealer toggles focus off. New
+> `#cpLegend` row with a "Dealers" `aria-pressed` toggle and a `#cpFocusBar`. `App.html` adds
+> `state.cpVisible`, `renderCpLayer_` (guards on the object, not on an empty array),
+> `console.warn` on `unlocatedRoster`/`unlocatedLocations`, and **the Escape handler was rewritten to
+> clear whichever of the FSE/CP focus bars is open** — worth knowing if a third focus layer is ever
+> added. The preview mock gains two demo dealers (one 3-location, one 1-location).
+>
+> **Not independently verified in a browser by this doc pass** — code, tests and docs read directly;
+> the 12 `cp-coverage` tests pass as part of the 245.
+
+### v5.59 / @88 (2026-08-24) — map countries shaded by whether they hold any plotted center
+
+> Deployed 2026-08-24 1:57 AM (`0119b04`), built from `46e6e82`. Touches `Index.html`,
+> `MapView.html`, `Styles.html` (+105/−4).
+>
+> **CARTO's tiles are a flat raster — there is no polygon to recolor without shipping one ourselves.**
+> So this bundles a trimmed world-countries GeoJSON (**github.com/johan/world.geo.json, public
+> domain**, Natural Earth-derived) inline as `COUNTRY_GEOJSON_` at **`MapView.html:31` — a single
+> ~120KB line** (which is why `46e6e82`'s diff reads as only +96 lines in that file; measured 120,219
+> bytes on the line, 135 `"type":"Feature"` entries). Trimmed to the **135 countries** whose bbox
+> falls within lat −40..55 / lng −25..155 (Africa, Middle East, South/Southeast/East Asia), with
+> coordinates **rounded to 3 decimals** (~111m): **251KB source → 117KB embedded**.
+>
+> Each `setData()` runs a **bbox-prechecked** point-in-polygon test over the plotted centers (a
+> precomputed per-feature `_bbox` rejects cheaply, then even-odd ray-cast
+> `pointInRing_`/`pointInPolygonRings_`/`pointInGeometry_`, with rings summed so holes correctly flip
+> a point back outside; `Polygon` and `MultiPolygon` only), then paints the fill: blue
+> `COUNTRY_HAS_CENTER_COLOR_` `'#2E9BD6'` at `fillOpacity` 0.22 vs muted gray
+> `COUNTRY_NO_CENTER_COLOR_` `'#869AB2'` (`--text-3`) at 0.16. **The near-equal alpha is deliberate**
+> and the code says why (`countryStyle_`): a "no centers" fill at a much lower alpha just blended
+> into the basemap on both themes — measured as *unreadable as an intentional fill*, i.e. it read as
+> absent rather than as a data state, which defeats the point. The layer sits below the markers and
+> is non-interactive (`color: 'transparent'`,
+> `weight: 0`) so it never intercepts a click.
+>
+> **Applies to all three maps** (Overview, Top Customers, CDM) — they share the `MapView()` factory —
+> and a legend note explaining the two colours was added to all three legends.
+
+### v5.58 / @87 (2026-08-24) — map auto-fit tightened to India and neighbours
+
+> Deployed 2026-08-24 12:09 AM (`6ee4506`), built from `15d6b72`. `MapView.html` only (+24/−2).
+>
+> `fitBounds` was fitting **every** plotted center, including a handful of outliers in North/South
+> America and central Europe that read as **bad geocodes** — centers whose real address is
+> India/Nepal/Philippines/Kenya/Malaysia/Nigeria landing at some far-off default coordinate. That
+> zoomed the map out to a near-world view instead of the actual service region. Fix:
+> `SERVICE_REGION_BOUNDS_ = { latMin: -12, latMax: 40, lngMin: -5, lngMax: 130 }` plus
+> `inServiceRegion_(c)` (`MapView.html:96-100`), and `setData` now does
+> `var forFit = centers.filter(inServiceRegion_); if (!forFit.length) forFit = centers;` before
+> `fitBounds(...).pad(0.1)` (`:251-257`).
+>
+> **Two things to keep straight.** (1) **No data is hidden** — markers outside the box still render
+> and stay clickable; only the auto-fit *view* ignores them. There is an explicit fallback to every
+> center if none qualify, so the map still lands somewhere sane rather than skipping `fitBounds`.
+> (2) **Despite the commit title, this is NOT Overview-only** — `SERVICE_REGION_BOUNDS_` and
+> `inServiceRegion_` live inside the shared `MapView()` factory, which `App.html:3122-3124`
+> instantiates three times (`assetMap`, `tcMap`, `cdmMap`), so the Top Customers and CDM maps
+> auto-fit the same way. Change the constant and you change all three.
+
+### v5.57 / @86 (2026-08-23) — Overview map back to full width; height raised instead
+
+> Deployed 2026-08-23 11:50 PM (`af323a1`), built from `612593b`. `Styles.html` only (+14/−39).
+>
+> **Reverts the width-capped square that two prior attempts had shrunk `#assetMap` to.** Per user,
+> that read as the map itself getting **smaller/cut off**, not "sized to fit India" — **the ask was
+> to EXPAND the box, never to reduce its footprint below the plain full-width rule.** The two
+> reverted attempts were both in @84: `6148bc8` (`aspect-ratio` driving height from card width,
+> capped by `max-height: min(76vh, 900px)`, `min-height` 520px) and `688d8d2`
+> (`#assetMap { width: min(100%, 82vh, 900px); aspect-ratio: 1/1; height: auto; min-height: 380px;
+> margin: 0 auto }` plus a `.map-wrap:has(#assetMap)` rule so the absolutely-positioned legend stayed
+> flush with the shrunken map). `612593b` deletes **both**, the `:has()` wrap rule included.
+>
+> **Current state, verified at `Styles.html:1077-1094`:** the shared `#assetMap, #tcMap, #cdmMap` rule
+> is `width: 100%; height: 72vh; min-height: 480px`, and `#assetMap { height: 85vh; min-height:
+> 620px; }` is the only override — i.e. **72vh → 85vh AND a 480px → 620px floor**, not height alone.
+> India stays centred via the unchanged `setView([21.5, 79], 5)` / `fitBounds` in `MapView.html`.
+>
+> **Why attempt #1 could never have worked** (recorded in the retained CSS comment, worth keeping):
+> reaching 1:1 on a ~900–1450px-wide card needs a ~1180–1900px-tall viewport, so `max-height` always
+> bound first and the box stayed roughly 2:1 — measured live at 1066×520.
+
+### v5.56 / @85 (2026-08-23) — FSE layer regressions found in the browser
+
+> Deployed 2026-08-23 11:12 PM (`e09f959`), built from `bba63c0` — the only `src/` commit in this
+> window (`afe0d08`, the previous HANDOFF/README/ARCHITECTURE/SOURCES catch-up, and `96ef327`, which
+> marked the @81 blocker item stale, are both docs-only). Touches `App.html`, `Index.html`,
+> `MapView.html`, `Styles.html` (+49/−2). **First pass with a working browser window since the FSE
+> layer was written** — everything here is a "built blind, verified now" fix.
+>
+> 1. **The preview map was empty.** The mock edit that added the demo `fse` block **replaced** the
+>    `centers: pts, assets: asset,` line instead of inserting beside it, so `applyMapFilters` threw
+>    "Cannot read properties of undefined (reading 'filter')" and **neither centers NOR engineers
+>    drew**. Caught only by the toast text — `loadMapData` catches and **toasts rather than logging**,
+>    so nothing appeared in the console. Worth remembering as a debugging trap on that path.
+> 2. **The two map legends landed on top of each other** — `.map-legend` is absolute at
+>    `bottom: 14px`, so a second one occupied the same spot. Both now sit in a `.map-legend-stack`
+>    flex `column-reverse`, which keeps the ticket buckets nearest the map edge where they've always
+>    been and **needs no magic offset re-tuned every time a row wraps**. Verified non-overlapping by
+>    rect.
+> 3. **Clustered centers ignored FSE focus dimming.** Clusters are **DOM icons from the markercluster
+>    plugin, not canvas `circleMarker`s**, so `setStyle` could not reach them — measured 8 cluster
+>    bubbles still at full opacity while an engineer was focused, competing with the reach fan. A
+>    `.fse-focus-active` class on the map container now dims them in **CSS**. **That fix took three
+>    tries and each failure is worth keeping:** `opacity` loses to Leaflet, which writes `opacity`
+>    inline on marker icons; `filter` *with a transition* computed as `opacity(1)` and stayed there,
+>    because markercluster **recreates** its icon elements so each new element's transition sits at
+>    t=0 and `filter: none` interpolates as the identity (dropping the transition resolves it to 0.3
+>    immediately); and the rule is scoped to **`.marker-cluster`, NOT `.leaflet-marker-icon`** —
+>    the FSE pins carry that class too, and dimming the selected engineer defeats the point.
+>
+> **Verified** in the browser, both themes: 4 pins with name pills; legend read "4 engineers ·
+> coverage = last 90 days"; click focused (focus bar showed "Delhi, Delhi — 35 centers covered · 70
+> tickets"); the reach fan painted (sampled the overlay canvas — 14,890 violet pixels, no severity
+> hues left undimmed); Escape restored clusters and hid the bar; light theme flipped the glyph casing
+> to white and the pill to navy-on-white. 233 tests passing at the time (the suite is **15 suites /
+> 245 tests** as of @90). **⚠️ All of this was against the preview mock — `FSE_ROSTER` was still
+> empty in production until `78ed2f8`/@89, so no user saw an engineer pin until then.**
+>
+> **Known and NOT fixed here, and never revisited in @86–@90:** at a narrow window (verified at
+> 1036px) the two stacked legend rows take a large share of the map and each ticket-bucket label
+> wraps to three lines — proportionally much smaller at desktop width, but still open. Also recorded
+> there: the preview mock deliberately **scatters every 40th center in Ethiopia**, so `fitBounds`
+> zooms out to include Africa in preview — which is exactly the complaint `15d6b72`/@87 then fixed
+> for *real* data via `SERVICE_REGION_BOUNDS_`.
+
+### v5.55 / @84 (2026-08-23) — ServiceWRK ticket tabs + Zoho Swapped tab on the center-detail drawer; FSE coverage layer on the Overview map — SUPERSEDED (was live @84; six deploys back)
 
 > Deployed 2026-08-23 8:09 PM (`921d39b`), built from `e3d6e1a`.
 >
 > **`349d5b3`/`6148bc8`/`688d8d2` — FSE (Field Service Engineer) coverage layer, new `Fse.js`.**
-> Pins engineers from a hand-maintained roster (`FSE_ROSTER`, ships **empty** on purpose — no
+> Pins engineers from a hand-maintained roster (`FSE_ROSTER`, ~~ships **empty** on purpose — no
 > engineer table exists anywhere in the warehouse, and a placeholder name would draw a person who
-> doesn't exist onto a production ops map) onto every center they've worked a `servicewrk_Tickets`
+> doesn't exist onto a production ops map~~ — **NO LONGER TRUE as of `78ed2f8`/@89**, which filled it
+> with 26 real named engineers from the BRM 2026 sheet; the *reasoning* for shipping empty was sound
+> and is why nothing was invented in the meantime, but the consequence is that **this layer drew
+> nothing in production from @83/@84 through @88** — see the @89 entry above) onto every center
+> they've worked a `servicewrk_Tickets`
 > ticket for within a fixed 90-day rolling window (`CONFIG.FSE_COVERAGE_DAYS`, deliberately
 > independent of the global date filter — see the field's comment in `Config.js`). Joins
 > `customer_id` → `CenterID` by casting both to STRING (`buildFseLayer_`), same mechanism the
-> ticket-tabs work below independently verified. The Overview map itself was also fixed in the same
-> pass to actually fit India's aspect ratio instead of an arbitrary bounding box. Built entirely by
-> the other concurrent session; summarized here from commit messages and a read of `Fse.js`, not
-> independently re-verified in the browser by this doc pass.
+> ticket-tabs work below independently verified. ~~The Overview map itself was also fixed in the same
+> pass to actually fit India's aspect ratio instead of an arbitrary bounding box.~~ — **REVERTED in
+> `612593b`/@86**: that was `688d8d2`'s width-capped square, which per user read as the map getting
+> smaller/cut off. `#assetMap` is full width again, taller instead (85vh / 620px floor). Built
+> entirely by the other concurrent session; summarized here from commit messages and a read of
+> `Fse.js`, not independently re-verified in the browser by this doc pass.
 >
 > **`e3d6e1a` — center-detail drawer gets two independent ticket toggles.** The drawer's existing
 > Zoho Open/All toggle gains a third **Swapped** tab (`IssueCategory LIKE '%swap%'`, same list
@@ -191,11 +518,18 @@ reverted by the other's save at least once. Consequences to know:
 > both groups can render a button with identical visible text (`Swapped (N)`), so a class-only
 > listener would have made one toggle's click move the other's state.
 >
-> **Verified:** `npm test` → **14 suites, 233 tests passing**. Browser-tested in the local preview:
+> **Verified:** `npm test` → **14 suites, 233 tests passing** *(at the time — the suite is **15
+> suites / 245 tests** as of @90; `test/unit/cp-coverage.test.js` is the 15th, added by `04d73cc` and
+> extended by `f5a21b0`. Don't read this line as the suite's present size)*. Browser-tested in the
+> local preview:
 > all three Service tabs render (Open/Closed/Swapped), pagination works (`1–5 of 8` on an 8-row mock
 > list), and the two toggle groups are provably independent — clicking each of Zoho's three tabs and
 > each of Service's three tabs via direct DOM selectors confirmed neither one's active state ever
-> moves the other's. Not independently verified: the FSE layer (summarized from commits only).
+> moves the other's. ~~Not independently verified: the FSE layer (summarized from commits only).~~ —
+> **SUPERSEDED by `bba63c0`/@85**, the first pass with a working browser window, which verified the
+> layer in both themes (4 pins with name pills, legend text, focus bar, reach fan sampled on the
+> overlay canvas, Escape restore, light-theme flip). Note the verification was against the **preview
+> mock**; the production roster stayed empty until `78ed2f8`/@89.
 >
 > **`921d39b` — `APP_VERSION` `'83'` → `'84'`.**
 
@@ -325,7 +659,16 @@ reverted by the other's save at least once. Consequences to know:
 > Summarized from commit messages + `Config.js`; not independently re-verified in the preview by
 > this doc pass.
 
-### v5.49 / @78 (2026-08-19 authored) — Overview trees become treemaps; Asset KPI strip goes Jira-only; Jira device-type default cleared — DEPLOYED 2026-08-21 1:45 PM
+### v5.49 / @78 (2026-08-19 authored) — Overview trees become treemaps; Asset KPI strip goes Jira-only; Jira device-type default cleared — DEPLOYED 2026-08-21 1:45 PM · **TREEMAP RENDERER SUPERSEDED @90 by `36a38e4`**
+
+> ⚠️ **READ THIS FIRST if you came here for the Overview charts.** The treemap shipped @78–@89 and
+> was replaced at @90 by `Charts.decompFlow` (see the v5.61/@90 entry at the top). Everything below
+> about *trees vs. treemaps* is **lineage, deliberately kept**: the reasons the `tree` series was
+> abandoned are still the reasons nobody should go back to it, and @90's entry adds the matching
+> reasons for rejecting `sankey`. **Six alignment passes have now failed on this one card
+> (@67→@76 tree churn, then the treemap's own limits) — the value of this section is that a future
+> session does not re-run any of them.** What is *stale* is only the treemap-specific
+> implementation detail, marked inline below.
 
 > This is the work that was sitting uncommitted as the "378-line `Charts.html` diff" the @77 deploy
 > stashed (see the concurrent-sessions note above); it is committed as `3757d68`. **@78 shipped on
@@ -341,11 +684,14 @@ reverted by the other's save at least once. Consequences to know:
 > assumed the old restriction was updated too (two Asset chart subtitles, one metric-info tooltip)
 > plus stale comments referencing it.
 >
-> **Overview's three decomposition trees are now treemaps.** `Charts.decompTree` → a new
+> **Overview's three decomposition trees became treemaps** (~~are now treemaps~~ — **`36a38e4`/@90
+> deleted `Charts.decompTreemap`; grep returns zero hits under `src/`**). `Charts.decompTree` → a new
 > `Charts.decompTreemap`, and the five tree-only helpers (`decompWrapName_`, `decompLeafCount_`,
 > `decompMaxDepth_`, `decompStyleTree_`, `decompNodeColor_`/`decompLightness_`) are deleted. The
 > `apiGetOverviewFlowCD` payload and `handleTreeNodeClick_` are untouched — node metadata still
-> rides along on ECharts' data, so click-to-filter and tab-nav work unchanged.
+> rides along on ECharts' data, so click-to-filter and tab-nav work unchanged. **That last property
+> is the one thing that survived every renderer swap** — @90 kept it too, and kept it the same way
+> (`params.data` is the payload node by reference, not a clone).
 >
 > This is meant to *end* the @69–@76 layout churn, not extend it. The `tree` series lays out by
 > topology, not by value: every node drew at a fixed 88×52 / 70×48 box whatever its count, so a
@@ -353,14 +699,25 @@ reverted by the other's save at least once. Consequences to know:
 > branch held 3% or 65% of its parent. Measured before/after at 1512px: page height **2,436px →
 > 1,365px**; per-card canvas 432/720/504px (computed from leaf count in JS) → a flat 340px set in
 > CSS. Specific fixes: `Government`/`ECG Machine` label clipping gone structurally; the root box
-> dropped (it restated the total already in the card header); the canvas no longer needs a 620px
-> minimum, so narrow widths reshape tiles instead of cutting them off (no mobile breakpoints added
+> dropped (it restated the total already in the card header); ~~the canvas no longer needs a 620px
+> minimum, so narrow widths reshape tiles instead of cutting them off~~ (no mobile breakpoints added
 > — `Styles.html` still says mobile is deliberately out of scope).
+>
+> **Two corrections from @90 (`36a38e4`), because both halves of that last clause inverted.** The
+> flat **340px is still real** (`.chart-flow { min-height: 340px }`), and the "height fixed in CSS,
+> not computed from the data" decision **survived** — but its *meaning* changed: it is now **the
+> flow's only capacity lever**, read at runtime via `api.getHeight()`, and the **DATA** is folded to
+> fit it (`Styles.html:595-611`). And **narrow widths no longer reshape gracefully**: `decompFlow`'s
+> two rank columns hit a 26% floor under ~600px and long names ellipsise (`Styles.html:559-565`),
+> which is why the open card still needs full page width. Don't cite the treemap's
+> "reshapes instead of clipping" property as a current guarantee.
 >
 > **`c977a00` (72px leaf slots) is superseded and was never deployed** — it fixed a renderer that
 > no longer exists. Don't try to reconcile it against the current code.
 >
-> Three findings worth keeping:
+> Three findings worth keeping — **all three are ECharts-`treemap`-internal, so they describe a
+> series this app no longer renders (`36a38e4`/@90).** Kept for the next time anyone reaches for
+> `treemap` anywhere in this codebase, which is the only context in which they're still true:
 > - **ECharts inserts a synthetic root when a treemap's `data` is an array**, so every `levels[]`
 >   index shifts down by one. `levels[0]` is that root (left transparent and unlabelled here);
 >   countries/types/sources are `levels[1]`, their children `levels[2]`.
@@ -373,10 +730,18 @@ reverted by the other's save at least once. Consequences to know:
 >   Folded tiles name what was folded in their tooltip and still click through to the same
 >   breakdown, so nothing is dropped silently. Caveat: such a tile can be a ~4px strip, well under
 >   the 44px tap-target guideline — the sidebar tab is the reliable route to that source.
+>   **⚠️ `decompPrepLevel1_`, `decompTileLabel_` and `DECOMP_COLLAPSE_SHARE` were all DELETED by
+>   `36a38e4` — zero hits under `src/`; only `decompEsc_` and `decompShare_` survive.** @90 needs no
+>   sub-5% fold: small branches get a full row and a readable name, and its folding is driven by a
+>   row-count budget against the canvas height instead of a share threshold (and folds the **tail in
+>   server order**, so an aggregate is always over adjacent members).
 >
-> Colour is deliberately not a data channel: area carries every value, so the palette is two tones
+> ~~Colour is deliberately not a data channel: area carries every value, so the palette is two tones
 > per theme (band = label strip, tile = data), all four text pairs measured — dark 10.3/4.7, light
-> 9.5/4.7. A faded second line for tile counts was tried and dropped at 3.7 (82%) / 4.2 (92%).
+> 9.5/4.7. A faded second line for tile counts was tried and dropped at 3.7 (82%) / 4.2 (92%).~~ —
+> **SUPERSEDED by `36a38e4`/@90:** there are no tiles and no label-strip bands any more. The
+> *principle* (colour is not a data channel; magnitude is carried by geometry) carried over to the
+> flow, but these specific tones and contrast pairs describe the treemap.
 >
 > **Asset page — KPI strip is `jira_data` only.** Authored this session; the `App.html`/`Index.html`
 > half was swept up into `3b49fb4` (the other session's cloud_devices commit), so only
@@ -403,7 +768,10 @@ reverted by the other's save at least once. Consequences to know:
 > was checked against live BigQuery; the change is client-side with no SQL touched. In the local
 > preview, against the post-`3b49fb4` `App.html`: all three Overview cards render `series[0].type
 > === 'treemap'`, both themes, tooltips (path + share + folded-tile note), click-to-filter (badge
-> 4→5), collapse/re-expand lazy render, zero console errors, no horizontal overflow.
+> 4→5), collapse/re-expand lazy render, zero console errors, no horizontal overflow. **(That
+> `series[0].type === 'treemap'` check is how the card looked @78–@89 — as of `36a38e4`/@90 the live
+> page renders ONE `custom` series, and the folded-tile tooltip note is gone. If you're writing a new
+> smoke check for this card, assert `'custom'`.)**
 
 ### v5.48 / @77 (2026-08-19) — devices=Jira everywhere but CDM, Filters drawer redesign, cloud_devices removed from every non-CDM page
 
@@ -550,7 +918,7 @@ reverted by the other's save at least once. Consequences to know:
 > "SIP - Service Insights Platform". Follow-up commit fixed CSS specificity bugs introduced by the
 > new tagline layout.
 
-### @76 / v5.47 (2026-08-19) — decomposition trees go LR, radiant depth gradient — SUPERSEDED (was live @76; four deploys back)
+### @76 / v5.47 (2026-08-19) — decomposition trees go LR, radiant depth gradient — SUPERSEDED (was live @76; **fourteen** deploys back, and this is the LAST deploy of the `tree` renderer — treemap @78–@89, flow from @90)
 
 > Commit `02d141f`. TB (top-to-bottom) orientation divided a hard-capped horizontal width among
 > same-depth siblings, so a lopsided branch (one dominant segment vs. several thin ones, e.g.
@@ -772,7 +1140,10 @@ reverted by the other's save at least once. Consequences to know:
 > 30 lines were the Service page's metric-glossary / `KPI_METRIC` / `TITLE_METRIC` entries and the
 > `init()` `buildServiceHeader()` call. The session that owned them had already re-applied every one
 > by hand after noticing they were missing (commit `4728ff0`), so each added line was confirmed
-> present in `HEAD` before `git stash drop`. `git stash list` is now empty. Verified live: `curl -L`
+> present in `HEAD` before `git stash drop`. ~~`git stash list` is now empty.~~ — true of that
+> 2026-08-14 stash, but **`git stash list` is NOT empty today**: `stash@{0}` (2026-08-24 03:54:31)
+> holds the superseded flow-chart v1, see open item 24. Scoped correction only; nothing in this
+> v5.28 narrative changes. Verified live: `curl -L`
 > → `200`; Overview loads
 > with real data, 0 console errors. Footer version not re-checked pixel-by-pixel on the live page
 > (this session's browser automation couldn't scroll that far down the real production page today)
@@ -1762,6 +2133,12 @@ insights from the `magnaquest-sand-box.abi_team_sip_devtest_poc` BigQuery datase
 **Jira devices Google Sheet**, and a **CS-tracker Google Sheet**, for Tricog's device
 fleet / service operations.
 
+⚠️ **The PARAGRAPH ABOVE is wrong on all three data sources too** (checked 2026-08-24, and the
+warning below used to disclaim only the tab list): the dataset is **`tricogde-dwh.abi_tables`**
+(`Config.js:15/18`, since v5.10), Jira comes from the live **`jira_data` BigQuery table** since
+`b83076a`/2026-07-30, and **neither Google Sheet is read by any code** — no `JIRA_SHEET_ID`, no
+`CS_SHEET_ID`, no `readCsTracker` anywhere in `src/`. See Section 6 item 27.
+
 ⚠️ **This list is stale and was NOT rewritten in the 2026-08-21 catch-up pass** — it predates the
 Service, TOM and CDM pages and still carries the standalone Map that @79 merged into Overview. The
 live nav is **10 tabs**: Overview, Centers, Support, Service, TOM, Asset, CDM, Top Customers,
@@ -1818,6 +2195,14 @@ PowerShell backtick-escaping collision). Auth via
 
 ## 3. File map
 
+⚠️ **STALE — DO NOT TRUST THIS SECTION (re-verified 2026-08-24).** It lists three server files that
+no longer exist, omits eight that do (including all four the @84–@90 work depends on: `Cp.js`,
+`Fse.js`, `OverviewFlow.js`, `ServiceWrk.js`), and names deleted endpoints, deleted `Config.js`
+constants and a deleted `#activeOnlyBtn`. **Section 6 item 27 lists every known defect**; `ls
+src/server src/client` plus `git log -p` on the file you care about is faster than reconciling
+anything below. Not repaired in the @85–@90 catch-up pass because these errors date from
+`b83076a`/2026-07-30 and v5.10, not from these deploys.
+
 **Server (`src/server/*.js` → deploy as `.gs`):**
 - `Config.js` — env constants (project, dataset, cache TTL, IST offset=330, `JIRA_SHEET_ID`, `CS_SHEET_ID`, `SLA_DEFAULT_DAYS=5`, `TECH_FALLBACK_REGEX` (includes `swap`), `JIRA_DEVICE_TYPES`, terminal Zoho statuses, Zoho date format).
 - `Auth.js` — service-account OAuth for BigQuery (OAuth2 lib, key in Script Properties `SA_KEY`).
@@ -1854,6 +2239,13 @@ Private key lives only in Script Properties `SA_KEY`, never in source.
 ---
 
 ## 4. Data model facts (non-obvious — verified against live BQ)
+
+⚠️ **"verified against live BQ" was true when written and is NOT true now (re-checked 2026-08-24).**
+Two bullets below are actively dangerous: the Jira one is **inverted** (`jira_data` **is** the source
+since `b83076a`/2026-07-30; the Google Sheet is gone), and the `zoho_data` one asserts
+`CreatedAt`/`ClosedAt` are **strings** — the exact assumption whose correction is recorded above as
+the **v5.24/@53 production crash**. They are native `DATETIME` in `tricogde-dwh`. See Section 6 item
+27 before relying on anything in this section.
 
 - **Sandbox is a PARTIAL copy of production** with exactly **6 tables** (no `DIM_Centers`). **`center_details` was RELOADED 2026-07-07 12:28 UTC** with a **114-column schema**: now HAS `DeviceID`/`MacSerialID`/`MachineType` (serial→center mapping auto-activated) + `F2P_Customer` flag; REMOVED `pin`→`PinCode`, `Country`→`Spoke_Country`, `latitude`/`longitude` (gone — geocode store is the only coord source), `HubStatus`/`HubSegment` (gone). **Row duplication**: 35,804 rows → 27,778 distinct full rows → **27,410 distinct centers** (8,026 exact full-row dupes + 368 centers with genuinely-different rows) → queries dedupe (`SELECT DISTINCT` / `COUNT(DISTINCT …)`). ⚠️ `Age_In_Months` exists but is UNTRUSTWORTHY — matches neither `deploymentdate` (0%) nor `AcquiredDate` (6%); age charts use `deploymentdate`.
 - **`center_details` is the SOLE center source** (the device_center_mapping "edition" was removed; dcm is also no longer a Raw Data source **and no longer used by Geo.js** — geocoding now reads `center_details`). Everywhere: centers = `COUNT(DISTINCT CenterID)`. **F2P exclusion** keys on `IFNULL(F2P_Customer,0)=0` only (old `'F2P_CENTER'` segment value = 0 rows; flag is all-0 today so nothing is excluded — activates when DE sets it). Counts: **27,410** centers (→ fewer with `Status='ACTIVE'` toggle). Segment (`Spoke_Center_Segment`) is free-text hospital/GP/diagnostic categories with 3+ spellings, 23,247 blank — kept as-is (no normalization); topbar segment filter + dropdown both read this field.
@@ -1897,7 +2289,7 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 6. **Downtime display** — cumulative (>100% possible). Open offer: cap at 100% / relabel "Service burden %", or keep with tooltip.
 7. **Device uptime / Device health (deferred, 2026-07-08)** — Asset page currently has no device-grain uptime metric (moved Center uptime/health to Centers page instead). Needs a fresh formula from the user before building — do not guess; the sandbox has no per-device downtime source today (candidate proxy: cloud_devices heartbeat recency, but that's a different definition and would only cover the ~11k devices with telemetry).
 8. **Asset KPI tiles still show the OLD tiles** (device-status donut, firmware, asset lifecycle/types, health-score table, cohort) — only the executive summary + a new "Device age" chart were added/changed on this page so far; the KPI strip itself (Poor signal / Unsynced ECG removal was applied, but no full KPI redesign) is not yet revisited metric-by-metric with the user.
-9. **Remaining pages not yet worked**: Support/CS, Top Customers, Numbers, Raw Data — the page-by-page/metric-by-metric pass (started 2026-07-08 with Asset then Centers) has not reached these yet. (Map is no longer a page; Overview has been reworked repeatedly since — @67 through @81 — so it's off this list.)
+9. **Remaining pages not yet worked**: Support/CS, Top Customers, Numbers, Raw Data — the page-by-page/metric-by-metric pass (started 2026-07-08 with Asset then Centers) has not reached these yet. (Map is no longer a page; Overview has been reworked repeatedly since — @67 through **@90** — so it's off this list: @85–@88 all touched its map card and @90 replaced its chart renderer.)
 10. **Next up (queued, not started):** user has queued a batch of changes around filters and data extraction — requirements gathering (brainstorm/spec) has started but the change inventory has not yet been provided.
 11. **Test harness added (2026-07-28)** — a two-tier Jest suite now exists: `npm test` (fast unit tests, no credentials) and `npm run test:reconcile` (live-BigQuery reconciliation, needs `GOOGLE_APPLICATION_CREDENTIALS`); `npm run verify-before-deploy` runs both as a manual pre-deploy gate. CI (`.github/workflows/test.yml`) runs the unit tier on every push and the reconciliation tier on PRs into `main`. **Still open:** the `BQ_SERVICE_ACCOUNT_KEY` repo secret (base64-encoded `tricogde-dwh` service-account key) has not been added to GitHub yet, so the CI reconciliation job currently no-ops on every PR — see `docs/superpowers/specs/2026-07-28-testing-harness-design.md` for the full design and what's still uncovered.
 12. ~~**(from 2026-07-31 review) Fix global search's silent no-op**~~ — **DONE 2026-08-04**, commit `9657431` (not yet pushed/deployed): Overview/Numbers/Raw Data now disable the box with an explanation; Top Customers now actually filters; Support/CS is a CenterID/ticket-number lookup instead.
@@ -1935,7 +2327,12 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 19. ~~**(v5.29/v5.30) `Charts.rankBar` x-axis labels collide in narrow `span-4` cards`~~ — **DONE, v5.32/@61 (2026-08-14), commit `678496f`.** Removed the redundant/overlapping value axis from all 12 `rankBar` instances (5 TOM, 3 Service, 3 Top Customers, 1 Overview) — the axis duplicated the value already printed as a bar-end label.
 20. **(2026-08-14 catch-up pass) `docs/SOURCES.md` and `docs/ARCHITECTURE.md` were 3 versions stale** (last touched at v5.13, missing every v5.14–v5.33 change: `tom_tickets`, `servicewrk_Tickets`, `hub_country`, the CDM page, the 7-dimension filter set, the zoho dedup/native-DATETIME fixes, the reversed ServiceWRK-uptime-swap decision). **Fixed in this pass** — both docs now reflect state through v5.33/@62. Re-verify they're still current before trusting them on anything past this point.
 21. ~~⚠️ **(2026-08-21) Deploy @81 — the only open action from this catch-up pass.**~~ — **STALE, superseded (2026-08-23).** This item tracked the @81 blocker (the four new global filters shipping silently inert). @81 was never deployed standalone — the fix landed in `8f77d06` and went out as **@82/v5.53** instead, and production has since moved through @83 to **@84/v5.55** (see the header). Nothing here is still actionable; left struck through rather than deleted so the blocker's original detail (the `filtersEqual_` failure shape) stays discoverable if a similar bug recurs — see item 16's note above for exactly that.
-22. **(2026-08-21) Section 1's view list was left stale on purpose** — it still says "Eight views" and predates Service/TOM/CDM plus the Map→Overview merge; a warning note now sits above it. Rewrite it page-by-page next time someone has the context to describe all 10 tabs accurately, and re-check `docs/SOURCES.md`/`docs/ARCHITECTURE.md` at the same time (item 20 above only brought them current to v5.33/@62; `8e9fbed`/`dfd1c28` later touched them for @77/@78, nothing since).
+22. **(2026-08-21) Section 1's view list was left stale on purpose** — it still says "Eight views" and predates Service/TOM/CDM plus the Map→Overview merge; a warning note now sits above it. Rewrite it page-by-page next time someone has the context to describe all 10 tabs accurately, and re-check `docs/SOURCES.md`/`docs/ARCHITECTURE.md` at the same time (item 20 above only brought them current to v5.33/@62; `8e9fbed`/`dfd1c28` later touched them for @77/@78, ~~nothing since~~ — **corrected 2026-08-24:** `afe0d08` brought `README.md` + `docs/ARCHITECTURE.md` + `docs/SOURCES.md` current through v5.55/@84, and `36a38e4` updated `README.md` + `docs/ARCHITECTURE.md` again for the flow diagrams at @90. See item 26 for what's still behind). The 10-tab count itself is confirmed: `src/client/Index.html` has exactly 10 tab ids (overview, centers, support, service, tom, asset, cdm, topcust, numbers, rawdata).
+23. **(2026-08-24) `buildDevicesTree_` applies no top-N cap, unlike `buildCustomersTree_`** — consistency cleanup, **not a bug**. `src/server/OverviewFlow.js:152` maps every key of `byType` straight to a level-1 child (sorted by value descending, no cap), while `:99` caps via `topNPlusOthers_(countryItems, 5, …)` at line 108 — the only `topNPlusOthers_` **call site in the repo**. The only upstream narrowing on Devices is `isTrackedJiraDeviceType_` excluding `CONFIG.JIRA_NON_DEVICE_TYPES = ['task','epic','test']`, and `JIRA_DEVICE_TYPE_DEFAULT` has been `[]` (no restriction) since 2026-08-21, so **Devices level-1 is unbounded and 12–14 nodes is its EXPECTED production shape**. Don't re-derive any of this: it is already documented at length, with measured numbers, in the `pitch1` comment at **`src/client/Charts.html:1370-1416`** (13 tracked device types; at the real open-card height H=297, `cap1 = 7` → 6 named types plus a tail aggregate over 7, bands 95.4/62.7/31.1/22.1/20.2/19.7/21.9px, the two largest decomposing and the next four folding whole). `decompFlow` folds it gracefully and names what it folded, so this is purely a question of whether Devices *should* cap for consistency with Customers — ask the user before capping, since the fold is already legible and a cap would hide types behind an "Others" the flow can't decompose. (Corroborating type counts, not re-verified against live BigQuery this pass: the v5.13 entry above enumerates 12 non-Connector/ECG types in `jira_data`, and `Config.js`'s `JIRA_NON_DEVICE_TYPES` comment names 12 device Issue Types plus "etc.")
+24. **(2026-08-24) `stash@{0}` is insurance, NOT anyone's in-flight work — safe to drop.** Full message: "On main: flowchart v1 (stacked-bar build from workflow run 1) - superseded, kept for reference", created 2026-08-24 03:54:31, 5 files (`docs/ARCHITECTURE.md`, `src/client/{App,Charts,Index,Styles}.html`, +363/−217). It is the **rejected first flow implementation** that `36a38e4`/@90 superseded, plus a complete out-of-repo backup at `…/scratchpad/wip-backup/` (`flowchart-wip.patch`, 43,182 bytes, written 03:51, plus verbatim copies of all five touched files). **Describe it by its LAYOUT, not by its series type or its stash label:** v1 is *also* an ECharts `custom` series with a function *also* called `decompFlow`, so anyone diffing it will find the same series type that shipped. The difference is that **v1 draws one horizontal row per level-1 branch with its children tiling a shared value axis (stacked bars; item value `[x0, x1, rowIndex]`, item kinds `'seg'`/`'rest'`/`'total'`)**, whereas @90 ships **two vertical rank columns joined by one ribbon per parent→child**. Do not mistake the stash for the shipped design. Working tree is clean and `main` == `origin/main` == `36a38e4`, so nothing is pending behind it.
+25. **(2026-08-24) `Fse.js`'s own docblock now contradicts its data — fix the comment before someone "fixes" the data.** `src/server/Fse.js:14` still opens "**FSE_ROSTER SHIPS EMPTY ON PURPOSE** … Until real roster rows are pasted in, the map simply has no FSE layer", and still says "Example row (commented — do not ship invented names)", while the same docblock's later SOURCE paragraph documents the 2026-08-24 BRM import and the array at `:60` holds **26 real named engineers** (`78ed2f8`, shipped @89). `src/server/EditionCD.js`'s guard comment (just above `if (fseRosterActive_().length)`) is stale the same way ("ships empty, and until it's filled this layer draws nothing"), and **`src/server/Cp.js:11` already reads the old sentence as still true** ("unlike FSE_ROSTER's deliberate empty start"). Low risk but real: the stale wording invites a reader to conclude the roster was populated by mistake and empty it again. Keep the *reasoning* (don't invent names onto a production ops map) — only the "ships empty" status claim is wrong.
+26. **(2026-08-24) `docs/SOURCES.md` is the one doc still stopped at @84** — last touched by `afe0d08`, so it knows nothing about the populated FSE roster, the CP dealer layer, the country-fill layer, or `decompFlow`. `README.md` and `docs/ARCHITECTURE.md` were brought current at @90 by `36a38e4` **for the flow renderer only**: neither mentions the CP / Channel Partner layer or `Cp.js` at all (grep for "dealer", "channel partner", "Cp.js" returns nothing in either), neither mentions @88's bundled country-polygon fill, and `README.md:14` still credits the FSE coverage layer to "v5.54/@83-84" with no note that the roster shipped empty until @89. **So @88 and @89 are documented nowhere outside this file.** One *inherited* error to fix while you are in there: `docs/ARCHITECTURE.md:40` opens "**@77/v5.48–@88 the renderer was a treemap**", copying the range straight from `36a38e4`'s commit message — and both ends are wrong (@77 was authored-but-stashed; @89 still shipped the treemap). The correct range is **@78–@89**; derivation in the v5.61/@90 entry above.
+27. **(2026-08-24) Section 3's file map is materially wrong and was NOT repaired by this pass** (deliberately out of scope — it is stale since `b83076a`/2026-07-30 and v5.10, not since @85, and repairing it properly means re-reading every server file). Known defects, all verified: it lists **three files that no longer exist** (`SheetSource.js`, `JiraDump.js`, `ExecOverview.js`), **omits eight that do** (`Cp.js`, `Fse.js`, `OverviewFlow.js`, `ServiceWrk.js`, `SlaRisk.js`, `TomTickets.js`, `Warm.js`, `ProfileNewSources.js` — including all four that @84–@90 depend on), attributes `JIRA_SHEET_ID`/`CS_SHEET_ID`/`JIRA_DEVICE_TYPES` to `Config.js` (none of the three exists in `src/`), lists deleted endpoints/helpers (`apiGetExecOverviewCD`, `apiGetCenters`/`apiGetMapData`/`apiGetCenterDetail`, `apiGetTopCustomers`/`computeTopCustomers_`, `getCenter360Rows_`, `enrichCenterNames_`), says "8 tabs" and `#activeOnlyBtn` for `Index.html` (10 tabs; that toggle is gone since v5.11 — filtering is the Filters drawer with 11 dimensions + date range, Status defaulting to ACTIVE as a removable chip), omits `decompFlow` from the `Charts.html` line, and omits the FSE pins, CP layer, `SERVICE_REGION_BOUNDS_` and the 117KB embedded `COUNTRY_GEOJSON_` from the `MapView.html` line. **Sections 1 and 4 have the same vintage of error** — Section 1 names the old sandbox dataset and two Google Sheets as live sources (it is `tricogde-dwh.abi_tables`, and no code reads either sheet — no `JIRA_SHEET_ID`, no `CS_SHEET_ID`, no `readCsTracker` anywhere in `src/`), Section 1 item 8 says Raw Data exposes "6 BQ tables + 2 Sheets" (`rawSources_()` in `RawData.js:34-42` registers **four** BQ tables and no sheets, which Section 7 already states correctly), and Section 4 has it exactly **inverted** on Jira ("ALL Jira data comes from the Jira Google Sheet; the `jira_data` BQ table is ignored app-wide" — since `b83076a`, `jira_data` **is** the source) and claims `zoho_data`'s `CreatedAt`/`ClosedAt` are strings, which is precisely the assumption the v5.24/@53 hotfix entry records as having **crashed production** (they are native `DATETIME` in `tricogde-dwh`). **Treat Sections 1, 3 and 4 as untrusted until rewritten**; the release entries and Sections 6–7 are the current parts of this file.
 
 ---
 

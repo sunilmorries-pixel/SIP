@@ -37,7 +37,10 @@ for the full sequence and the reasoning behind each layout change before "fixing
 layout issue — several apparent bugs there were already tried, measured against real production
 data, and deliberately reverted once.
 
-**@77/v5.48–@89 the renderer was a treemap** — `Charts.decompTreemap`, replacing `Charts.decompTree`.
+**@78/v5.49–@89 the renderer was a treemap** — `Charts.decompTreemap`, replacing
+`Charts.decompTree`. (It was authored for @77/v5.48 but stashed out of that deploy, so @78 is where
+it first shipped, and @89 still shipped it — `HANDOFF.md` closing item 26 derives both ends from
+the code rather than from a version list.)
 That ended the layout churn above rather than continuing it: the `tree` series laid out by topology,
 drawing every node at a fixed 88×52 / 70×48 box whatever its count, so magnitude existed only as
 label text and same-depth siblings split one span whether a branch held 3% or 65% of its parent. Six
@@ -66,15 +69,102 @@ role-palette ΔE/contrast numbers, and the label-fitting ladder. Capacity is bou
 height, so a folded tail is drawn as its own block sized by the tail's true sum, labelled with what
 it stands for, listing its members in its tooltip, and clicking through to where they split out.
 
-**Overview's map gained an FSE (Field Service Engineer) coverage layer at v5.54/@83–84**
-(`src/server/Fse.js`) — pins for engineers from a hand-maintained roster (`FSE_ROSTER`, ships
-empty until real names are pasted in — see the file's docblock), fanned to every center they've
-worked a `servicewrk_Tickets` ticket for in a fixed 90-day rolling window
-(`CONFIG.FSE_COVERAGE_DAYS`, deliberately independent of the global date filter — coverage means
-"served now", not "served within whatever range is selected"). The `customer_id` → `CenterID`
-join it relies on is the same one profiled for the center-detail drawer below. The map itself was
-also fixed in the same pass to actually fit India's proportions rather than an arbitrary
-bounding box.
+## The map — one factory, three instances
+
+`src/client/MapView.html` is a single factory, `MapView(containerId)`, instantiated three times in
+`App.html`: `assetMap` (Overview, merged in from the old Map tab at @79/v5.50), `tcMap` (Top
+Customers) and `cdmMap` (CDM). The scoping rule matters when editing it: anything declared inside
+`function MapView(...)` is per-instance (the Leaflet map, the marker cluster, the country layer,
+the FSE/CP layer state), and anything at `<script>` top level is shared by all three
+(`COUNTRY_GEOJSON_` and its precomputed bboxes, the point-in-polygon helpers, the two fill
+colours). The returned handle is the whole public surface — `ensureMap`, `setData`, `focusByName`,
+`setTheme`, the FSE entry points (`setFse`/`focusFse`/`focusFseByName`/`clearFseFocus`/
+`setFseVisible`), the CP ones (`setCp`/`focusCp`/`clearCpFocus`/`setCpVisible`) and
+`showGrayAreas` (the static zero-coverage markers, opt-in per instance and called by Overview
+only). A page that needs different marker semantics passes `opts.colorFn`/`opts.tooltipFn` into
+`setData` (CDM colours by battery severity) instead of forking the factory.
+
+The gray-area layer is **in production**: added in `106f894`, scoped to Overview in `f6ba080`,
+and shipped on the deploy `5dbb1d3` bumped for — which landed as `@92` while its embedded footer
+still read '91' (a concurrent session consumed 91 between `clasp push` and `clasp deploy`), so
+`e693a78` corrected `APP_VERSION` forward. **Take the live version from `src/server/Config.js`
+(`APP_VERSION`/`APP_DEPLOYED_AT`), never from a hard-coded @N in a doc** — `HANDOFF.md`'s header
+is stale on exactly this point.
+
+**Country shading (v5.59/@88).** CARTO's basemap tiles are a flat raster image — there is no
+polygon in them to recolour — so the app ships its own: `COUNTRY_GEOJSON_`, one module-level
+literal of 135 country features (116 Polygon / 19 MultiPolygon, 6,683 coordinate pairs rounded to
+3 decimals), roughly 117 KiB of `MapView.html`'s 147 KiB. Provenance and licence live in
+`docs/SOURCES.md` → *Hand-maintained catalogs in source*; read that before re-sourcing or
+extending the set. A per-feature `_bbox` is precomputed once at parse time; the Leaflet layer and
+the `countryHasCenter_` flags are per instance. `refreshCountryFill_` runs once per `setData()`
+(not per frame): for every center row it walks the features, skipping any country already flagged
+and any whose bbox rejects the point, then runs an even-odd ray cast (`pointInRing_`, XORed across
+rings so a hole flips a point back outside; MultiPolygon via `.some()`), and repaints with one
+`countryLayer.setStyle()`. Fill is `#2E9BD6` at 0.22 for "has a center" and `#869AB2` at 0.16 for
+"no center" — **one pair for both themes** (`setTheme` only swaps the tile URL and never restyles
+`countryLayer`), and the near-equal alphas are deliberate: a much fainter "no center" wash just
+blended into the basemap. The layer is added after the tiles and before the marker cluster, with
+`interactive: false`, so it sits under the markers and cannot steal a click.
+
+**Region-bounded auto-fit (v5.58/@87).** `SERVICE_REGION_BOUNDS_` (lat −12..40, lng −5..130) exists
+because `fitBounds` used to fit *every* plotted center, so one bad geocode in the Americas or
+central Europe zoomed the whole view out. It is declared inside the factory and consumed by the
+shared `setData`, so **all three maps get it**, not just Overview (both server row shapes keep
+lat/lng at indices [2]/[3] — `EditionCD.js`). The distinction to preserve when touching this code
+is **view vs rendering**: markers are built and added from the *unfiltered* array, so every center
+still renders, still clusters, still carries its tooltip and click handler, and is still reachable
+via `focusByName` (which does its own `setView`); the filter is applied afterwards and only to the
+`fitBounds` input. If no center qualifies, the fit falls back to all of them; if there are no
+centers at all, `fitBounds` is skipped and the initial `setView([21.5, 79], 5)` stands. Note the
+deliberate disagreement with the layer above: `refreshCountryFill_` is passed the *unfiltered*
+array, so an out-of-region bad geocode still shades whichever bundled country contains it even
+though it no longer drags the viewport — and a bad geocode west of lng −25 shades nothing at all,
+because the bundle stops there.
+
+**Sizing (v5.57/@86).** `#assetMap, #tcMap, #cdmMap` share one rule in `Styles.html`
+(`width: 100%; height: 72vh; min-height: 480px`); the *only* override is
+`#assetMap { height: 85vh; min-height: 620px; }`, so Overview's map differs from the other two in
+height alone — width, background and z-index are identical. Two attempts on 2026-08-23 to square
+the box up to India's near-square bbox were reverted here: the first kept full width and drove
+height from width (`aspect-ratio: 1/1` capped by `max-height: min(76vh, 900px)`, which always
+bound first, so the box stayed roughly 2:1), the second capped the width itself to
+`min(100%, 82vh, 900px)` and centred it with gutters, adding a matching `.map-wrap:has(#assetMap)`
+rule so the absolutely-positioned legend stayed flush with the narrowed map. Per user, both read
+as the map shrinking rather than as "sized to fit India" — the ask was to *expand* the box. Read
+the comment above the `#assetMap` rule before changing it. One known caveat: no responsive block
+overrides map height, so the 620px floor applies at every breakpoint — on a short phone viewport
+the Overview map is taller than the screen.
+
+**Two coverage layers, computed vs declared.** Both draw pins plus a focus fan on the Overview
+map and both are hand-maintained catalogs in source (see `docs/SOURCES.md`), but they are
+architecturally different:
+
+- **FSE — computed** (`src/server/Fse.js`, v5.54/@83–84). `FSE_ROSTER` supplies the engineers;
+  coverage is *derived* from `servicewrk_Tickets` — an engineer is fanned to every center they
+  have worked a ticket for within a fixed 90-day rolling window (`CONFIG.FSE_COVERAGE_DAYS`,
+  deliberately independent of the global date filter: coverage means "served now", not "served
+  within whatever range is selected"). That requires a query (`buildFseCoverageSpec_`) and a name
+  reconciliation against the free-text `representative` column via `fseNameKey_`; ticket names
+  that match no roster row are surfaced as `unmatchedReps` rather than swallowed. The fan is drawn
+  only to centers the current filter actually plotted (`plottedIds`), so it can never point at a
+  marker that isn't there. The `customer_id` → `CenterID` join it relies on is the same one
+  profiled for the center-detail drawer below.
+- **CP — declared** (`src/server/Cp.js`, v5.60/@89). No field anywhere in the warehouse names a
+  Channel Partner, so coverage cannot be computed at all: `CP_ROSTER` carries each dealer's
+  declared districts/cities directly. Hence no coverage query, no name reconciliation and no
+  unmatched bucket — `buildCpLayer_` only resolves coordinates, and every coordinate in the roster
+  is explicit, so the coord functions are pass-throughs. Focus mode draws its own endpoint dots
+  instead of restyling center markers (a covered district is not necessarily a center).
+
+Both layers ride the same map payload and cache key (`mapcd_v16_<epoch>_<filterHash>` in
+`EditionCD.js`, 30-min TTL) and both are guarded on a non-empty roster, so emptying a catalog
+sends `fse: null` / `cp: null` — no layer, rather than an empty one. That guard was load-bearing
+for FSE: `FSE_ROSTER` shipped **empty from @83/@84 through @88**, so production drew no engineer
+pins for six deploys even though the docs described the layer as live; real rows arrived in
+`78ed2f8` and shipped @89. The cache key hashes neither roster, so a roster edit can serve a stale
+layer until the entry expires or the cache epoch moves — see *Editing one of these* in
+`docs/SOURCES.md`.
 
 ## Center-detail drawer
 

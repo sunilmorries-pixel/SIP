@@ -11,19 +11,21 @@ flow (Zoho), SLA compliance, device fleet, and asset reliability.
 ## What it shows (10 tabs)
 
 There is no standalone Map tab — it was merged into Overview at @79/v5.50; the map now lives
-there, plus an FSE (Field Service Engineer) coverage layer added v5.54/@83–84 (see
+there, plus two coverage layers — FSE (Field Service Engineer) added v5.54/@83–84 and CP
+(Channel Partner dealer) added v5.60/@89 — and bundled country shading (v5.59/@88). All three
+maps (Overview, Top Customers, CDM) come from one `MapView(containerId)` factory (see
 `docs/ARCHITECTURE.md`).
 
 | Tab | Insights |
 |---|---|
-| **Overview** | 3 decomposition **flow diagrams** — Customers, Devices, All tickets (trees as of v5.38/@67, layout iterated through @76/v5.47, treemaps @77/v5.48–@88, flow from @90 — see `HANDOFF.md`) — each card opens from a KPI total into a hand-laid two-rank flow (`Charts.decompFlow`, one ECharts `custom` series) built from pure-JS aggregation over one combined endpoint (`apiGetOverviewFlowCD`): a column of level-1 blocks, a column of level-2 blocks, and one ribbon per parent→child relationship. Heights are value-driven but floored and compressed rather than ratio-true, so every drawn block also prints its own count (and its share where the width allows), and the tooltip is a full row readout. Every node is clickable and drills the global filters. Also carries the located-centers map (merged in from the old Map tab, @79) and, since @83–84, an FSE coverage layer (`Fse.js`) |
+| **Overview** | 3 decomposition **flow diagrams** — Customers, Devices, All tickets (trees as of v5.38/@67, layout iterated through @76/v5.47, treemaps @78/v5.49–@89, flow from @90 — see `HANDOFF.md`) — each card opens from a KPI total into a hand-laid two-rank flow (`Charts.decompFlow`, one ECharts `custom` series) built from pure-JS aggregation over one combined endpoint (`apiGetOverviewFlowCD`): a column of level-1 blocks, a column of level-2 blocks, and one ribbon per parent→child relationship. Heights are value-driven but floored and compressed rather than ratio-true, so every drawn block also prints its own count (and its share where the width allows), and the tooltip is a full row readout. Every node is clickable and drills the global filters. Also carries the located-centers map (merged in from the old Map tab, @79): full-width at 85vh / 620px min since v5.57/@86, auto-fit restricted to centers inside a service-region box so a far-off bad geocode can't zoom the view out (v5.58/@87 — those markers still render and stay clickable), 135 bundled country polygons shaded by whether they contain any plotted center (v5.59/@88), plus two coverage layers — FSE engineers, computed from tickets actually worked (`Fse.js`, @83–84, real roster live from @89), and CP dealers from a declared roster (`Cp.js`, v5.60/@89) |
 | **Centers / Customers** | Geo, deployment age, segment breakdown (`hub_master_segment`), top hubs (by spoke count), Center-360 table (MTBF/Failures columns, sticky Center column, swapped-ticket count, clickable rows → drawer) |
 | **Support / CS** | Zoho KPIs (with prior-7-day delta chips), ticket flow, **SLA-compliance suite** (within% + Tech/Non-Tech + breach-by-type), **SLA risk card** (breached/at-risk chart + ticket worklist), open-ticket age-bucket chart, backlog, categories, channel, segment |
 | **Service** | Field-service ticket analytics from `servicewrk_Tickets` (added v5.29) — deliberately not the Machine Uptime source; see `docs/SOURCES.md` |
 | **TOM** | CS-owned issue/escalation tracker from `tom_tickets` (added v5.30); Centre + date-range filter only |
 | **Asset** | Jira-sourced device age (executive summary), asset lifecycle/type breakdown, failure-analysis cohort (M-A3/A5). The device-status donut, firmware spread, and device explorer were removed 2026-08-19 — `cloud_devices` telemetry now surfaces only on CDM/Numbers/Raw Data |
 | **CDM** | Communicator Device Management (added v5.33) — `cloud_devices` map colored by battery severity, signal/battery/hardware-mix charts, paginated communicator explorer |
-| **Top Customers** | Curated 27 "Top LE" hubs: KPIs, map, ranked bars, leaderboard (→ customer drawer) |
+| **Top Customers** | Curated "Top LE" account list (22 business groups / 75 HubIDs, `TopCustomers.js`): KPIs, map, ranked bars, leaderboard (→ customer drawer) |
 | **Numbers** | Source-reconciliation counts + raw paginated `center_details` table (Devices + Mapped columns) |
 | **Raw Data** | All 4 underlying BigQuery sources as paginated, unfiltered tables with pill-selector and full CSV export. No site filters apply |
 
@@ -59,7 +61,9 @@ demo-sip/
 │   │   ├── ProfileNewSources.js # one-off join-key profiling helpers for new BQ tables (dev/diagnostic only)
 │   │   ├── RawData.js        # Raw Data page: all 4 BQ sources, paginated, CSV export
 │   │   ├── Api.js            # apiGetCdmDevices/apiHealthCheck + shared asset-index helpers
-│   │   ├── TopCustomers.js   # curated 27 "Top LE" hubs + shared SLA-stats helper
+│   │   ├── TopCustomers.js   # curated "Top LE" list (22 groups / 75 HubIDs) + shared SLA-stats helper
+│   │   ├── Fse.js            # FSE roster + engineer coverage computed from ServiceWRK tickets
+│   │   ├── Cp.js             # Channel Partner dealer roster + declared coverage (no query)
 │   │   ├── Geo.js            # progressive geocoder
 │   │   ├── Join.js           # Apps Script hash-join utils
 │   │   ├── WebApp.js         # doGet router + HTML includes
@@ -69,7 +73,8 @@ demo-sip/
 │       ├── Index.html        # page shell (10 tabs, shared drawer)
 │       ├── Styles.html       # Tricog design tokens + components + motion
 │       ├── Charts.html       # all ECharts configs
-│       ├── MapView.html      # Leaflet factory (map + top-customers)
+│       ├── MapView.html      # Leaflet factory: 3 instances (Overview/Top Customers/CDM)
+│       │                     #   + bundled country polygons (see docs/SOURCES.md)
 │       └── App.html          # state, data loading, interactions
 ├── design-system/            # original design brief (MASTER.md; Styles.html is truth)
 ├── docs/                     # architecture, deployment, BQ setup notes

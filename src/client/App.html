@@ -2325,6 +2325,65 @@
     if (fgDate && (f.dateFrom || f.dateTo)) fgDate.open = true;
   }
 
+  /**
+   * Focus-trap + focus-restore for a modal drawer (`#filterDrawer` and
+   * `#centerDrawer` both already carry role="dialog"/aria-modal="true" and a
+   * tabindex="-1" panel — this supplies the JS behavior that markup alone
+   * doesn't: keyboard focus was previously free to escape into the
+   * background page while a drawer was open (live-reproduced on both).
+   * One implementation, not two: both drawers need the identical behavior,
+   * only the panel id differs.
+   * @param {string} panelId
+   * @return {{activate: function(), deactivate: function()}}
+   */
+  function makeFocusTrap_(panelId) {
+    var lastFocused = null;
+    var FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea:not([disabled]), ' +
+      'input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    function focusableEls_() {
+      var panel = $(panelId);
+      return Array.prototype.filter.call(panel.querySelectorAll(FOCUSABLE_SELECTOR),
+        function (el) { return el.offsetParent !== null; }); // visible only
+    }
+
+    function onKeydown_(event) {
+      if (event.key !== 'Tab') return;
+      var els = focusableEls_();
+      if (!els.length) return; // nothing inside yet (e.g. still loading) — leave focus on the panel
+      var first = els[0], last = els[els.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    }
+
+    return {
+      // Called right after the drawer becomes visible. Focus lands on the
+      // panel itself (not its first control): both drawers render content
+      // asynchronously (filter groups/center details load after open()), so
+      // there is no reliable "first focusable element" at the moment of
+      // opening — the panel's own aria-label is what a screen reader has to
+      // announce regardless.
+      activate: function () {
+        lastFocused = document.activeElement;
+        document.addEventListener('keydown', onKeydown_);
+        $(panelId).focus();
+      },
+      // Called right before the drawer hides. Restores focus to whatever
+      // opened it (a table row, a nav button, etc.) rather than dropping
+      // focus to <body>, which is what "hidden = true" alone does.
+      deactivate: function () {
+        document.removeEventListener('keydown', onKeydown_);
+        if (lastFocused && typeof lastFocused.focus === 'function') lastFocused.focus();
+        lastFocused = null;
+      }
+    };
+  }
+
+  var filterFocusTrap_ = makeFocusTrap_('filterDrawer');
+
   function openFilterDrawer_(preserveStaged) {
     // preserveStaged: true when the caller (Clear all) already staged the
     // pending edits it wants shown — a plain open must still snapshot the
@@ -2368,9 +2427,11 @@
     $('filterScrim').hidden = false;
     $('filterDrawer').hidden = false;
     $('globalFilterBtn').setAttribute('aria-expanded', 'true');
+    filterFocusTrap_.activate();
   }
 
   function closeFilterDrawer_() {
+    filterFocusTrap_.deactivate();
     state.globalFiltersPending = null;
     $('filterScrim').hidden = true;
     $('filterDrawer').hidden = true;
@@ -2881,6 +2942,7 @@
     var listPage = { assets: 0, open: 0, all: 0, swapped: 0, svcOpen: 0, svcClosed: 0, svcSwapped: 0 };
     var activeTix = 'open';
     var activeSvcTix = 'open';
+    var focusTrap_ = makeFocusTrap_(ids.panel);
 
     /**
      * @param {Array} c compact center row (see class doc below).
@@ -2896,6 +2958,7 @@
       activeSvcTix = 'open';
       $(ids.panel).hidden = false;
       if (ids.scrim) $(ids.scrim).hidden = false;
+      focusTrap_.activate();
       $(ids.title).textContent = c[1];
       $(ids.sub).textContent = 'Center #' + c[0];
       $(ids.body).innerHTML = '<div class="chart-empty" style="padding:32px 0">Loading details…</div>';
@@ -3076,6 +3139,7 @@
     function openCustomer(cust, centersOfHub) {
       $(ids.panel).hidden = false;
       if (ids.scrim) $(ids.scrim).hidden = false;
+      focusTrap_.activate();
       $(ids.title).textContent = cust.hub;
       var hubIds = cust.hub_ids || [];
       var hubLabel = hubIds.length === 1 ? 'Hub #' + hubIds[0] : hubIds.length + ' hubs';
@@ -3113,6 +3177,7 @@
     }
 
     function close() {
+      focusTrap_.deactivate();
       $(ids.panel).hidden = true;
       if (ids.scrim) $(ids.scrim).hidden = true;
     }

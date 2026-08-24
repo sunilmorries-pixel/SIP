@@ -3356,8 +3356,12 @@
       if (!state.overviewFlowLoaded || overviewFlowStale) loadOverviewFlow();
       if (!mainMap.ensureMap()) {
         toast('Map library failed to load — check your network and refresh.', 'error');
-      } else if (!state.mapLoaded) {
-        loadMapData();
+      } else {
+        // Static, so this belongs next to ensureMap() rather than inside
+        // loadMapData()'s payload handling — it draws once regardless of
+        // filters/refreshes (showGrayAreas() itself is idempotent).
+        mainMap.showGrayAreas();
+        if (!state.mapLoaded) loadMapData();
       }
     }
     if (tabId === 'tab-topcust') {
@@ -3633,7 +3637,7 @@
     // Overview landing page (merged in 2026-08-21, was its own "Map" tab), so
     // it needs the same unconditional cold-load treatment, not the
     // state.xLoaded gating the still-lazy tabs below use.
-    if (mainMap.ensureMap()) loadMapData();
+    if (mainMap.ensureMap()) { mainMap.showGrayAreas(); loadMapData(); }
     loadDashboard(bypassCache);
     loadCenters();
     if (state.serviceLoaded) loadService();

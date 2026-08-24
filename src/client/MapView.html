@@ -107,6 +107,11 @@ function MapView(containerId) {
   var fseFocused = null, fseSelectHandler = null;
   var REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  // Gray-area markers are opt-in per map instance (see showGrayAreas below) —
+  // unlike fseGroup/cpGroup this guard exists purely for idempotency, not
+  // per-instance scoping choice.
+  var grayAreaGroup = null;
+
   // Violet, not the brand teal. Measured against both CARTO basemaps and the
   // three severity hues already on this map: teal #04E0B8 scores 1.13 against
   // the "no open tickets" green #34D399 — adjacent hue, near-identical
@@ -138,8 +143,8 @@ function MapView(containerId) {
   // network review ("Gray areas" sheet). Purely static — unlike FSE/CP this
   // never varies with data or filters, so it needs no server round-trip: the
   // 7 states + their approximate centroids live here, client-side only.
-  // Rendered once in ensureMap(), not through a setter, since there is
-  // nothing dynamic to feed it.
+  // Drawn via showGrayAreas() (below), called explicitly by the Overview
+  // page only — not every MapView() instance should carry this context.
   var GRAY_AREA_STATES = [
     { name: 'Kerala', lat: 10.8505, lng: 76.2711 },
     { name: 'Madhya Pradesh', lat: 22.9734, lng: 78.6569 },
@@ -225,9 +230,21 @@ function MapView(containerId) {
       showCoverageOnHover: false, spiderfyOnMaxZoom: true
     });
     map.addLayer(cluster);
-    // Gray-area markers: static, rendered once, never updated by setData/
-    // setFse/setCp — there is no per-refresh input to feed them.
-    var grayAreaGroup = L.layerGroup().addTo(map);
+    if (pendingRender) { var run = pendingRender; pendingRender = null; run(); }
+    return true;
+  }
+
+  /**
+   * Draws the 7 gray-area markers. Opt-in per map instance, called explicitly
+   * by the Overview page only (see App.html) — NOT wired into ensureMap()
+   * itself, because MapView() backs three map instances (Overview, CDM, Top
+   * Customers) and this context (BRM 2026 dealer-network coverage) only
+   * belongs on the one page that also carries the FSE/CP layers. Idempotent:
+   * a second call is a no-op, same guard style as ensureMap() itself.
+   */
+  function showGrayAreas() {
+    if (grayAreaGroup || !map) return;
+    grayAreaGroup = L.layerGroup().addTo(map);
     GRAY_AREA_STATES.forEach(function (s) {
       L.marker([s.lat, s.lng], {
         icon: grayAreaIcon_(), keyboard: true, zIndexOffset: 800, interactive: true
@@ -236,8 +253,6 @@ function MapView(containerId) {
         { direction: 'top', className: 'gray-area-tip' }
       ).addTo(grayAreaGroup);
     });
-    if (pendingRender) { var run = pendingRender; pendingRender = null; run(); }
-    return true;
   }
 
   function defaultTooltip(c) {
@@ -629,7 +644,8 @@ function MapView(containerId) {
     ensureMap: ensureMap, setData: setData, focusByName: focusByName, setTheme: setTheme,
     setFse: setFse, focusFse: focusFse, clearFseFocus: clearFseFocus,
     focusFseByName: focusFseByName, setFseVisible: setFseVisible,
-    setCp: setCp, focusCp: focusCp, clearCpFocus: clearCpFocus, setCpVisible: setCpVisible
+    setCp: setCp, focusCp: focusCp, clearCpFocus: clearCpFocus, setCpVisible: setCpVisible,
+    showGrayAreas: showGrayAreas
   };
 }
 </script>

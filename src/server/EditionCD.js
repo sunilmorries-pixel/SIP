@@ -1202,7 +1202,16 @@ function apiGetCdmDataCD(options) {
   });
 }
 
-/** Top-customers rollup over the center_details center universe. */
+/**
+ * Top-customers rollup over the center_details center universe.
+ *
+ * Devices and assets were dropped from this page's aggregation (per user,
+ * 2026-08-24) — `getAssetIndex_()` is no longer read here at all, and
+ * `row.jira_devices` is no longer summed per group. Individual centers still
+ * carry their own device count into `mapCenters` (index 4, unchanged) since
+ * that feeds the shared map factory's per-marker bubble sizing, not this
+ * page's own KPI/table/chart surface.
+ */
 function computeTopCustomersCD_(filters) {
   // hub_id -> owning group (a group can list several hub_ids).
   var hubToGroup = {};
@@ -1211,25 +1220,13 @@ function computeTopCustomersCD_(filters) {
   });
 
   var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters || {}); });
-  var assets = getAssetIndex_();
   var geoStore = loadGeoStore();
-
-  var centerHub = {};
-  centers.forEach(function (row) { centerHub[row.center_id] = row.hub_id; });
-
-  var assetByGroup = {};
-  assets.forEach(function (a) {
-    if (a.center_id === null) return;
-    var hub = centerHub[a.center_id];
-    var grp = hub != null ? hubToGroup[hub] : null;
-    if (grp) assetByGroup[grp.group] = (assetByGroup[grp.group] || 0) + 1;
-  });
 
   // Aggregate by GROUP (summed across every hub_id it lists).
   var agg = {};
   TOP_CUSTOMERS.forEach(function (c) {
     agg[c.group] = { hub: c.group, hub_ids: c.hub_ids.slice(), tier: c.tier, centers: 0,
-      devices: 0, open_tickets: 0, located: 0, assets: assetByGroup[c.group] || 0, mrr: 0 };
+      open_tickets: 0, located: 0, mrr: 0 };
   });
 
   var mapCenters = [];
@@ -1237,10 +1234,7 @@ function computeTopCustomersCD_(filters) {
     var grp = hubToGroup[row.hub_id];
     if (!grp) return;
     var a = agg[grp.group];
-    // devices = Jira fleet count (row.jira_devices), not cloud_devices — per
-    // user, 2026-08-19: everywhere except CDM. cloud_devices online was
-    // dropped from this page for the same reason, 2026-08-19.
-    a.centers += 1; a.devices += row.jira_devices || 0;
+    a.centers += 1;
     a.open_tickets += row.open_tickets || 0;
     a.mrr += row.mrr || 0;
     var c = coordsForCD_(row, geoStore);
@@ -1252,13 +1246,13 @@ function computeTopCustomersCD_(filters) {
   });
 
   var customers = Object.keys(agg).map(function (k) { return agg[k]; })
-    .sort(function (x, y) { return y.devices - x.devices; });
+    .sort(function (x, y) { return y.centers - x.centers; });
 
-  var totals = { customers: customers.length, centers: 0, devices: 0,
-    open_tickets: 0, assets: 0, withData: 0 };
+  var totals = { customers: customers.length, centers: 0,
+    open_tickets: 0, withData: 0 };
   customers.forEach(function (c) {
-    totals.centers += c.centers; totals.devices += c.devices;
-    totals.open_tickets += c.open_tickets; totals.assets += c.assets;
+    totals.centers += c.centers;
+    totals.open_tickets += c.open_tickets;
     if (c.centers > 0) totals.withData += 1;
   });
 
@@ -1294,7 +1288,7 @@ function apiGetTopCustomersCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('topcustcd_v12_' + getCacheEpoch_() + '_' + filterHash_(filters), // v12: billable/machineTypes/deviceIds/macSerialIds filters added
+    return withCache('topcustcd_v13_' + getCacheEpoch_() + '_' + filterHash_(filters), // v13: dropped devices/assets from the per-customer + totals aggregation
       function () { return computeTopCustomersCD_(filters); },
       options.bypassCache === true);
   });

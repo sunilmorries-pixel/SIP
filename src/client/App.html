@@ -690,14 +690,14 @@
         'Fortis Hospital, BG Road, Bengaluru', 'Metropolis Healthcare Limited, Tamil Nadu',
         'SRI KAUVERY MEDICAL CARE (INDIA) LIMITED', 'Suburban Diagnostics Pvt Ltd', 'NEUBERG DIAGNOSTICS PVT LTD'];
       var mapc = [], custs = [];
-      var totals = { customers: names.length, centers: 0, devices: 0, open_tickets: 0, assets: 0, withData: names.length, ticket_count: 9240, sla_breach: 118, sla_within_pct: 63.2 };
+      var totals = { customers: names.length, centers: 0, open_tickets: 0, withData: names.length, ticket_count: 9240, sla_breach: 118, sla_within_pct: 63.2 };
       names.forEach(function (nm, i) {
-        var centers = rnd(10, 160), devices = rnd(1, 155),
-            open_t = rnd(0, 6), assets = rnd(0, 120), mrr = centers * rnd(800, 4500);
-        custs.push({ hub_ids: [1000 + i], hub: nm, tier: 'Top LE', centers: centers, devices: devices,
-          open_tickets: open_t, assets: assets, located: rnd(1, centers), mrr: mrr });
-        totals.centers += centers; totals.devices += devices;
-        totals.open_tickets += open_t; totals.assets += assets;
+        var centers = rnd(10, 160),
+            open_t = rnd(0, 6), mrr = centers * rnd(800, 4500);
+        custs.push({ hub_ids: [1000 + i], hub: nm, tier: 'Top LE', centers: centers,
+          open_tickets: open_t, located: rnd(1, centers), mrr: mrr });
+        totals.centers += centers;
+        totals.open_tickets += open_t;
         // mapCenters index 5 (online) is always 0 — cloud_devices data was
         // dropped from Top Customers 2026-08-19.
         for (var k = 0; k < Math.min(centers, 8); k++) {
@@ -972,8 +972,6 @@
     $('tcKpiGrid').innerHTML =
       kpiTile('tcCustomers', 'building', 'var(--accent)', 'Top customers', 'Top LE accounts') +
       kpiTile('tcCenters', 'map', 'var(--secondary)', 'Centers', 'across top accounts') +
-      kpiTile('tcDevices', 'fleet', 'var(--info)', 'Devices', 'live devices') +
-      kpiTile('tcAssets', 'layers', 'var(--violet)', 'Assets', 'Jira assets linked') +
       kpiTile('tcTicketCount', 'ticket', 'var(--info)', 'Ticket count', 'top accounts') +
       kpiTile('tcSlaBreach', 'clock', 'var(--danger)', 'SLA breach', 'top accounts');
   }
@@ -3168,12 +3166,8 @@
       var html =
         '<div class="detail-grid">' +
         statBox_(cust.centers, 'Centers') +
-        statBox_(cust.devices, 'Devices') +
         statBox_(cust.open_tickets, 'Open tickets') +
-        '</div>' +
-        '<dl class="detail-list">' +
-        dt_('Jira assets', FMT.format(cust.assets || 0)) +
-        '</dl>';
+        '</div>';
       // Only centers WITH open tickets (per request), most open first.
       var withOpen = (centersOfHub || []).filter(function (c) { return (c[6] || 0) > 0; })
         .sort(function (a, b) { return (b[6] || 0) - (a[6] || 0); });
@@ -3291,19 +3285,15 @@
     var t = payload.totals || {};
     setKpi('tcCustomers', t.customers, (t.withData || 0) + ' with live data');
     setKpi('tcCenters', t.centers, 'across top accounts');
-    setKpi('tcDevices', t.devices);
-    setKpi('tcAssets', t.assets, 'Jira assets linked');
     setKpi('tcTicketCount', t.ticket_count, FMT.format(t.open_tickets || 0) + ' currently open');
     setKpi('tcSlaBreach', t.sla_breach, (t.sla_within_pct != null ? t.sla_within_pct + '% within SLA' : 'past target'));
 
     tcMap.setData(payload.mapCenters || [], CenterDetail.open, { stateIdx: TCI.state });
 
     // Charts use the top ~15 by the relevant metric.
-    var withDevices = payload.customers.filter(function (c) { return c.devices > 0; });
     var withCenters = payload.customers.filter(function (c) { return c.centers > 0; });
     var withTickets = payload.customers.filter(function (c) { return c.open_tickets > 0; });
 
-    Charts.rankBar('chartTcDevices', asRows(topBy(withDevices, 'devices', 15), 'devices'), { color: '#2E9BD6', empty: 'No device data' });
     Charts.rankBar('chartTcCenters', asRows(topBy(withCenters, 'centers', 15), 'centers'), { color: '#38BDF8', empty: 'No center data' });
     Charts.rankBar('chartTcTickets', asRows(topBy(withTickets, 'open_tickets', 15), 'open_tickets'), { color: '#F5B301', empty: 'No open tickets' });
 
@@ -3335,14 +3325,12 @@
     { key: 'hub', label: 'Customer', sortable: true },
     { key: 'hubCount', label: 'Hubs', sortable: true, num: true },
     { key: 'centers', label: 'Centers', sortable: true, num: true },
-    { key: 'devices', label: 'Devices', sortable: true, num: true },
     { key: 'open_tickets', label: 'Open tickets', sortable: true, num: true },
-    { key: 'assets', label: 'Assets', sortable: true, num: true },
     // Current_MRR + Device_Rental, summed server-side (computeTopCustomersCD_)
     // — per user, 2026-07-07 (HANDOFF §M-C3, "buildable-today enhancement").
     { key: 'mrr', label: 'MRR', sortable: true, num: true }
   ];
-  var tcSort = { key: 'devices', dir: 'desc' };
+  var tcSort = { key: 'centers', dir: 'desc' };
 
   function renderTcTable(customers) {
     $('tcTableHead').innerHTML = TC_COLUMNS.map(function (col) {
@@ -3384,9 +3372,7 @@
         '<td><strong>' + escapeHtml(c.hub) + '</strong> <span class="badge badge-info">' + escapeHtml(c.tier) + '</span></td>' +
         '<td class="num" title="' + escapeHtml(hubIds.join(', ')) + '">' + FMT.format(hubIds.length) + '</td>' +
         '<td class="num">' + FMT.format(c.centers) + '</td>' +
-        '<td class="num">' + FMT.format(c.devices) + '</td>' +
         '<td class="num"><span class="badge badge-' + tb + '">' + FMT.format(c.open_tickets) + '</span></td>' +
-        '<td class="num">' + FMT.format(c.assets) + '</td>' +
         '<td class="num">₹' + FMT.format(Math.round(c.mrr || 0)) + '</td>' +
         '</tr>';
     }).join('');
@@ -3900,10 +3886,9 @@
       source: 'servicewrk_Tickets.created_on / closed_date.' },
 
     // ── Customers ──
-    topLe: { name: 'Top LE customers', formula: 'The curated 27 large-enterprise accounts, ranked by devices.', source: 'TopCustomers.js hub list.' },
-    topLeDevices: { name: 'Top LE devices', formula: 'Devices run by the 27 curated “Top LE” hub accounts.', source: 'TopCustomers hub list ⋈ device mapping.' },
+    topLe: { name: 'Top LE customers', formula: 'The curated 27 large-enterprise accounts, ranked by center count.', source: 'TopCustomers.js hub list.' },
     centersPerCust: { name: 'Centers per customer', formula: 'Distinct centers per top account.', source: 'center_details grouped by hub.' },
-    leaderboard: { name: 'Customer leaderboard', formula: 'Top accounts ranked, with devices / centers / open tickets.', source: 'aggregated from center_details + devices + zoho_data.' },
+    leaderboard: { name: 'Customer leaderboard', formula: 'Top accounts ranked, with centers / open tickets / MRR.', source: 'aggregated from center_details + zoho_data.' },
 
     // ── Product ──
     about: { name: 'SIP', about: 'SIP is Tricog’s live operations dashboard — one view into device health, center uptime, ticket SLAs, and where the business needs attention right now, drawn directly from BigQuery, Zoho, and Jira.' }
@@ -3918,7 +3903,7 @@
     // ("today − Created, per device") describes the Asset page's kpiAvgAge and
     // would have cited the wrong source in the popover.
     exAvgAge: 'deployAge', kpiUptime: 'uptime',
-    exActive: 'devicesCount', kpiTotal: 'devicesCount', tcDevices: 'devicesCount',
+    exActive: 'devicesCount', kpiTotal: 'devicesCount',
     exCenters: 'centersCount', kpiCenters: 'customersCount', tcCenters: 'centersCount',
     exTickets: 'openTickets', kpiZOpen: 'openTickets',
     // kpiSvcOpen counts ServiceWRK tickets, not Zoho — it must NOT share the
@@ -3927,14 +3912,13 @@
     kpiSvcRemote: 'svcRemote', kpiSvcVisits: 'svcVisits',
     kpiTomIssues: 'tomIssues', kpiTomResolved: 'tomResolved',
     kpiTomTat: 'tomTat', kpiTomOpen: 'tomOpen',
-    exTopLe: 'topLeDevices', tcCustomers: 'topLe',
+    tcCustomers: 'topLe',
     exTicketCount: 'ticketsCount', tcTicketCount: 'ticketsCount',
     exSlaBreach: 'slaBreach', tcSlaBreach: 'slaBreach',
     kpiAvgAge: 'assetAge', kpiPastLife: 'assetAge',
     kpiStates: 'openTicketCustomers', kpiMtbf: 'mtbf',
     kpiZIn: 'created7d', kpiZOut: 'closed7d', kpiZAge: 'openAge',
-    kpiSvcIn: 'created7d', kpiSvcOut: 'closed7d', kpiSvcAge: 'openAge',
-    tcAssets: 'assetLifecycle'
+    kpiSvcIn: 'created7d', kpiSvcOut: 'closed7d', kpiSvcAge: 'openAge'
   };
 
   // normalized card-title text → metric key
@@ -3957,7 +3941,7 @@
     'service ticket flow': 'svcFlow', 'turnaround time': 'svcTat',
     'resolution mix': 'svcRemote',
     'issues per month': 'tomVolume', 'outcomes': 'tomResolved',
-    'devices per customer': 'topLeDevices', 'centers per customer': 'centersPerCust',
+    'centers per customer': 'centersPerCust',
     'open tickets per customer': 'openTickets', 'customer leaderboard': 'leaderboard',
     'centers': 'centersCount', 'hubs': 'hubs', 'devices': 'devicesCount', 'tickets': 'ticketsCount',
     // Overview's three card titles. 'all tickets' is its own key so the

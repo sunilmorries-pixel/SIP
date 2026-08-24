@@ -1171,6 +1171,29 @@ body[data-theme="light"] .cp-name {
   outline: 2px solid #C2410C; outline-offset: 2px; border-radius: 50%;
 }
 
+/* Gray-area (zero-coverage state) markers — smaller than FSE/CP pins (30px vs
+   44px box, no permanent name pill): there are only 7, they're background
+   context rather than an actionable layer, and the name only needs to
+   surface on hover. Same casing/halo technique as the other two glyphs. */
+.gray-area-pin {
+  display: grid; place-items: center;
+  background: none; border: 0;
+}
+.gray-area-glyph { display: grid; place-items: center; width: 30px; height: 30px; }
+.gray-area-glyph svg {
+  fill: none; stroke: #64748B; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+  paint-order: stroke;
+  filter: drop-shadow(0 0 1.5px #0B1220) drop-shadow(0 0 1.5px #0B1220);
+}
+body[data-theme="light"] .gray-area-glyph svg {
+  filter: drop-shadow(0 0 1.5px #FFFFFF) drop-shadow(0 0 1.5px #FFFFFF);
+}
+.gray-area-pin:focus-visible .gray-area-glyph {
+  outline: 2px solid #64748B; outline-offset: 2px; border-radius: 50%;
+}
+.legend-dot-gray { background: #64748B; }
+
 /* While an engineer is focused, recede the clustered backdrop. Scoped to the
    plugin's own .marker-cluster and NOT .leaflet-marker-icon — the FSE pins
    carry that class too, and dimming the selected engineer would defeat the

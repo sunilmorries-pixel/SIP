@@ -247,6 +247,15 @@
           <span class="legend-dot legend-dot-cp"></span>Dealers
         </button>
       </div>
+
+      <!-- Gray-area (zero-coverage state) note. Not hidden by default like
+           the FSE/CP rows above — this data is static (BRM 2026 review), not
+           payload-driven, so there's no "empty until real data arrives" state
+           to guard against. A note, not a legend-filter button: nothing to
+           toggle, this is background context, not an interactive layer. -->
+      <div class="map-legend" id="grayAreaLegend" role="group" aria-label="Zero-coverage states">
+        <span class="legend-note"><span class="legend-dot legend-dot-gray"></span>Gray areas — no dealer/engineer coverage (BRM 2026 review)</span>
+      </div>
       </div><!-- /.map-legend-stack -->
 
       <!-- Focus bar: appears only while one engineer is selected. Carries the

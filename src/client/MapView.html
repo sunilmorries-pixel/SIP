@@ -134,6 +134,31 @@ function MapView(containerId) {
   // already relies on for colour-vision accessibility.
   var CP_COLOR = '#C2410C';
 
+  // Gray-area states: zero dealer/engineer coverage, per the BRM 2026 dealer
+  // network review ("Gray areas" sheet). Purely static — unlike FSE/CP this
+  // never varies with data or filters, so it needs no server round-trip: the
+  // 7 states + their approximate centroids live here, client-side only.
+  // Rendered once in ensureMap(), not through a setter, since there is
+  // nothing dynamic to feed it.
+  var GRAY_AREA_STATES = [
+    { name: 'Kerala', lat: 10.8505, lng: 76.2711 },
+    { name: 'Madhya Pradesh', lat: 22.9734, lng: 78.6569 },
+    { name: 'Gujarat', lat: 22.2587, lng: 71.1924 },
+    { name: 'Jammu & Kashmir', lat: 33.7782, lng: 76.5762 },
+    { name: 'Jharkhand', lat: 23.6102, lng: 85.2799 },
+    { name: 'Chhattisgarh', lat: 21.2787, lng: 81.8661 },
+    { name: 'Uttarakhand', lat: 30.0668, lng: 79.0193 }
+  ];
+
+  // Slate, chosen to literally match "gray area" as well as clear contrast:
+  // #64748B scores 3.93 (dark) / 4.76 (light) against the two basemaps, same
+  // bar FSE_COLOR/CP_COLOR clear. It sits closer to violet/orange by raw
+  // luminance contrast (1.12/1.09) than to green/amber (2.48/2.85), but this
+  // layer is also shape-distinct (warning triangle, not a person or a
+  // briefcase) — the same "shape carries the accessibility load" principle
+  // as the other two marker layers.
+  var GRAY_AREA_COLOR = '#64748B';
+
   // Leaflet renders string tooltip/popup content as HTML, so any field that
   // originates from data (e.g. a center name) MUST be escaped first.
   function esc(value) {
@@ -200,6 +225,17 @@ function MapView(containerId) {
       showCoverageOnHover: false, spiderfyOnMaxZoom: true
     });
     map.addLayer(cluster);
+    // Gray-area markers: static, rendered once, never updated by setData/
+    // setFse/setCp — there is no per-refresh input to feed them.
+    var grayAreaGroup = L.layerGroup().addTo(map);
+    GRAY_AREA_STATES.forEach(function (s) {
+      L.marker([s.lat, s.lng], {
+        icon: grayAreaIcon_(), keyboard: true, zIndexOffset: 800, interactive: true
+      }).bindTooltip(
+        '<strong>' + esc(s.name) + '</strong><br>No dealer/engineer coverage',
+        { direction: 'top', className: 'gray-area-tip' }
+      ).addTo(grayAreaGroup);
+    });
     if (pendingRender) { var run = pendingRender; pendingRender = null; run(); }
     return true;
   }
@@ -551,6 +587,24 @@ function MapView(containerId) {
   function setCpVisible(visible) {
     if (!cpGroup || !map) return;
     if (visible) { cpGroup.addTo(map); } else { clearCpFocus(); map.removeLayer(cpGroup); }
+  }
+
+  /* ── Gray-area (zero-coverage state) markers ─────────────────────
+     A third shape, matching neither FSE's person nor CP's briefcase: a
+     warning triangle, since this layer means "gap," not "someone is here." */
+  function grayAreaIcon_() {
+    return L.divIcon({
+      className: 'gray-area-pin',
+      iconSize: [30, 30], iconAnchor: [15, 15],
+      html:
+        '<span class="gray-area-glyph" aria-hidden="true">' +
+          '<svg viewBox="0 0 24 24" width="20" height="20">' +
+            '<path d="M12 3 L22 20 L2 20 Z"/>' +
+            '<line x1="12" y1="9" x2="12" y2="14"/>' +
+            '<line x1="12" y1="16.5" x2="12" y2="16.7" stroke-width="3"/>' +
+          '</svg>' +
+        '</span>'
+    });
   }
 
   function focusByName(query, onClick) {

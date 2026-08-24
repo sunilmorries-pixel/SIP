@@ -2386,6 +2386,23 @@
   }
 
   var filterFocusTrap_ = makeFocusTrap_('filterDrawer');
+  var onboardFocusTrap_ = makeFocusTrap_('onboardModal');
+
+  /** Shows the first-run welcome panel once, gated by localStorage (HANDOFF #13). */
+  function maybeShowOnboarding_() {
+    if (localStorage.getItem('sip.onboardingSeen') === '1') return;
+    $('onboardScrim').hidden = false;
+    $('onboardModal').hidden = false;
+    onboardFocusTrap_.activate();
+  }
+
+  function dismissOnboarding_() {
+    if ($('onboardModal').hidden) return;
+    localStorage.setItem('sip.onboardingSeen', '1');
+    onboardFocusTrap_.deactivate();
+    $('onboardScrim').hidden = true;
+    $('onboardModal').hidden = true;
+  }
 
   function openFilterDrawer_(preserveStaged) {
     // preserveStaged: true when the caller (Clear all) already staged the
@@ -4105,6 +4122,13 @@
       if (event.key === 'Escape' && !$('filterDrawer').hidden) closeFilterDrawer_();
     });
 
+    $('onboardClose').addEventListener('click', dismissOnboarding_);
+    $('onboardGotIt').addEventListener('click', dismissOnboarding_);
+    $('onboardScrim').addEventListener('click', dismissOnboarding_);
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && !$('onboardModal').hidden) dismissOnboarding_();
+    });
+
     $('tomPrevBtn').addEventListener('click', function () {
       state.tom.page = Math.max(0, state.tom.page - 1);
       loadTomTickets();
@@ -4269,6 +4293,7 @@
     updateSearchPlaceholder();
     refreshAll(false);
     applyHashRoute(); // deep-link support: #overview, #asset, …
+    maybeShowOnboarding_();
   }
 
   /** Reloads whichever list the active tab shows, honouring global filters. */

@@ -1348,6 +1348,21 @@ body[data-theme="light"] .cp-focus-bar { border-color: rgba(194, 65, 12, 0.5); }
   animation: drawer-in var(--dur) var(--ease-out);
 }
 @keyframes drawer-in { from { transform: translateX(100%); } to { transform: none; } }
+.onboard-modal {
+  position: fixed; top: 50%; left: 50%; z-index: 810;
+  width: min(480px, 92vw); max-height: 86vh; overflow-y: auto;
+  transform: translate(-50%, -50%);
+  display: flex; flex-direction: column;
+  background: var(--surface-solid);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(2, 10, 20, 0.55);
+  animation: onboard-in var(--dur) var(--ease-out);
+}
+@keyframes onboard-in { from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+.onboard-lead { margin: 0 0 14px; color: var(--text-1); line-height: 1.5; }
+.onboard-list { margin: 0; padding-left: 20px; color: var(--text-2); line-height: 1.6; }
+.onboard-list li + li { margin-top: 8px; }
 .center-panel-head {
   display: flex; justify-content: space-between; align-items: flex-start;
   gap: 10px; padding: 16px 18px 12px;

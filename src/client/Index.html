@@ -1224,6 +1224,35 @@
   </footer>
 </aside>
 
+<!-- First-run welcome panel — shown once (localStorage-flagged), dismissible.
+     Content is the existing "About SIP" blurb (METRIC_INFO.about in App.html)
+     plus a plain list of things already true today, not new marketing copy. -->
+<div id="onboardScrim" class="drawer-scrim" hidden></div>
+<div id="onboardModal" class="onboard-modal" hidden tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="onboardTitle">
+  <header class="center-panel-head">
+    <div>
+      <h2 id="onboardTitle" class="card-title">Welcome to SIP</h2>
+    </div>
+    <button id="onboardClose" class="btn btn-ghost btn-icon" type="button" aria-label="Close welcome panel">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </header>
+  <div class="center-panel-body">
+    <p class="onboard-lead">SIP is Tricog’s live operations dashboard — one view into device health, center uptime, ticket SLAs, and where the business needs attention right now, drawn directly from BigQuery, Zoho, and Jira.</p>
+    <ul class="onboard-list">
+      <li>Use the sidebar to switch between Overview, Customers, Support, Service, TOM, Asset, CDM, Top Customers, Numbers, and Raw Data.</li>
+      <li>Click any center or customer row to open its detail drawer.</li>
+      <li>Use <strong>Filters</strong> (top right) to narrow every page by segment, status, location, device, and date range.</li>
+      <li>Hover any <strong>i</strong> dot for how a metric is calculated and where its data comes from.</li>
+    </ul>
+  </div>
+  <footer class="center-panel-head" style="border-top:1px solid var(--border);border-bottom:none;">
+    <button id="onboardGotIt" class="btn btn-primary" type="button">Got it</button>
+  </footer>
+</div>
+
 <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js" integrity="sha384-o5uz97et3bErHvpKfD4Jz4n0JfhJDWABFuF4NP+iEEDxE1VwMWJ19QGR0lqFZnr6" crossorigin="anonymous"></script>

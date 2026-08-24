@@ -326,8 +326,14 @@ reverted by the other's save at least once. Consequences to know:
 > **no engineer pins at all** from @83/@84 through @88. Everything the @84 and @85 entries record
 > about the FSE layer was verified against `App.html`'s **preview mock**, not production data. @89 is
 > the deploy where that layer first actually appeared for users — and it also switches on a
-> **per-map-load BigQuery cost** (`buildFseCoverageSpec_` via `runQueriesParallel`, on every uncached
-> map load) that the empty-roster guard had been skipping for six deploys.
+> **per-cache-miss BigQuery cost** (`buildFseCoverageSpec_` via `runQueriesParallel`) that the
+> empty-roster guard had been skipping for six deploys. Bounded, NOT per view - measured against
+> the code rather than assumed: the call sits inside `apiGetMapDataCD`’s cache-miss path (between
+> `cacheGetLarge` and `cachePutLarge(..., 1800)`), and `Warm.js` re-warms the DEFAULT filter set
+> every 10 min via `apiGetMapDataCD({bypassCache: true, filters: warmDefaultFilters_()})`. So the
+> default Overview costs one coverage query per warm pass rather than one per user, and each
+> distinct NON-default filter combination pays once per 30-min TTL. An earlier draft of this entry
+> said “per-map-load”, which overstated it.
 >
 > **CP dealer layer — new `src/server/Cp.js` (223 lines) + `test/unit/cp-coverage.test.js` (12
 > tests).** `buildCpLayer_(roster, hqCoordFn, locationCoordFn)` → `{dealers, unlocatedRoster,

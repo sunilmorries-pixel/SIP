@@ -448,6 +448,15 @@ function centerBaseSpecCD_() {
       " IFNULL(TRIM(MachineType), '') AS machine_type, " +
       " IFNULL(TRIM(DeviceID), '') AS device_id, " +
       " IFNULL(TRIM(MacSerialID), '') AS mac_serial_id, " +
+      // Current_MRR + Device_Rental, per user 2026-07-07 (see HANDOFF §M-C3) —
+      // the two fields the removed MRR-at-Risk feature already established as
+      // "real MRR" for this table. Summed here, not carried as two fields:
+      // every consumer (computeTopCustomersCD_) only ever wants the total.
+      // NOTE the SELECT DISTINCT above: if a center's duplicate rows ever
+      // disagree on either MRR field (they haven't been checked for that
+      // specifically), this would count as a "genuinely different row" the
+      // same way the 368-center case already does for other columns.
+      " ROUND(IFNULL(Current_MRR, 0) + IFNULL(Device_Rental, 0), 2) AS mrr, " +
       " CAST(NULL AS FLOAT64) AS lat, CAST(NULL AS FLOAT64) AS lng, " +
       " CAST(deploymentdate AS STRING) AS deployment_date " +
       "FROM " + T('center_details') + " WHERE " + cdFilter_()
@@ -468,7 +477,7 @@ function getCenter360RowsCD_(bypassCache) {
   // operator sees each KPI move and concludes the app is current, while the
   // Customers table, both maps, the Overview Customers tree and Top Customers
   // are still serving pre-reload rows.
-  var ckey = 'ctr360cd_v13_' + getCacheEpoch_(); // v13: centerBase carries billable/machine_type/device_id/mac_serial_id (per user, 2026-08-21)
+  var ckey = 'ctr360cd_v14_' + getCacheEpoch_(); // v14: centerBase carries mrr (Current_MRR + Device_Rental, per user 2026-07-07)
   if (bypassCache !== true) {
     var cached = cacheGetLarge(ckey);
     if (cached) return cached;
@@ -491,6 +500,7 @@ function getCenter360RowsCD_(bypassCache) {
         status: base.status || '',
         billable: base.billable || '', machine_type: base.machine_type || '',
         device_id: base.device_id || '', mac_serial_id: base.mac_serial_id || '',
+        mrr: base.mrr || 0,
         lat: base.lat, lng: base.lng, deployment_date: base.deployment_date || '',
         devices: tel ? tel.devices : 0, online: tel ? tel.online : 0,
         last_seen: (tel && tel.last_seen) || '',
@@ -1219,7 +1229,7 @@ function computeTopCustomersCD_(filters) {
   var agg = {};
   TOP_CUSTOMERS.forEach(function (c) {
     agg[c.group] = { hub: c.group, hub_ids: c.hub_ids.slice(), tier: c.tier, centers: 0,
-      devices: 0, open_tickets: 0, located: 0, assets: assetByGroup[c.group] || 0 };
+      devices: 0, open_tickets: 0, located: 0, assets: assetByGroup[c.group] || 0, mrr: 0 };
   });
 
   var mapCenters = [];
@@ -1232,6 +1242,7 @@ function computeTopCustomersCD_(filters) {
     // dropped from this page for the same reason, 2026-08-19.
     a.centers += 1; a.devices += row.jira_devices || 0;
     a.open_tickets += row.open_tickets || 0;
+    a.mrr += row.mrr || 0;
     var c = coordsForCD_(row, geoStore);
     if (c) {
       a.located += 1;

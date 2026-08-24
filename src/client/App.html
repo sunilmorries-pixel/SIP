@@ -693,9 +693,9 @@
       var totals = { customers: names.length, centers: 0, devices: 0, open_tickets: 0, assets: 0, withData: names.length, ticket_count: 9240, sla_breach: 118, sla_within_pct: 63.2 };
       names.forEach(function (nm, i) {
         var centers = rnd(10, 160), devices = rnd(1, 155),
-            open_t = rnd(0, 6), assets = rnd(0, 120);
+            open_t = rnd(0, 6), assets = rnd(0, 120), mrr = centers * rnd(800, 4500);
         custs.push({ hub_ids: [1000 + i], hub: nm, tier: 'Top LE', centers: centers, devices: devices,
-          open_tickets: open_t, assets: assets, located: rnd(1, centers) });
+          open_tickets: open_t, assets: assets, located: rnd(1, centers), mrr: mrr });
         totals.centers += centers; totals.devices += devices;
         totals.open_tickets += open_t; totals.assets += assets;
         // mapCenters index 5 (online) is always 0 — cloud_devices data was
@@ -3317,7 +3317,10 @@
     { key: 'centers', label: 'Centers', sortable: true, num: true },
     { key: 'devices', label: 'Devices', sortable: true, num: true },
     { key: 'open_tickets', label: 'Open tickets', sortable: true, num: true },
-    { key: 'assets', label: 'Assets', sortable: true, num: true }
+    { key: 'assets', label: 'Assets', sortable: true, num: true },
+    // Current_MRR + Device_Rental, summed server-side (computeTopCustomersCD_)
+    // — per user, 2026-07-07 (HANDOFF §M-C3, "buildable-today enhancement").
+    { key: 'mrr', label: 'MRR', sortable: true, num: true }
   ];
   var tcSort = { key: 'devices', dir: 'desc' };
 
@@ -3364,6 +3367,7 @@
         '<td class="num">' + FMT.format(c.devices) + '</td>' +
         '<td class="num"><span class="badge badge-' + tb + '">' + FMT.format(c.open_tickets) + '</span></td>' +
         '<td class="num">' + FMT.format(c.assets) + '</td>' +
+        '<td class="num">₹' + FMT.format(Math.round(c.mrr || 0)) + '</td>' +
         '</tr>';
     }).join('');
     Array.prototype.forEach.call($('tcTable').querySelectorAll('tr.is-clickable'), function (tr) {

@@ -1308,6 +1308,16 @@ body[data-theme="light"] .cp-focus-bar { border-color: rgba(194, 65, 12, 0.5); }
   display: inline-block; width: 10px; height: 10px;
   border-radius: 2px; margin-right: 5px; vertical-align: -1px;
 }
+/* Gradient swatch for the count-based ramp legend (replaces the old two-tone
+   has-center/no-center swatches). Light->dark left->right, same direction the
+   ramp itself uses (index 0 lightest/fewest -> index 4 darkest/most). Stops are
+   MAP_RAMP_COLORS_[0] and [4] from MapView.html — keep in sync if that ramp
+   is ever re-validated to different hex values. */
+.legend-ramp {
+  display: inline-block; width: 36px; height: 10px;
+  border-radius: 2px; margin-right: 5px; vertical-align: -1px;
+  background: linear-gradient(to right, #6eb5dd, #1d597c);
+}
 .legend-note { color: var(--text-3); }
 .legend-filter {
   display: inline-flex; align-items: center;

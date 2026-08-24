@@ -3384,7 +3384,11 @@
   }
 
   /* ── tabs ────────────────────────────────────────────────────── */
-  var TAB_IDS = ['tab-overview', 'tab-asset', 'tab-centers', 'tab-support', 'tab-service', 'tab-tom', 'tab-cdm', 'tab-topcust', 'tab-numbers', 'tab-rawdata'];
+  // Order MUST match the sidebar's DOM/visual order (Index.html) — wireTabs()'s
+  // keydown handler moves focus by TAB_IDS index, so a mismatch here makes
+  // arrow-key traversal jump to a non-adjacent tab (found 2026-08-24; array
+  // previously had 'tab-asset' 2nd instead of 6th, out of sync with the DOM).
+  var TAB_IDS = ['tab-overview', 'tab-centers', 'tab-support', 'tab-service', 'tab-tom', 'tab-asset', 'tab-cdm', 'tab-topcust', 'tab-numbers', 'tab-rawdata'];
 
   /* ── hash routing (#overview, #asset, …) ─────────────────────── */
   function pageOf(tabId) { return tabId.replace('tab-', ''); }

@@ -324,6 +324,15 @@ function MapView(containerId) {
 
   /** Shows exactly one of countryLayer/stateLayer/cluster based on the current
    *  zoom level — the three-tier drill-down (country -> state -> city). */
+  // Regression fix (2026-08-24): cluster (the actual customer/center pins) must
+  // NEVER be hidden -- it was originally tier-gated like countryLayer/stateLayer,
+  // but the real data's geographic spread (India + Philippines/Kenya/Malaysia/
+  // Rwanda) makes fitBounds' natural default view land at a low zoom, which hid
+  // every customer pin by default ("I can't see my customers in the map").
+  // Leaflet.markercluster already self-declutters at low zoom (fewer, larger
+  // numbered bubbles), so there was never a clutter reason to hide it -- country
+  // choropleth and state circles are additive context, shown/hidden between
+  // EACH OTHER by zoom, layered under the always-visible cluster.
   function updateTier_() {
     if (!map) return;
     var z = map.getZoom();
@@ -331,16 +340,14 @@ function MapView(containerId) {
     if (tier === 'country') {
       if (!map.hasLayer(countryLayer)) map.addLayer(countryLayer);
       if (map.hasLayer(stateLayer)) map.removeLayer(stateLayer);
-      if (map.hasLayer(cluster)) map.removeLayer(cluster);
     } else if (tier === 'state') {
       if (map.hasLayer(countryLayer)) map.removeLayer(countryLayer);
       if (!map.hasLayer(stateLayer)) map.addLayer(stateLayer);
-      if (map.hasLayer(cluster)) map.removeLayer(cluster);
     } else {
       if (map.hasLayer(countryLayer)) map.removeLayer(countryLayer);
       if (map.hasLayer(stateLayer)) map.removeLayer(stateLayer);
-      if (!map.hasLayer(cluster)) map.addLayer(cluster);
     }
+    if (!map.hasLayer(cluster)) map.addLayer(cluster);
   }
 
   function ensureMap() {

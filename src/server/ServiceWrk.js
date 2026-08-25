@@ -195,7 +195,10 @@ function apiGetServiceCD(options) {
   var filters = options.filters || {};
   return respond_(function () {
     // v2: added swapsByRegion/swapsByRep
-    return withCache('svc_v2_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
+    // v3: swapsByRegion re-keyed to group by center_details.State, not
+    // ticket_territory — bump so stale v2 payloads (old territory labels)
+    // aren't served from cache until their TTL happens to expire.
+    return withCache('svc_v3_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
       var r = runQueriesParallel(buildServiceQuerySpecs(filters));
       var k = (r.kpis && r.kpis[0]) || {};
       return {

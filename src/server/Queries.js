@@ -801,9 +801,17 @@ function buildCenterSourceSpecs() {
         // categories (Temporary swapping / International Demo Swapping /
         // Mac 600 To V-Cardia(Swapping)) — all-time count, not open-only,
         // since a swap is a completed action, not a backlog item.
+        // max_open_age_days = age (in days, same DATETIME_DIFF/HOUR/24.0
+        // pattern as every other age_days in this file) of the OLDEST
+        // currently-open ticket at this center; NULL when there are none —
+        // added for the Top Customers leaderboard's "oldest open ticket"
+        // column (per user, 2026-08-25), bucketed client-side into the same
+        // Same day/1-2d/3-7d/8-30d/30d+ bands as zohoOpenAgeBandSql_.
         "SELECT CenterID AS center_id, COUNT(*) AS tickets_total, " +
         " COUNTIF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS open_tickets, " +
         " COUNTIF(LOWER(IFNULL(IssueCategory, '')) LIKE '%swap%') AS swapped, " +
+        " MAX(CASE WHEN status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES +
+        "  THEN DATETIME_DIFF(CURRENT_DATETIME(), CreatedAt, HOUR) / 24.0 END) AS max_open_age_days, " +
         " ANY_VALUE(CASE WHEN NULLIF(TRIM(hub_master_segment), '') IS NULL THEN NULL " +
         "  ELSE " + segmentGroupSql_('hub_master_segment') + " END) AS segment " +
         "FROM " + zohoDedupSql_() + " WHERE CenterID IS NOT NULL " +

@@ -477,7 +477,7 @@ function getCenter360RowsCD_(bypassCache) {
   // operator sees each KPI move and concludes the app is current, while the
   // Customers table, both maps, the Overview Customers tree and Top Customers
   // are still serving pre-reload rows.
-  var ckey = 'ctr360cd_v14_' + getCacheEpoch_(); // v14: centerBase carries mrr (Current_MRR + Device_Rental, per user 2026-07-07)
+  var ckey = 'ctr360cd_v15_' + getCacheEpoch_(); // v15: withTickets carries max_open_age_days (per-center oldest open ticket age)
   if (bypassCache !== true) {
     var cached = cacheGetLarge(ckey);
     if (cached) return cached;
@@ -516,6 +516,9 @@ function getCenter360RowsCD_(bypassCache) {
       row.open_tickets = tickets ? tickets.open_tickets : 0;
       row.tickets_total = tickets ? tickets.tickets_total : 0;
       row.swapped = tickets ? tickets.swapped : 0;
+      // -1 sentinel ("no currently-open ticket"), never a real age — every
+      // real age_days elsewhere in this codebase is >= 0.
+      row.max_open_age_days = (tickets && tickets.max_open_age_days != null) ? tickets.max_open_age_days : -1;
       // segment already set from center_details (centerBase) — a center's own
       // attribute, so centers with no tickets still carry their segment.
       return row;
@@ -1203,6 +1206,23 @@ function apiGetCdmDataCD(options) {
 }
 
 /**
+ * Buckets a max-open-ticket-age (days, -1 sentinel for "no open ticket") into
+ * the same Same day/1-2d/3-7d/8-30d/30d+ bands as zohoOpenAgeBandSql_, so the
+ * Top Customers leaderboard and the Support page describe ticket age with the
+ * same vocabulary. Null for the -1 sentinel (nothing to bucket).
+ * @param {number} days
+ * @return {?string}
+ */
+function openAgeBucket_(days) {
+  if (days == null || days < 0) return null;
+  if (days < 1) return 'Same day';
+  if (days < 3) return '1-2d';
+  if (days < 8) return '3-7d';
+  if (days <= 30) return '8-30d';
+  return '30d+';
+}
+
+/**
  * Top-customers rollup over the center_details center universe.
  *
  * Devices and assets were dropped from this page's aggregation (per user,
@@ -1210,7 +1230,10 @@ function apiGetCdmDataCD(options) {
  * `row.jira_devices` is no longer summed per group. Individual centers still
  * carry their own device count into `mapCenters` (index 4, unchanged) since
  * that feeds the shared map factory's per-marker bubble sizing, not this
- * page's own KPI/table/chart surface.
+ * page's own KPI/table/chart surface. MRR was dropped from this page's own
+ * aggregation the same way (per user, 2026-08-25) -- nothing else reads it.
+ * Swapped (tickets_total's swapped count) and the oldest-open-ticket age
+ * bucket were added in its place, both per user, 2026-08-25.
  */
 function computeTopCustomersCD_(filters) {
   // hub_id -> owning group (a group can list several hub_ids).
@@ -1226,7 +1249,7 @@ function computeTopCustomersCD_(filters) {
   var agg = {};
   TOP_CUSTOMERS.forEach(function (c) {
     agg[c.group] = { hub: c.group, hub_ids: c.hub_ids.slice(), tier: c.tier, centers: 0,
-      open_tickets: 0, located: 0, mrr: 0 };
+      open_tickets: 0, located: 0, swapped: 0, maxOpenAgeDays: -1 };
   });
 
   var mapCenters = [];
@@ -1236,7 +1259,8 @@ function computeTopCustomersCD_(filters) {
     var a = agg[grp.group];
     a.centers += 1;
     a.open_tickets += row.open_tickets || 0;
-    a.mrr += row.mrr || 0;
+    a.swapped += row.swapped || 0;
+    if (row.max_open_age_days > a.maxOpenAgeDays) a.maxOpenAgeDays = row.max_open_age_days;
     var c = coordsForCD_(row, geoStore);
     if (c) {
       a.located += 1;
@@ -1247,6 +1271,7 @@ function computeTopCustomersCD_(filters) {
 
   var customers = Object.keys(agg).map(function (k) { return agg[k]; })
     .sort(function (x, y) { return y.centers - x.centers; });
+  customers.forEach(function (c) { c.openAgeBucket = openAgeBucket_(c.maxOpenAgeDays); });
 
   var totals = { customers: customers.length, centers: 0,
     open_tickets: 0, withData: 0 };
@@ -1288,7 +1313,7 @@ function apiGetTopCustomersCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('topcustcd_v13_' + getCacheEpoch_() + '_' + filterHash_(filters), // v13: dropped devices/assets from the per-customer + totals aggregation
+    return withCache('topcustcd_v14_' + getCacheEpoch_() + '_' + filterHash_(filters), // v14: dropped mrr, added swapped + oldest-open-ticket age bucket
       function () { return computeTopCustomersCD_(filters); },
       options.bypassCache === true);
   });

@@ -731,92 +731,111 @@ var Charts = (function () {
    *    what the user asked to replace.
    *
    *  ── What this is ────────────────────────────────────────────────────
-   *  A hand-laid two-rank flow: a column of level-1 blocks on the left, a
-   *  column of level-2 blocks on the right, and one polygon ribbon per
+   *  A hand-laid two-rank flow, running TOP TO BOTTOM (re-oriented from an
+   *  original left-to-right design on 2026-08-25, per user, then refined
+   *  the same day into distinct per-parent clusters — "subbranches" — per
+   *  a follow-up correction): a band of level-1 blocks across the top, a
+   *  band of level-2 blocks across the bottom, and one polygon ribbon per
    *  parent→child relationship crossing the gutter between them. One
    *  ECharts `custom` series with `coordinateSystem: 'none'`; every pixel
    *  comes from a PURE FUNCTION of (payload, canvas width, canvas height),
    *  evaluated inside renderItem off api.getWidth()/api.getHeight().
    *
+   *  Blocks sit SIDE BY SIDE within a band, so the value-proportional
+   *  dimension is now WIDTH, not height — text still reads left-to-right as
+   *  ever (never rotated), which is what lets flowFitLabel_ carry over
+   *  unchanged: it already took "available width" as a parameter, that
+   *  parameter is just each block's own drawn width now, instead of one
+   *  constant shared by a whole column.
+   *
+   *  A level-1 block's own children are laid out starting at THAT block's
+   *  own left edge and never past its right edge (see (3) below) — so
+   *  different parents' clusters can never overlap — and GAP_OUT (the same
+   *  constant that spaces level-1 blocks apart) is what makes that boundary
+   *  actually READ as separate branches rather than one continuous strip:
+   *  14px between branches against 2px (GAP_IN) within one. See FLOW's own
+   *  comment for the full argument.
+   *
    *  ── THE ALIGNMENT ARGUMENT (five identities, not five tuning values) ─
-   *  Let H be the plot height, n the number of drawn level-1 rows, and
-   *  ROW1_MIN the row floor.
+   *  Let Wb be the plot width, n the number of drawn level-1 blocks, and
+   *  BLOCK1_MIN the block floor.
    *
    *  (1) NOTHING infers a position from topology. There is no relaxation
    *      pass, no de-collision pass, no fixed node box, no per-branch slot.
    *      The only constant in the layout that is not derived from the data
-   *      is the column WIDTH, and width carries no value here. This is the
-   *      root cause of the tree era removed rather than mitigated.
+   *      is each band's HEIGHT, and height carries no value here. This is
+   *      the root cause of the tree era removed rather than mitigated.
    *
-   *  (2) THE LEFT COLUMN EXHAUSTS H EXACTLY.  free = H − (n−1)·GAP_OUT −
-   *      n·ROW1_MIN, and row i gets h_i = ROW1_MIN + free·(v_i / total).
-   *      Then Σh_i = n·ROW1_MIN + free = H − (n−1)·GAP_OUT identically —
+   *  (2) THE TOP BAND EXHAUSTS Wb EXACTLY.  free = Wb − (n−1)·GAP_OUT −
+   *      n·BLOCK1_MIN, and block i gets w_i = BLOCK1_MIN + free·(v_i / total).
+   *      Then Σw_i = n·BLOCK1_MIN + free = Wb − (n−1)·GAP_OUT identically —
    *      the gaps and the floors are subtracted from the budget BEFORE the
    *      values are scaled, so a large value can never eat a gap and the
-   *      column can never overrun or leave dead air. The last row's height
+   *      band can never overrun or leave dead air. The last block's width
    *      is assigned as the arithmetic remainder, so the identity survives
    *      floating point too.
    *
-   *  (3) THE RIGHT COLUMN IS THE SAME EXTENT, BRACKETED PER PARENT. Inside
-   *      a parent's band [by, by+B] with k drawn children: avail = B −
-   *      (k−1)·GAP_IN, free2 = avail − k·ROW2_MIN, h_c = ROW2_MIN +
-   *      free2·(v_c / v_parent). Children stack from the band's TOP, so the
-   *      parent's top edge IS its first child's top edge; and when the
-   *      children sum to the parent (Σv_c === v_parent, tested exactly) the
-   *      last child's bottom is snapped to the band's bottom, so the
-   *      parent's whole extent is bracketed to the pixel. Both columns
-   *      therefore span exactly [plotTop, plotTop+H]. Alignment is an
-   *      identity of the arithmetic, not an outcome of a heuristic.
+   *  (3) THE BOTTOM BAND IS THE SAME EXTENT, BRACKETED PER PARENT. Inside
+   *      a parent's block [bx, bx+Bx] with k drawn children: avail = Bx −
+   *      (k−1)·GAP_IN, free2 = avail − k·BLOCK2_MIN, w_c = BLOCK2_MIN +
+   *      free2·(v_c / v_parent). Children lay out from the block's LEFT
+   *      edge, so the parent's left edge IS its first child's left edge;
+   *      and when the children sum to the parent (Σv_c === v_parent, tested
+   *      exactly) the last child's right edge is snapped to the parent
+   *      block's right edge, so the parent's whole extent is bracketed to
+   *      the pixel. This is also what guarantees clusters never overlap:
+   *      a parent's children never draw outside [bx, bx+Bx], so the next
+   *      parent's own [bx', bx'+Bx'] — starting at bx' = bx+Bx+GAP_OUT — is
+   *      always clear of them. Alignment is an identity of the arithmetic,
+   *      not an outcome of a heuristic.
    *
-   *  (4) NO LABEL CAN COLLIDE, because no block is ever shorter than its
-   *      floor: heights are floor + a non-negative share of a non-negative
-   *      remainder. Adjacent level-2 centres are ≥ ROW2_MIN+GAP_IN = 18px
-   *      apart and level-1 centres ≥ ROW1_MIN+GAP_OUT = 22px apart, against
-   *      single-line 11/12px text — ≥5px of clearance, worst case. And the
-   *      row COUNT is capped by capacity computed from the same H the
-   *      geometry paints with, so the bound and the paint cannot disagree.
-   *      Horizontally, a name is truncated against a width MEASURED with
-   *      the exact font string it will be painted with (flowTextW_), so no
-   *      label can overrun its own block either. Nothing is clipped by
-   *      `overflow: hidden` anywhere.
+   *  (4) NO LABEL CAN COLLIDE, because no block is ever narrower than its
+   *      floor: widths are floor + a non-negative share of a non-negative
+   *      remainder. Adjacent level-2 centres are ≥ BLOCK2_MIN+GAP_IN = 28px
+   *      apart and level-1 centres ≥ BLOCK1_MIN+GAP_OUT = 46px apart,
+   *      against single-line 11/12px text — comfortable clearance, worst
+   *      case. And the block COUNT is capped by capacity computed from the
+   *      same Wb the geometry paints with, so the bound and the paint
+   *      cannot disagree. Vertically, each band is a fixed height chosen to
+   *      hold one line of text (BAND1_H/BAND2_H), so nothing there can
+   *      collide either. Nothing is clipped by `overflow: hidden` anywhere.
    *
    *  (5) IT IS CHECKED, NOT JUST ARGUED. There are no client-side unit
-   *      tests in this repo (all 233 jest tests are server-side), so
+   *      tests in this repo (all 248 jest tests are server-side), so
    *      flowLayout_ asserts its own postconditions at runtime and
    *      console.warn()s the card id on any violation. The set covers both
-   *      columns, deliberately: a level-1 or level-2 block under its floor,
-   *      a non-finite coordinate at either level, a parent whose top differs
-   *      from its first child's, a CHILD THAT OVERRUNS ITS BAND (the class
-   *      an inconsistent payload actually produces — children summing above
-   *      their parent), a broken exact bracket, and a left column whose
-   *      extent is not [plotTop, plotTop+H].
+   *      bands, deliberately: a level-1 or level-2 block under its floor, a
+   *      non-finite coordinate at either level, a parent whose left edge
+   *      differs from its first child's, a CHILD THAT OVERRUNS ITS BLOCK
+   *      (the class an inconsistent payload actually produces — children
+   *      summing above their parent), a broken exact bracket, and a top
+   *      band whose extent is not [0, Wb].
    *
-   *  ── WHAT THE HEIGHT MEANS (the one honesty trade, stated plainly) ────
-   *  A row's height is ROW_MIN + (its exact share of the remaining free
-   *  height). The floor is THE ROW — it carries no quantity; the height
+   *  ── WHAT THE WIDTH MEANS (the one honesty trade, stated plainly) ─────
+   *  A block's width is BLOCK_MIN + (its exact share of the remaining free
+   *  width). The floor is THE BLOCK — it carries no quantity; the width
    *  ABOVE the floor is the quantity, and that part is exactly
-   *  proportional, one scale for the whole left column. This is what makes
+   *  proportional, one scale for the whole top band. This is what makes
    *  the card survive its own acid test: on the live Tickets payload
    *  (Zoho 84,545 / ServiceWRK 36,081 / TOM 1,325 — 64:1, and inside Zoho
-   *  Open 211 vs Closed 84,334 — 400:1) a purely proportional height puts
-   *  TOM at 3px and Open at well under a pixel. Here both get a legible,
-   *  labelled row. The cost is that heights are compressed rather than
-   *  ratio-true — a 64:1 count ratio draws at 8.8:1 — which is why the
-   *  COUNT, not the length, is the thing every block is guaranteed to
-   *  carry: flowFitLabel_ gives the share up first, then the count's exact
-   *  form ("18K" for 18,124), and only on a canvas under ~200px does it
-   *  give the count up to save the name. The tooltip prints the exact value
-   *  and both denominators at every size. The aria-labels in Index.html say
-   *  the same thing in words, because a canvas has no other channel to an
-   *  assistive reader: taller is larger, heights are compressed, and they
-   *  are comparable only within one column.
+   *  Open 211 vs Closed 84,334 — 400:1) a purely proportional width puts
+   *  TOM at a few px and Open at well under a pixel. Here both get a
+   *  legible, labelled block. The cost is that widths are compressed rather
+   *  than ratio-true, which is why the COUNT, not the length, is the thing
+   *  every block is guaranteed to carry: flowFitLabel_ gives the share up
+   *  first, then the count's exact form ("18K" for 18,124), and only on a
+   *  very narrow block does it give the count up to save the name. The
+   *  tooltip prints the exact value and both denominators at every size.
+   *  The aria-labels in Index.html say the same thing in words, because a
+   *  canvas has no other channel to an assistive reader: wider is larger,
+   *  widths are compressed, and they are comparable only within one band.
    *  A value of exactly 0 therefore gets exactly the floor and nothing
    *  more, and is painted in the TRACK tone (the "no quantity here" tone)
    *  with its 0 spelled out — chosen over dropping it, because a silent
    *  omission from a total the card header still counts is worse.
    *
    *  ── SCALE CAVEAT, deliberately not papered over ──────────────────────
-   *  Level 1 is one scale for the whole column (free/total). Level 2 is
+   *  Level 1 is one scale for the whole band (free/total). Level 2 is
    *  normalised WITHIN ITS PARENT (share of parent), so free2/v_parent
    *  differs from parent to parent and level-2 blocks under different
    *  parents are NOT on a common scale. That is the decomposition reading
@@ -826,19 +845,20 @@ var Charts = (function () {
    *  states both denominators so a length is never ambiguous.
    *
    *  ── THE COST VS THE TREEMAP, so it is not discovered later ───────────
-   *  A treemap has 2-D slack; a 1-D flow does not. At 340px the two columns
-   *  hold ~13 level-1 rows and ~13-20 level-2 rows total, so the flow NAMES
-   *  FEWER CATEGORIES ON CANVAS than the treemap did on the Devices card
-   *  (12-14 device types × 5 age bands = up to 70 level-2 nodes, of which
-   *  the treemap captioned most across the full card width). Nothing is
-   *  omitted silently: a folded tail is drawn as its own block, sized by
-   *  the tail's true sum, labelled with what it stands for, and its tooltip
-   *  enumerates the members — and clicking a parent re-renders the card
-   *  filtered, where those members become large. The lever, if more tail
-   *  detail is ever wanted, is the card height in Styles.html (every
-   *  capacity number here is derived from api.getHeight() at runtime, so
-   *  changing that one CSS value changes the capacity with no code edit) —
-   *  not the layout rule.
+   *  A treemap has 2-D slack; a 1-D flow does not. On a full-width open card
+   *  the two bands together hold roughly a dozen level-1 blocks before the
+   *  tail folds, so the flow can still name FEWER CATEGORIES ON CANVAS than
+   *  the treemap did on the Devices card (12-14 device types × 5 age bands
+   *  = up to 70 level-2 nodes, of which the treemap captioned most across
+   *  the full card width). Nothing is omitted silently: a folded tail is
+   *  drawn as its own block, sized by the tail's true sum, labelled with
+   *  what it stands for, and its tooltip enumerates the members — and
+   *  clicking a parent re-renders the card filtered, where those members
+   *  become large. The lever, if more tail detail is ever wanted, is the
+   *  card's WIDTH now (widening the browser, or the full-width grant on
+   *  open in Styles.html) rather than its height — every capacity number
+   *  here is derived from api.getWidth() at runtime, so nothing in this
+   *  file mirrors a fixed capacity.
    *
    *  ── VERIFIED ECHARTS 5.5.0 FACTS THIS LEANS ON ──────────────────────
    *  · `coordinateSystem: 'none'` — getCoordSysInfoBySeries() has no
@@ -862,8 +882,8 @@ var Charts = (function () {
    *    `.chart-flow canvas { cursor: default }` in Styles.html. Marks stay
    *    hoverable on purpose: the tooltip is now the entire interaction.
    *  · zrender's getSize() subtracts computed padding, so with
-   *    `.chart-flow { min-height: 340px; padding: 0 20px 20px }` and
-   *    border-box, api.getHeight() is 320 and api.getWidth() is the card
+   *    `.chart-flow { min-height: 480px; padding: 0 20px 20px }` and
+   *    border-box, api.getHeight() is 460 and api.getWidth() is the card
    *    width minus 40. Nothing here mirrors those CSS numbers.
    */
 
@@ -908,13 +928,28 @@ var Charts = (function () {
    *   ROW1_MIN/ROW2_MIN role, transposed) — the width every drawn block
    *   is guaranteed at least, whatever its value share.
    *
-   * GAP_IN is the 2px surface gap that separates touching marks — the
-   * gap, never a border, is what separates neighbours. The two strokes
-   * this renderer does draw (EDGE, 1px) separate nothing: one marks the
-   * no-quantity ROLE and one gives the ribbon wash a legible edge, both
-   * argued in flowPalette_. END_GAP holds a ribbon 2px clear of both
-   * blocks it joins, so the connector reads as its own mark rather than a
-   * smear between two rectangles.
+   * GAP_OUT is what makes the level-2 row read as separate SUBBRANCHES
+   * rather than one continuous strip (per user, 2026-08-25): every level-1
+   * block's own children start at that block's own left edge and never run
+   * past its right edge (see flowLayout_'s "same extent again, bracketed
+   * inside this block's width"), so consecutive parents' clusters are
+   * already never overlapping — GAP_OUT is what makes that boundary
+   * VISIBLE. It is spent in exactly one place, between level-1 blocks
+   * (`x += w + GAP_OUT`), and because every level-2 cluster's x-range is
+   * anchored to its own parent's, that same gap propagates straight down
+   * to the row below: a wide gap between parents, unbroken by any gap
+   * between a parent and ITS OWN children (there is none — a cluster's
+   * ribbons start flush at the parent's edges). GAP_IN (2px) is the
+   * unrelated, much smaller gap that only separates touching marks
+   * WITHIN one cluster or one block (surface gap, never a border) — the
+   * contrast between the two (14px between branches, 2px within one) is
+   * what a reader's eye actually groups by.
+   *
+   * The two strokes this renderer does draw (EDGE, 1px) separate nothing:
+   * one marks the no-quantity ROLE and one gives the ribbon wash a legible
+   * edge, both argued in flowPalette_. END_GAP holds a ribbon 2px clear of
+   * both blocks it joins, so the connector reads as its own mark rather
+   * than a smear between two rectangles.
    *
    * NAME_MIN / NAME_TIGHT are the two widths a name is allowed to keep when
    * the count is set beside it: NAME_MIN (46px, ~7 characters) for the
@@ -924,7 +959,7 @@ var Charts = (function () {
    * reader (flowFitLabel_ spells the ladder out).
    */
   var FLOW = {
-    INSET: 4, CAP_H: 15, GAP_OUT: 4, GAP_IN: 2,
+    INSET: 4, CAP_H: 15, GAP_OUT: 14, GAP_IN: 2,
     BAND1_H: 40, BAND2_H: 34, BLOCK1_MIN: 32, BLOCK2_MIN: 26,
     PAD_X: 10, SEP: 10,
     NAME_MIN: 46, NAME_TIGHT: 24,

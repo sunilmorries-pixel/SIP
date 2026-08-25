@@ -159,10 +159,20 @@ function buildServiceQuerySpecs(filters) {
       // Same '%swap%' service_type match as Queries.js's svcSwappedTickets
       // (center-detail drawer) and centerTickets' Zoho `swapped` column
       // (Center-360) — one vocabulary for "swap" across the app. Per user,
-      // 2026-08-25: replacements/swaps by region.
+      // 2026-08-25: region here means the CENTER's state (center_details),
+      // not ticket_territory (a sales-territory label, not a state) — join
+      // via customer_id -> CenterID, same bridge Queries.js's centerTickets
+      // spec and Fse.js already use. customer_id is TEXT, CenterID numeric,
+      // hence the CAST; cs collapses center_details' occasional duplicate
+      // CenterID rows with ANY_VALUE (same pattern as Numbers.js's device
+      // -> CenterID map) since this is a display grouping, not a filter.
       key: 'swapsByRegion', maxRows: 15,
-      sql: 'SELECT IFNULL(NULLIF(TRIM(ticket_territory), ""), "Unknown") AS label, COUNT(*) AS cnt ' +
-        'FROM ' + SW + where + ' AND LOWER(IFNULL(service_type, "")) LIKE "%swap%" ' +
+      sql: 'WITH cs AS (SELECT CAST(CenterID AS STRING) AS cid, ' +
+        'ANY_VALUE(TRIM(State)) AS cd_state FROM ' + T('center_details') +
+        ' WHERE CenterID IS NOT NULL GROUP BY cid) ' +
+        'SELECT IFNULL(NULLIF(cs.cd_state, ""), "Unknown") AS label, COUNT(*) AS cnt ' +
+        'FROM ' + SW + ' LEFT JOIN cs ON cs.cid = customer_id' + where +
+        ' AND LOWER(IFNULL(service_type, "")) LIKE "%swap%" ' +
         'GROUP BY label ORDER BY cnt DESC LIMIT 15'
     },
     {
@@ -250,7 +260,9 @@ function buildServiceTicketsQuery(options) {
     ' IFNULL(service_type, "") AS service_type, IFNULL(representative, "") AS representative, ' +
     ' tat_days_, IFNULL(closure_type, "") AS closure_type, ' +
     ' COUNT(*) OVER() AS total_rows ' +
-    'FROM ' + swTable_() + ' WHERE TRUE' + swFilterCond_(o.filters) + searchCond +
+    // Per user, 2026-08-25: the ticket explorer shows open tickets only.
+    'FROM ' + swTable_() + ' WHERE TRUE' + swFilterCond_(o.filters) +
+    ' AND status = "Open"' + searchCond +
     ' ORDER BY ' + sortBy + ' ' + sortDir +
     ' LIMIT ' + pageSize + ' OFFSET ' + (page * pageSize);
 }

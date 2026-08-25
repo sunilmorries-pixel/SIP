@@ -157,11 +157,14 @@ describe('ServiceWRK SQL helpers (ServiceWrk.js)', function () {
       });
     });
 
-    test('swapsByRegion groups by ticket_territory, swapsByRep by representative', function () {
+    test('swapsByRegion groups by the center\'s state (via customer_id -> CenterID), swapsByRep by representative', function () {
       const specs = sandbox.buildServiceQuerySpecs({});
       const byRegion = specs.filter(function (s) { return s.key === 'swapsByRegion'; })[0];
       const byRep = specs.filter(function (s) { return s.key === 'swapsByRep'; })[0];
-      expect(byRegion.sql).toContain('ticket_territory');
+      expect(byRegion.sql).toContain('CAST(CenterID AS STRING)');
+      expect(byRegion.sql).toContain('center_details');
+      expect(byRegion.sql).toContain('cs.cid = customer_id');
+      expect(byRegion.sql).not.toContain('ticket_territory');
       expect(byRep.sql).toContain('representative');
     });
   });
@@ -211,6 +214,10 @@ describe('ServiceWRK SQL helpers (ServiceWrk.js)', function () {
     test('carries the global filter into the row list', function () {
       const sql = sandbox.buildServiceTicketsQuery({ filters: { states: ['Odisha'] } });
       expect(sql).toContain("IN ('Odisha')");
+    });
+
+    test('shows open tickets only', function () {
+      expect(sandbox.buildServiceTicketsQuery({})).toContain('AND status = "Open"');
     });
   });
 });

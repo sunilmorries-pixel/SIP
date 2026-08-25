@@ -214,11 +214,11 @@
            engineer row stacks above, with no magic offsets to re-tune when
            either row wraps. -->
       <div class="map-legend-stack">
-      <div class="map-legend" id="ticketLegend" role="group" aria-label="Filter map by open tickets">
+      <div class="map-legend" id="ticketLegend" role="group" aria-label="Filter map by oldest open ticket's age">
         <button class="legend-filter" type="button" data-bucket="none" aria-pressed="false"><span class="legend-dot" style="background:#34D399"></span>No open tickets</button>
-        <button class="legend-filter" type="button" data-bucket="low" aria-pressed="false"><span class="legend-dot" style="background:#FBBF24"></span>1–3 open</button>
-        <button class="legend-filter" type="button" data-bucket="high" aria-pressed="false"><span class="legend-dot" style="background:#F87171"></span>4+ open</button>
-        <span class="legend-note"><span class="legend-swatch" style="background:#2E9BD6"></span>Country has centers <span class="legend-swatch" style="background:#869AB2"></span>No centers · size = devices · faded/dashed = approximate location · click to filter</span>
+        <button class="legend-filter" type="button" data-bucket="low" aria-pressed="false"><span class="legend-dot" style="background:#FBBF24"></span>1–3 days open</button>
+        <button class="legend-filter" type="button" data-bucket="high" aria-pressed="false"><span class="legend-dot" style="background:#F87171"></span>4+ days open</button>
+        <span class="legend-note"><span class="legend-swatch" style="background:#2E9BD6"></span>Country has centers <span class="legend-swatch" style="background:#869AB2"></span>No centers · size = devices · color = oldest open ticket's age · faded/dashed = approximate location · click to filter</span>
       </div>
 
       <!-- Engineer layer controls, kept in their own row rather than appended
@@ -862,9 +862,9 @@
            aria-label="Map of top-customer centers. Click a marker for details."></div>
       <div class="map-legend" aria-hidden="true">
         <span><span class="legend-dot" style="background:#34D399"></span>No open tickets</span>
-        <span><span class="legend-dot" style="background:#FBBF24"></span>1–3 open</span>
-        <span><span class="legend-dot" style="background:#F87171"></span>4+ open</span>
-        <span class="legend-note"><span class="legend-swatch" style="background:#2E9BD6"></span>Country has centers <span class="legend-swatch" style="background:#869AB2"></span>No centers · Bubble size = devices</span>
+        <span><span class="legend-dot" style="background:#FBBF24"></span>1–3 days open</span>
+        <span><span class="legend-dot" style="background:#F87171"></span>4+ days open</span>
+        <span class="legend-note"><span class="legend-swatch" style="background:#2E9BD6"></span>Country has centers <span class="legend-swatch" style="background:#869AB2"></span>No centers · Bubble size = devices · color = oldest open ticket's age</span>
       </div>
     </div>
 

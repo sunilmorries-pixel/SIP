@@ -1038,7 +1038,9 @@ function apiGetMapDataCD(options) {
     // v16: payload gained `cp` (the dealer layer) — same reasoning as v15: a
     // v15 entry cached before this deploy has no `cp` key, and would read as
     // "no dealers" for up to the 30-min TTL rather than "not loaded yet".
-    var cacheKey = 'mapcd_v16_' + getCacheEpoch_() + '_' + filterHash_(filters);
+    // v17: payload rows gained index 13 (max_open_age_days) for the map's
+    // ticket-severity color/legend/filter, switched from open-ticket count.
+    var cacheKey = 'mapcd_v17_' + getCacheEpoch_() + '_' + filterHash_(filters);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -1095,7 +1097,13 @@ function apiGetMapDataCD(options) {
           row.center_id, row.center, c[0], c[1], row.jira_devices, 0,
           row.open_tickets, assetCount[row.center_id] || 0,
           row.hub || '', row.hub_id != null ? row.hub_id : '',
-          row.segment || '', row.state || '', approx
+          // index 13 (max_open_age_days, -1 sentinel for "no open ticket") —
+          // per user, 2026-08-25: the map's ticket-severity color/legend/click
+          // filter switched from open-ticket COUNT to the oldest open ticket's
+          // AGE in days, same field getCenter360RowsCD_ already computes for
+          // the Top Customers leaderboard. c[6] (open ticket count) stays as
+          // it was for the tooltip text — only the color/bucket source moved.
+          row.segment || '', row.state || '', approx, row.max_open_age_days
         ]);
       }
     });
@@ -1277,8 +1285,14 @@ function computeTopCustomersCD_(filters) {
     var c = coordsForCD_(row, geoStore);
     if (c) {
       a.located += 1;
+      // index 12 is a placeholder (this map has no "approx location" concept
+      // the way Overview's does) so index 13 (max_open_age_days) lines up
+      // with the same position as Overview's mapCenters — the shared
+      // ticketColor colorFn/tooltip read a fixed index regardless of which
+      // map instance supplied the row.
       mapCenters.push([row.center_id, row.center, c[0], c[1], row.jira_devices, 0,
-        row.open_tickets, 0, row.hub || a.hub, row.hub_id, row.segment || '', row.state || '']);
+        row.open_tickets, 0, row.hub || a.hub, row.hub_id, row.segment || '', row.state || '',
+        0, row.max_open_age_days]);
     }
   });
 
@@ -1326,7 +1340,7 @@ function apiGetTopCustomersCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('topcustcd_v14_' + getCacheEpoch_() + '_' + filterHash_(filters), // v14: dropped mrr, added swapped + oldest-open-ticket age bucket
+    return withCache('topcustcd_v15_' + getCacheEpoch_() + '_' + filterHash_(filters), // v15: mapCenters rows gained max_open_age_days for the map's ticket-severity coloring
       function () { return computeTopCustomersCD_(filters); },
       options.bypassCache === true);
   });

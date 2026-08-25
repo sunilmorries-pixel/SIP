@@ -131,6 +131,6 @@ var CONFIG = {
    * APP_DEPLOYED_AT  = when that version is pointed at the production URL.
    */
   APP_NAME: 'SIP',
-  APP_VERSION: '112',
-  APP_DEPLOYED_AT: 'Aug 25, 2026, 3:40 PM'
+  APP_VERSION: '113',
+  APP_DEPLOYED_AT: 'Aug 25, 2026, 4:05 PM'
 };

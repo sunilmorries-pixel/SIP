@@ -596,20 +596,20 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
    that dependency: the height is fixed and the DATA is folded to fit it, so
    the height is a design decision again.
 
-   THIS NUMBER IS THE FLOW'S ONLY CAPACITY LEVER. With box-sizing: border-box
-   and the padding below, zrender's getSize() hands ECharts a 320px-tall,
-   (card − 40px)-wide canvas; decompFlow reads that at runtime via
-   api.getHeight() and derives everything from it — how many level-1 rows can
-   be drawn before the tail is folded, and how many level-2 blocks each band
-   can hold. Nothing in Charts.html mirrors the 340. Raising it here raises
-   both capacities with no code change (and lowering it lowers them), so this
-   is the knob to reach for if the folded tail ever needs to be more visible;
-   at 340px the flow names fewer categories on canvas than the treemap it
-   replaced, which is the deliberate trade recorded in decompFlow's comment.
+   THIS NUMBER IS THE FLOW'S CAPACITY LEVER FOR ITS CANVAS HEIGHT — how many
+   level-1 blocks fold now comes from the canvas WIDTH instead, since the
+   flow runs top-to-bottom (per user, 2026-08-25): a level-1 band sits at the
+   top, a level-2 band at the bottom, and the ribbon gutter between them is
+   what most of this height buys. Raised from 340 to 480 for that gutter —
+   the two bands themselves are small fixed strips (BAND1_H/BAND2_H in
+   Charts.html, just tall enough for one line of text), so a short card would
+   leave the flow's own "read it top to bottom" cue with nowhere to breathe.
+   decompFlow reads the real canvas at runtime via api.getWidth()/getHeight()
+   and derives everything from it; nothing in Charts.html mirrors the 480.
 
    min-height, not height: `.chart` sets height: 280px further down this file
    at equal specificity, so a `height` here would lose on source order. */
-.chart-flow { min-height: 340px; padding: 0 var(--pad) var(--pad); animation: rise 320ms var(--ease-out) both; }
+.chart-flow { min-height: 480px; padding: 0 var(--pad) var(--pad); animation: rise 320ms var(--ease-out) both; }
 /* The flow is read-only (2026-08-25), but zrender defaults every custom-series
    mark to cursor:pointer and ignores a `cursor` element option, so the canvas
    advertised a click that no longer happens. It can only be corrected from

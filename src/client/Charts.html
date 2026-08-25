@@ -887,18 +887,34 @@ var Charts = (function () {
 
   /**
    * Every number the layout needs. NOTE what is NOT here: the canvas
-   * height. It is read from api.getHeight() on every render, so the
-   * capacities below are re-derived if .chart-flow's height in Styles.html
-   * ever changes, and re-derived on resize.
+   * size. It is read from api.getWidth()/api.getHeight() on every render,
+   * so the capacities below are re-derived if .chart-flow's height in
+   * Styles.html ever changes, and re-derived on resize.
    *
-   * ROW1_MIN/ROW2_MIN are the row floors: 12px and 11px of single-line text
-   * plus ≥5px of clearance. GAP_IN is the 2px surface gap that separates
-   * touching marks — the gap, never a border, is what separates neighbours.
-   * The two strokes this renderer does draw (EDGE, 1px) separate nothing:
-   * one marks the no-quantity ROLE and one gives the ribbon wash a legible
-   * edge, both argued in flowPalette_. END_GAP holds a ribbon 2px clear of
-   * both blocks it joins, so the connector reads as its own mark rather
-   * than a smear between two rectangles.
+   * The flow runs top-to-bottom (per user, 2026-08-25): a level-1 band
+   * sits at the top of the card, a level-2 band at the bottom, ribbons
+   * cross the gutter between them, and — unlike the old left/right
+   * layout — the blocks WITHIN each band sit side by side, so a block's
+   * value-proportional dimension is now its WIDTH, not its height. That
+   * flips which constant governs what:
+   *
+   *   BAND1_H / BAND2_H are each band's FIXED height — just enough for
+   *   one line of text (name + count on the same row, as before). They do
+   *   NOT scale with the card like the old COL_FRAC width did, because
+   *   text now reads along the value-proportional axis (width), not the
+   *   fixed one — a taller band would only buy empty vertical padding.
+   *
+   *   BLOCK1_MIN / BLOCK2_MIN are the per-block WIDTH floors (the old
+   *   ROW1_MIN/ROW2_MIN role, transposed) — the width every drawn block
+   *   is guaranteed at least, whatever its value share.
+   *
+   * GAP_IN is the 2px surface gap that separates touching marks — the
+   * gap, never a border, is what separates neighbours. The two strokes
+   * this renderer does draw (EDGE, 1px) separate nothing: one marks the
+   * no-quantity ROLE and one gives the ribbon wash a legible edge, both
+   * argued in flowPalette_. END_GAP holds a ribbon 2px clear of both
+   * blocks it joins, so the connector reads as its own mark rather than a
+   * smear between two rectangles.
    *
    * NAME_MIN / NAME_TIGHT are the two widths a name is allowed to keep when
    * the count is set beside it: NAME_MIN (46px, ~7 characters) for the
@@ -908,12 +924,13 @@ var Charts = (function () {
    * reader (flowFitLabel_ spells the ladder out).
    */
   var FLOW = {
-    INSET_Y: 4, CAP_H: 15, GAP_OUT: 4, GAP_IN: 2,
-    ROW1_MIN: 18, ROW2_MIN: 16, PAD_X: 10, SEP: 10,
+    INSET: 4, CAP_H: 15, GAP_OUT: 4, GAP_IN: 2,
+    BAND1_H: 40, BAND2_H: 34, BLOCK1_MIN: 32, BLOCK2_MIN: 26,
+    PAD_X: 10, SEP: 10,
     NAME_MIN: 46, NAME_TIGHT: 24,
     RADIUS: 4, END_GAP: 2, EDGE: 1,
-    COL_FRAC: 0.26, COL_MIN: 84, COL_MAX: 340, GUTTER_MIN: 48,
-    CURVE_STEPS: 14, ARROW_MIN: 22, ARROW_W: 7, ARROW_H: 9
+    GUTTER_MIN: 56,
+    CURVE_STEPS: 14, ARROW_MIN: 40, ARROW_W: 9, ARROW_H: 7
   };
 
   /**
@@ -1171,27 +1188,31 @@ var Charts = (function () {
   /* ── geometry primitives ─────────────────────────────────────── */
 
   /**
-   * A ribbon: a constant-thickness band from (x0, yA) to (x1, yB) drawn on
+   * A ribbon: a constant-thickness band from (xA, y0) to (xB, y1) drawn on
    * the smoothstep s = t²(3−2t) — the same easing a sankey link uses, so it
-   * reads as movement rather than as a wire or an indented bar.
+   * reads as movement rather than as a wire or an indented bar. The flow
+   * runs top-to-bottom, so the ribbon travels a FIXED Y span (y0 to y1, the
+   * gutter between the two bands) while its X position eases from the
+   * parent's side (xA) to the child's (xB), thickness w (the child's own
+   * width).
    */
-  function flowRibbonPoints_(x0, x1, yA, yB, h) {
-    var n = FLOW.CURVE_STEPS, top = [], bot = [], i, t, s, x, y;
+  function flowRibbonPoints_(y0, y1, xA, xB, w) {
+    var n = FLOW.CURVE_STEPS, left = [], right = [], i, t, s, x, y;
     for (i = 0; i <= n; i++) {
       t = i / n;
       s = t * t * (3 - 2 * t);
-      x = x0 + (x1 - x0) * t;
-      y = yA + (yB - yA) * s;
-      top.push([x, y]);
-      bot.push([x, y + h]);
+      y = y0 + (y1 - y0) * t;
+      x = xA + (xB - xA) * s;
+      left.push([x, y]);
+      right.push([x + w, y]);
     }
-    bot.reverse();
-    return top.concat(bot);
+    right.reverse();
+    return left.concat(right);
   }
 
-  /** A right-pointing triangle centred on (cx, cy). */
+  /** A downward-pointing triangle centred on (cx, cy). */
   function flowArrowPoints_(cx, cy, w, h) {
-    return [[cx - w / 2, cy - h / 2], [cx + w / 2, cy], [cx - w / 2, cy + h / 2]];
+    return [[cx - w / 2, cy - h / 2], [cx + w / 2, cy - h / 2], [cx, cy + h / 2]];
   }
 
   /* ── the model: pure, and entirely free of pixels ───────────────── */
@@ -1326,29 +1347,23 @@ var Charts = (function () {
     var out = { byIndex: {}, warn: [] };
     var i;
 
-    /* ── columns. The gutter is what the ribbons live in, so it gets a
-       floor of its own and the columns are clamped to whatever is left. */
-    var colW = Math.round(W * F.COL_FRAC);
-    if (colW > F.COL_MAX) colW = F.COL_MAX;
-    if (colW < F.COL_MIN) colW = F.COL_MIN;
-    var roomy = Math.floor((W - F.GUTTER_MIN) / 2);
-    if (colW > roomy) colW = roomy;
-    // Asserted, not assumed: the clamp above can fall below COL_MIN on a
-    // narrow canvas, and a non-positive inner width would silently produce
-    // empty labels rather than an error.
-    if (!(colW - 2 * F.PAD_X > 8)) { out.bad = 'canvas too narrow (' + W + 'px)'; return out; }
+    /* ── the two bands. Each is a FIXED height (just one line of text —
+       see FLOW's comment for why this no longer scales like the old
+       column width did), stacked top and bottom with their own caption
+       row immediately above them and the ribbon gutter between. */
+    var y1 = F.INSET + F.CAP_H, y1b = y1 + F.BAND1_H;
+    var y2cap = HC - F.INSET - F.BAND2_H - F.CAP_H, y2 = y2cap + F.CAP_H;
+    if (!(y2 > y1b)) { out.bad = 'canvas too short (' + HC + 'px)'; return out; }
+    var ry0 = y1b + F.END_GAP, ry1 = y2cap - F.END_GAP;
+    if (!(ry1 - ry0 >= F.GUTTER_MIN * 0.5)) { out.bad = 'no room for connectors'; return out; }
+    var gutterMid = (y1b + y2cap) / 2;
 
-    var x1 = 0, x1r = colW, x2l = W - colW;
-    if (!(x2l - x1r >= F.GUTTER_MIN * 0.5)) { out.bad = 'no room for connectors'; return out; }
-    var rx0 = x1r + F.END_GAP, rx1 = x2l - F.END_GAP;
-    var gutterMid = (x1r + x2l) / 2;
-
-    /* ── vertical budget. CAP_H buys the two rank captions; INSET_Y is
-       breathing room top and bottom. Everything below is derived from what
-       is left, so the card's height is the single lever. */
-    var plotTop = F.INSET_Y + F.CAP_H;
-    var H = HC - plotTop - F.INSET_Y;
-    if (!(H >= F.ROW1_MIN)) { out.bad = 'canvas too short (' + HC + 'px)'; return out; }
+    /* ── horizontal budget. Blocks sit side by side within a band, so W
+       (minus nothing — there is no per-band inset on this axis, unlike
+       the vertical one which reserves room for each band's own caption)
+       is exactly what the fold math below has to fit into. */
+    var Wb = W;
+    if (!(Wb >= F.BLOCK1_MIN)) { out.bad = 'canvas too narrow (' + W + 'px)'; return out; }
 
     /* ── level-1 capacity, then the fold. The fold is driven ONLY by the
        row count against the canvas — never by a "the residual must also
@@ -1362,44 +1377,18 @@ var Charts = (function () {
        nothing here re-sorts. */
     // WHAT pitch1 IS, stated as the property the code actually enforces.
     // It is a GLOBAL ROW-COUNT BUDGET — it feeds cap1 and nothing else. It
-    // is NOT a per-row guarantee: a row's drawn height is
-    // ROW1_MIN + free1·share, so on a skewed payload plenty of admitted rows
-    // land well under pitch1 and fold their whole breakdown into one slot
-    // (which the fold labels as "5 age bands", not as a range — see the
-    // level-2 fold below). Two things budgeting at this pitch does buy, both
-    // properties of the column as a whole:
-    //
-    //   · MEAN band ≥ pitch1. With n ≤ cap1 rows, Σh = H − (n−1)·GAP_OUT, so
-    //     the average row is at least pitch1 = 2·ROW2_MIN + GAP_IN — the
-    //     height at which a band can hold two level-2 blocks. The card
-    //     therefore decomposes SOMETHING at every payload shape; which rows
-    //     get the decomposition follows the data's own skew, not the budget.
-    //   · A LIVE MAGNITUDE CHANNEL. free1 ≥ n·(pitch1 − ROW1_MIN) ≈ n·16, so
-    //     roughly half the column stays value-driven height rather than
-    //     floor. That is the part that dies at a ROW1_MIN budget: traced on
-    //     the real Devices shape (13 tracked device types —
-    //     buildDevicesTree_ applies no top-N cap, unlike buildCustomersTree_,
-    //     and isTrackedJiraDeviceType_ excludes only Task/Epic/Test, so
-    //     12-14 level-1 nodes is that card's EXPECTED shape), 13 rows of
-    //     18px floor plus 12 gaps leave 15px of free height out of 297: every
-    //     row lands between 18px and 23px whether it holds 52% of the fleet
-    //     or 0.1%, and every band is then under 2·ROW2_MIN anyway, so
-    //     nothing decomposes either.
-    //
-    // Measured, on that same 13-type payload at the real open-card size
-    // (H = 297): cap1 = 7, so 6 named types plus a tail aggregate over 7.
-    // Bands come out 95.4 / 62.7 / 31.1 / 22.1 / 20.2 / 19.7 / 21.9px — the
-    // two largest decompose (ECG Machine into all five bands, Connector into
-    // two plus a "2-3y → 5y+" fold), the next four fold whole, and the tail
-    // aggregate takes a placeholder because it stands for seven types at
-    // once. Nothing is silent: a whole-fold block says "5 age bands", the
-    // tail block is sized by its members' true sum and its tooltip names
-    // each one with its count, and clicking any named type filters the page
-    // to it, where its own bands are large. Customers (6 rows) and Tickets
-    // (3) sit under the cap and are unaffected.
-    var pitch1 = 2 * F.ROW2_MIN + F.GAP_IN;
-    if (pitch1 < F.ROW1_MIN) pitch1 = F.ROW1_MIN;
-    var cap1 = Math.floor((H + F.GAP_OUT) / (pitch1 + F.GAP_OUT));
+    // is NOT a per-row guarantee: a row's drawn width is
+    // BLOCK1_MIN + free1·share, so on a skewed payload plenty of admitted
+    // rows land well under pitch1 and fold their whole breakdown into one
+    // slot (which the fold labels as "5 age bands", not as a range — see
+    // the level-2 fold below). Budgeting at this pitch buys the same two
+    // properties the old height-based version did, just along width now:
+    // the mean block is at least wide enough to hold two level-2 children
+    // side by side, and roughly half the band stays value-driven width
+    // rather than floor.
+    var pitch1 = 2 * F.BLOCK2_MIN + F.GAP_IN;
+    if (pitch1 < F.BLOCK1_MIN) pitch1 = F.BLOCK1_MIN;
+    var cap1 = Math.floor((Wb + F.GAP_OUT) / (pitch1 + F.GAP_OUT));
     if (cap1 < 1) cap1 = 1;
     var all = model.rows;
     var drawN = all.length < cap1 ? all.length : cap1;
@@ -1421,26 +1410,26 @@ var Charts = (function () {
       }
     }
 
-    /* ── (2) the left column exhausts H exactly. */
+    /* ── (2) the top band exhausts Wb exactly. */
     var n1 = slots.length;
-    var avail1 = H - (n1 - 1) * F.GAP_OUT;
-    var free1 = avail1 - n1 * F.ROW1_MIN;
+    var avail1 = Wb - (n1 - 1) * F.GAP_OUT;
+    var free1 = avail1 - n1 * F.BLOCK1_MIN;
     if (!(free1 > 0)) free1 = 0;
-    var y = plotTop;
-    var colBottom = plotTop + H;
+    var x = 0;
+    var bandRight = Wb;
 
     slots.forEach(function (s, idx) {
       var share = model.total > 0 ? s.value / model.total : 1 / n1;
-      var h = F.ROW1_MIN + free1 * share;
-      // The last row takes the arithmetic remainder, so Σh + Σgaps === H
+      var w = F.BLOCK1_MIN + free1 * share;
+      // The last block takes the arithmetic remainder, so Σw + Σgaps === Wb
       // exactly regardless of floating point.
-      if (idx === n1 - 1) h = colBottom - y;
+      if (idx === n1 - 1) w = bandRight - x;
       var row = s.row;
       var isAgg = !!s.agg;
       var isZero = !isAgg && s.value <= 0;
       var cell = {
         kind: 'block', role: isAgg ? 'agg1' : (isZero ? 'zero1' : 'l1'),
-        x: x1, y: y, w: colW, h: h,
+        x: x, y: y1, w: w, h: F.BAND1_H,
         fill: isAgg ? P.aggFill : (isZero ? P.trackFill : P.l1Fill),
         textFill: isAgg ? P.aggText : (isZero ? P.trackText : P.l1Text),
         // Only the no-quantity role is outlined, and only because its fill
@@ -1456,13 +1445,13 @@ var Charts = (function () {
       };
       flowFitLabel_(cell, s.name, isZero ? '0' : FMT.format(s.value),
         isZero ? '0' : flowCompact_(s.value),
-        (isAgg || isZero) ? '' : cell.share, colW, FLOW_FONTS.name1, FLOW_FONTS.val1);
+        (isAgg || isZero) ? '' : cell.share, w, FLOW_FONTS.name1, FLOW_FONTS.val1);
       out.byIndex[row.blockIdx] = cell;
 
-      /* ── (3) the same extent again, bracketed inside this band. */
-      var B = h;
-      var cap2 = Math.floor((B + F.GAP_IN) / (F.ROW2_MIN + F.GAP_IN));
-      if (cap2 < 1) cap2 = 1;    // guaranteed anyway by ROW1_MIN >= ROW2_MIN
+      /* ── (3) the same extent again, bracketed inside this block's width. */
+      var Bx = w;
+      var cap2 = Math.floor((Bx + F.GAP_IN) / (F.BLOCK2_MIN + F.GAP_IN));
+      if (cap2 < 1) cap2 = 1;    // guaranteed anyway by BLOCK1_MIN >= BLOCK2_MIN
       var kids = isAgg ? [] : row.kids;
       var kidSlots = [];
       var kj;
@@ -1475,13 +1464,12 @@ var Charts = (function () {
             fm.forEach(function (m) { fsum += m.value > 0 ? m.value : 0; });
             // Three labels, and the WHOLE-FOLD case is tested FIRST because
             // it is not a fold of a tail — it is the entire breakdown in one
-            // block, which happens on any band under ROW2_MIN·2+GAP_IN (five
-            // of the seven drawn rows on the real Devices payload). Labelling
-            // that "<1y → 5y+" was a bug: the full range is typographically
-            // identical to a genuine partial fold ("2-3y → 5y+") one row
-            // above it, so four blocks read as four age ranges instead of as
-            // "all five bands, not broken out". "5 age bands" says what it
-            // is. Below that, an ORDINAL breakdown (device age bands,
+            // block, which happens on any block under BLOCK2_MIN·2+GAP_IN.
+            // Labelling that "<1y → 5y+" was a bug: the full range is
+            // typographically identical to a genuine partial fold
+            // ("2-3y → 5y+") next to it, so blocks read as ranges instead of
+            // as "all five bands, not broken out". "5 age bands" says what
+            // it is. Below that, an ORDINAL breakdown (device age bands,
             // AGE_ORDER in OverviewFlow.js) folds from one end and is
             // labelled as the RANGE it covers — never "+2 more", which for an
             // ordered scale would stand for two non-adjacent bands and read
@@ -1502,7 +1490,7 @@ var Charts = (function () {
       } else if (isAgg) {
         // The level-1 tail aggregate stands for several categories at once,
         // so there is nothing single to decompose. It still gets a
-        // placeholder and a ribbon, because that is what keeps BOTH columns
+        // placeholder and a ribbon, because that is what keeps BOTH bands
         // spanning exactly the same extent — the identity the whole
         // alignment argument rests on.
         kidSlots.push({ raw: null, agg: null, value: 0, flat: true, flatKind: 'agg', name: 'aggregated' });
@@ -1521,43 +1509,43 @@ var Charts = (function () {
       }
 
       var k2 = kidSlots.length;
-      var avail2 = B - (k2 - 1) * F.GAP_IN;
-      var free2 = avail2 - k2 * F.ROW2_MIN;
+      var avail2 = Bx - (k2 - 1) * F.GAP_IN;
+      var free2 = avail2 - k2 * F.BLOCK2_MIN;
       if (!(free2 > 0)) free2 = 0;
       // Scaled by the PARENT's value, never by the sum of its children:
       // buildDevicesTree_ drops devices whose age is null (ageBandForDays_
       // returns null and `if (band)` skips them), so a type's bands can sum
-      // BELOW the type. That shortfall must show as unfilled band, not be
+      // BELOW the type. That shortfall must show as unfilled block, not be
       // normalised away into a row that claims 100%.
       var pv = row.value;
       // Exact bracket when the children genuinely account for the parent —
-      // tested as an exact sum, not a tolerance. A single full-band
+      // tested as an exact sum, not a tolerance. A single full-block
       // placeholder brackets too, trivially.
       // The drawn slots always cover EVERY child — a fold moves them into
       // the tail aggregate rather than dropping them — so the slot values
       // always sum to row.kidSum, and the only question is whether the
       // children account for the parent.
       var exact = (k2 === 1 && kidSlots[0].flat) || (kids.length > 0 && row.kidSum === row.value);
-      var cy = y;
-      var py = y;                      // ribbons leave the parent contiguously
-      var firstTop = null;
+      var cx = x;
+      var px = x;                      // ribbons leave the parent contiguously
+      var firstLeft = null;
 
       kidSlots.forEach(function (ks, kidx) {
-        var h2;
+        var w2;
         if (ks.flat) {
-          h2 = B;                      // the placeholder spans the whole band
+          w2 = Bx;                     // the placeholder spans the whole block
         } else {
           var sh = pv > 0 ? ks.value / pv : 1 / k2;
-          h2 = F.ROW2_MIN + free2 * sh;
-          if (kidx === k2 - 1 && exact) h2 = (y + B) - cy;
+          w2 = F.BLOCK2_MIN + free2 * sh;
+          if (kidx === k2 - 1 && exact) w2 = (x + Bx) - cx;
         }
-        if (firstTop === null) firstTop = cy;
+        if (firstLeft === null) firstLeft = cx;
         var isKidAgg = !!ks.agg;
         var kc = {
           kind: 'block',
           role: ks.flat ? 'flat' : (isKidAgg ? 'agg2' : 'l2'),
           flatKind: ks.flatKind,
-          x: x2l, y: cy, w: colW, h: h2,
+          x: cx, y: y2, w: w2, h: F.BAND2_H,
           fill: ks.flat ? P.trackFill : (isKidAgg ? P.aggFill : P.l2Fill),
           textFill: ks.flat ? P.trackText : (isKidAgg ? P.aggText : P.l2Text),
           stroke: ks.flat ? P.trackEdge : null,   // see the level-1 note
@@ -1582,12 +1570,12 @@ var Charts = (function () {
         // India · 59% of all").
         flowFitLabel_(kc, ks.name, ks.flat ? '' : FMT.format(ks.value),
           ks.flat ? '' : flowCompact_(ks.value),
-          isKidAgg ? '' : kc.shareAll, colW, FLOW_FONTS.name2, FLOW_FONTS.val2);
+          isKidAgg ? '' : kc.shareAll, w2, FLOW_FONTS.name2, FLOW_FONTS.val2);
         out.byIndex[row.kidIdx[kidx]] = kc;
 
         // The ribbon is the only mark that carries the parent→child mapping,
         // so it (a) takes its role from the slot it lands on rather than
-        // always painting in the live data tone — a zero row's full-band
+        // always painting in the live data tone — a zero row's full-block
         // ribbon used to claim a quantity the row does not have — and (b) is
         // a first-class mark: hoverable, with its own tooltip, and clicking
         // through to the same node its block does. It is not `silent` any
@@ -1596,66 +1584,66 @@ var Charts = (function () {
         var muted = ks.flat || !(ks.value > 0);
         out.byIndex[row.ribbonIdx[kidx]] = {
           kind: 'ribbon',
-          points: flowRibbonPoints_(rx0, rx1, py, cy, h2),
+          points: flowRibbonPoints_(ry0, ry1, px, cx, w2),
           fill: muted ? P.ribbonMuted : P.ribbon,
           stroke: muted ? P.ribbonMutedEdge : P.ribbonEdge,
           raw: ks.raw, link: kc
         };
-        py += h2;
-        cy += h2 + F.GAP_IN;
+        px += w2;
+        cx += w2 + F.GAP_IN;
 
         /* ── (5) the level-2 postconditions, which the first version of this
            function advertised and did not check: a block under its floor, a
-           non-finite coordinate, or a child that overruns the band it was
+           non-finite coordinate, or a child that overruns the block it was
            bracketed into (the one overrun class the assertions exist for). */
-        if (!ks.flat && !(h2 >= F.ROW2_MIN - 0.5)) out.warn.push('level-2 block "' + ks.name + '" under "' + s.name + '" is ' + h2.toFixed(1) + 'px, under the ' + F.ROW2_MIN + 'px floor');
-        if (!isFinite(h2) || !isFinite(cy)) out.warn.push('non-finite level-2 geometry for "' + ks.name + '" under "' + s.name + '"');
-        if (cy - F.GAP_IN > y + B + 0.5) out.warn.push('level-2 overrun under "' + s.name + '": "' + ks.name + '" ends at ' + (cy - F.GAP_IN).toFixed(2) + ', band ends at ' + (y + B).toFixed(2));
+        if (!ks.flat && !(w2 >= F.BLOCK2_MIN - 0.5)) out.warn.push('level-2 block "' + ks.name + '" under "' + s.name + '" is ' + w2.toFixed(1) + 'px, under the ' + F.BLOCK2_MIN + 'px floor');
+        if (!isFinite(w2) || !isFinite(cx)) out.warn.push('non-finite level-2 geometry for "' + ks.name + '" under "' + s.name + '"');
+        if (cx - F.GAP_IN > x + Bx + 0.5) out.warn.push('level-2 overrun under "' + s.name + '": "' + ks.name + '" ends at ' + (cx - F.GAP_IN).toFixed(2) + ', block ends at ' + (x + Bx).toFixed(2));
       });
 
-      // One arrow per GROUP, not per leaf, and only where the band is tall
-      // enough to hold it — at a 16-18px pitch a stub-and-arrowhead per
-      // child is more ink than data. Direction is named once in the caption
-      // row regardless, so nothing depends on this firing.
-      if (B >= F.ARROW_MIN) {
+      // One arrow per GROUP, not per leaf, and only where the block is wide
+      // enough to hold it — at a tight pitch a stub-and-arrowhead per child
+      // is more ink than data. Direction is named once in each caption row
+      // regardless, so nothing depends on this firing.
+      if (Bx >= F.ARROW_MIN) {
         out.byIndex[row.arrowIdx] = {
           kind: 'arrow', fill: P.l1Fill,
-          points: flowArrowPoints_(gutterMid, y + (py - y) / 2, F.ARROW_W, F.ARROW_H)
+          points: flowArrowPoints_(x + (px - x) / 2, gutterMid, F.ARROW_W, F.ARROW_H)
         };
       }
 
       /* ── (5) postconditions, checked rather than argued. */
-      if (!(h >= F.ROW1_MIN - 0.5)) out.warn.push('level-1 block "' + s.name + '" is ' + h.toFixed(1) + 'px, under the ' + F.ROW1_MIN + 'px floor');
-      if (!isFinite(y) || !isFinite(h)) out.warn.push('non-finite level-1 geometry for "' + s.name + '"');
-      if (firstTop !== null && Math.abs(firstTop - y) > 0.01) out.warn.push('band top ' + y.toFixed(2) + ' != first child top ' + firstTop.toFixed(2) + ' for "' + s.name + '"');
-      if (exact && Math.abs(cy - F.GAP_IN - (y + B)) > 0.01) out.warn.push('bracket broken for "' + s.name + '": children end at ' + (cy - F.GAP_IN).toFixed(2) + ', band ends at ' + (y + B).toFixed(2));
+      if (!(w >= F.BLOCK1_MIN - 0.5)) out.warn.push('level-1 block "' + s.name + '" is ' + w.toFixed(1) + 'px, under the ' + F.BLOCK1_MIN + 'px floor');
+      if (!isFinite(x) || !isFinite(w)) out.warn.push('non-finite level-1 geometry for "' + s.name + '"');
+      if (firstLeft !== null && Math.abs(firstLeft - x) > 0.01) out.warn.push('block left ' + x.toFixed(2) + ' != first child left ' + firstLeft.toFixed(2) + ' for "' + s.name + '"');
+      if (exact && Math.abs(cx - F.GAP_IN - (x + Bx)) > 0.01) out.warn.push('bracket broken for "' + s.name + '": children end at ' + (cx - F.GAP_IN).toFixed(2) + ', block ends at ' + (x + Bx).toFixed(2));
 
-      y += h + F.GAP_OUT;
+      x += w + F.GAP_OUT;
     });
 
-    if (Math.abs((y - F.GAP_OUT) - colBottom) > 0.01) {
-      out.warn.push('left column ends at ' + (y - F.GAP_OUT).toFixed(2) + ', expected ' + colBottom.toFixed(2));
+    if (Math.abs((x - F.GAP_OUT) - bandRight) > 0.01) {
+      out.warn.push('top band ends at ' + (x - F.GAP_OUT).toFixed(2) + ', expected ' + bandRight.toFixed(2));
     }
 
     /* ── rank captions: the cheapest possible "this is a flowchart, read it
-       left to right" cue, and the only chrome on the card. The right
-       caption starts on the same vertical line as every right-hand label,
-       so the two columns read as two named ranks. */
-    var capY = F.INSET_Y + F.CAP_H / 2;
+       top to bottom" cue, and the only chrome on the card besides the
+       per-block arrows. Each caption sits directly above its own band, so
+       — same intent as the old side-by-side captions — the label and the
+       rank it names are visually tied together. */
     out.byIndex[model.capIdx[0]] = {
-      kind: 'cap', x: x1 + F.PAD_X, y: capY, align: 'left',
-      text: flowTrunc_(String(levels.l1).toUpperCase(), colW - 2 * F.PAD_X, FLOW_FONTS.cap),
+      kind: 'cap', x: F.PAD_X, y: F.INSET + F.CAP_H / 2, align: 'left',
+      text: flowTrunc_(String(levels.l1).toUpperCase(), W - 2 * F.PAD_X, FLOW_FONTS.cap),
       fill: P.cap, font: FLOW_FONTS.cap
     };
     out.byIndex[model.capIdx[1]] = {
-      kind: 'cap', x: x2l + F.PAD_X, y: capY, align: 'left',
-      text: flowTrunc_(String(levels.l2).toUpperCase(), colW - 2 * F.PAD_X, FLOW_FONTS.cap),
+      kind: 'cap', x: F.PAD_X, y: y2cap + F.CAP_H / 2, align: 'left',
+      text: flowTrunc_(String(levels.l2).toUpperCase(), W - 2 * F.PAD_X, FLOW_FONTS.cap),
       fill: P.cap, font: FLOW_FONTS.cap
     };
-    out.byIndex[model.capIdx[2]] = {
-      kind: 'arrow', fill: P.cap,
-      points: flowArrowPoints_(gutterMid, capY, 9, 10)
-    };
+    // No third "direction" arrow in the header: with the two captions now
+    // far apart (one per band, rather than side by side in one row), a
+    // header arrow between them has nowhere natural to sit. The per-block
+    // arrows in the gutter already carry that cue on every drawn row.
     return out;
   }
 
@@ -1760,9 +1748,9 @@ var Charts = (function () {
   var FLOW_LEVELS_DEFAULT = { l1: 'Group', l1s: 'groups', l2: 'Breakdown', l2s: 'parts', ordinal2: false };
 
   /**
-   * Renders one Overview card as a two-rank flow: `treeNode`'s children
-   * become the left column, each child's own children the right column, and
-   * one ribbon per relationship crosses between them.
+   * Renders one Overview card as a two-rank, top-to-bottom flow: `treeNode`'s
+   * children become the top band, each child's own children the bottom band,
+   * and one ribbon per relationship crosses the gutter between them.
    *
    * `treeNode` is the exact {name, value, children, stats?, filterDim?,
    * filterValue?, clearDims?, resetSet?, filterSet?, navTab?,

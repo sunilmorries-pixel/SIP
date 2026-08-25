@@ -1654,10 +1654,11 @@
    * Each card's header carries the metric's total; the breakdown renders
    * lazily the first time that card is expanded, not eagerly for all three on
    * load. An expanded card takes the full page width (see
-   * .flow-card:has(details[open]) in Styles.html), which the flow spends on
-   * two label columns and the ribbon span between them — the horizontal reach
-   * that makes the decomposition read as a flow rather than as an indented
-   * list. The total lives here and only here: Charts.decompFlow draws the
+   * .flow-card:has(details[open]) in Styles.html) — more room for the
+   * level-1/level-2 bands to lay their blocks out side by side before
+   * folding — and the card is tall (.chart-flow in Styles.html) so the flow
+   * has room to run top to bottom: a level-1 band, a ribbon gutter, a
+   * level-2 band. The total lives here and only here: Charts.decompFlow draws the
    * payload root's children, never the root itself, so the number isn't
    * printed twice on the same card.
    *

@@ -1632,62 +1632,6 @@
   }
 
   /**
-   * Applies a tree node's click: sets/clears a global filter, or switches tabs.
-   *
-   * Mutates state.globalFilters DIRECTLY, not state.globalFiltersPending — the
-   * pending object only exists while the Filters drawer is open (null
-   * otherwise, per its own comment at the state initializer), so writing to it
-   * here would throw on the normal case of the drawer being closed. This
-   * mirrors what the Filters drawer's own Apply button does at commit time
-   * (`state.globalFilters = state.globalFiltersPending`) minus the
-   * pending-object indirection, since there is no drawer session to commit —
-   * a tree click sets the live filter directly, the same way a saved search
-   * or a deep link would.
-   */
-  function handleTreeNodeClick_(nodeData) {
-    if (nodeData.clearDims) {
-      nodeData.clearDims.forEach(function (dim) { state.globalFilters[dim] = []; });
-      commitGlobalFilters_();
-      return;
-    }
-    // resetSet (e.g. the Devices root) and filterSet (e.g. a segment leaf,
-    // which must ADD to its parent country rather than replace it) both
-    // assign one or more filter dimensions verbatim from the node payload —
-    // same mechanics, different intent, so they share one apply loop.
-    if (nodeData.resetSet) {
-      Object.keys(nodeData.resetSet).forEach(function (dim) { state.globalFilters[dim] = nodeData.resetSet[dim]; });
-      commitGlobalFilters_();
-      return;
-    }
-    if (nodeData.filterSet) {
-      Object.keys(nodeData.filterSet).forEach(function (dim) { state.globalFilters[dim] = nodeData.filterSet[dim]; });
-      commitGlobalFilters_();
-      return;
-    }
-    if (nodeData.filterDim) {
-      state.globalFilters[nodeData.filterDim] = [nodeData.filterValue];
-      commitGlobalFilters_();
-      return;
-    }
-    if (nodeData.navTab) {
-      // Order note: commitGlobalFilters_() dispatches on state.activeTab AT
-      // CALL TIME. Calling it here (still on tab-overview) means it refreshes
-      // the trees we're about to leave rather than the tab we're headed to —
-      // one harmless redundant fetch, not a correctness bug, since
-      // activateTab() below runs that destination tab's OWN staleness check
-      // independently and will load it correctly regardless. Not optimized
-      // away here because doing so would mean asserting a call-order
-      // guarantee (commitGlobalFilters_ dispatching correctly against a
-      // not-yet-active tab) this codebase doesn't otherwise rely on.
-      if (nodeData.navDeviceType) {
-        state.globalFilters.deviceTypes = [nodeData.navDeviceType];
-        commitGlobalFilters_();
-      }
-      activateTab(nodeData.navTab);
-    }
-  }
-
-  /**
    * Each card's header carries the metric's total; the breakdown renders
    * lazily the first time that card is expanded, not eagerly for all three on
    * load. An expanded card takes the full page width (see
@@ -1726,7 +1670,7 @@
     var payload = state.overviewFlowData;
     if (!payload) return;
     Charts.decompFlow(card.chart, payload[card.key],
-      { onNodeClick: handleTreeNodeClick_, levels: card.levels });
+      { levels: card.levels });
   }
 
   // Wired once: an open card's flow re-renders whenever fresh data arrives

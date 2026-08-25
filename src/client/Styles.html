@@ -610,6 +610,12 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
    min-height, not height: `.chart` sets height: 280px further down this file
    at equal specificity, so a `height` here would lose on source order. */
 .chart-flow { min-height: 340px; padding: 0 var(--pad) var(--pad); animation: rise 320ms var(--ease-out) both; }
+/* The flow is read-only (2026-08-25), but zrender defaults every custom-series
+   mark to cursor:pointer and ignores a `cursor` element option, so the canvas
+   advertised a click that no longer happens. It can only be corrected from
+   outside zrender, here. Hover still works — the tooltip is the whole
+   interaction now. */
+.chart-flow canvas { cursor: default; }
 
 /* NOTE: mobile/tablet view intentionally removed for now — desktop only.
    When we add the mobile view, reintroduce breakpoint overrides here. */

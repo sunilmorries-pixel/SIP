@@ -855,16 +855,12 @@ var Charts = (function () {
    *  · `cursor` on a custom-series element option is IGNORED —
    *    applyMiscProps handles only silent/ignore/invisible/autoBatch, and
    *    zrender's Displayable defaults cursor to 'pointer'. So every mark
-   *    shows a pointer whether or not it acts. Rather than fake it, every
-   *    drawn mark that isn't a payload node routes its click to the
-   *    NEAREST REAL NODE (a folded level-2 block, a "not broken out"
-   *    placeholder and a ribbon all click through to the node they hang
-   *    off), so the only inert marks are the level-1 tail aggregate — whose
-   *    tooltip says so — and any node the SERVER left inert, which is
-   *    tested for rather than assumed: flowClickable_ asks whether the node
-   *    carries a field handleTreeNodeClick_ reads, and both the tooltip's
-   *    offer of a click and the click handler itself are gated on it, so an
-   *    "Others" bucket with no filterDim never promises an action.
+   *    shows a pointer whether or not it acts. That used to be reconciled by
+   *    routing every mark's click to the nearest real node; since 2026-08-25
+   *    the flow is READ-ONLY and nothing here acts on a click, so the pointer
+   *    is corrected the only way reachable from outside zrender —
+   *    `.chart-flow canvas { cursor: default }` in Styles.html. Marks stay
+   *    hoverable on purpose: the tooltip is now the entire interaction.
    *  · zrender's getSize() subtracts computed padding, so with
    *    `.chart-flow { min-height: 340px; padding: 0 20px 20px }` and
    *    border-box, api.getHeight() is 320 and api.getWidth() is the card
@@ -1068,19 +1064,6 @@ var Charts = (function () {
     return n + ' ' + flowUnit_(n, one, many);
   }
 
-  /**
-   * Does this payload node actually carry click metadata? Mirrors the
-   * branches handleTreeNodeClick_ reads, in its order. Used for two things
-   * that must agree: whether the tooltip offers a click, and whether the
-   * click handler bothers calling back. The server's inert buckets (an
-   * "Others" country, a source with no filterDim) reach this renderer as
-   * ordinary nodes with none of these fields, so "the node exists" is not
-   * the same question as "clicking it does something".
-   */
-  function flowClickable_(node) {
-    return !!(node && (node.clearDims || node.resetSet || node.filterSet ||
-      node.filterDim || node.navTab));
-  }
 
   /* ── text measurement ─────────────────────────────────────────────
      A real canvas 2D context measuring with the SAME font shorthand the
@@ -1709,12 +1692,6 @@ var Charts = (function () {
         : (cell.flatKind === 'allzero'
             ? 'Every ' + levels.l2.toLowerCase() + ' here is at zero.'
             : 'The payload carries no ' + levels.l2.toLowerCase() + ' breakdown for this ' + levels.l1.toLowerCase() + '.'));
-      // Gated on the node CARRYING click metadata, not on the node existing:
-      // the server's inert buckets (an "Others" country, a source with no
-      // filterDim) arrive as perfectly good nodes that handleTreeNodeClick_
-      // falls straight through, so "Click to filter" on those was a promise
-      // nothing kept.
-      if (flowClickable_(cell.raw)) lines.push('Click to filter the page to it.');
       return lines.join('<br/>');
     }
 
@@ -1744,9 +1721,7 @@ var Charts = (function () {
       });
       if (cell.agg.length > 8) lines.push('&nbsp;&nbsp;+' + (cell.agg.length - 8) + ' more');
       if (cell.depth === 1) {
-        lines.push('Too many ' + many + ' to draw at this height — not clickable; pick a named block.');
-      } else if (flowClickable_(cell.raw)) {
-        lines.push('Click to filter to ' + decompEsc_(cell.parentName) + ', where these split out.');
+        lines.push('Too many ' + many + ' to draw at this size.');
       }
       return lines.join('<br/>');
     }
@@ -1940,29 +1915,14 @@ var Charts = (function () {
       }]
     }));
 
-    if (opts.onNodeClick) {
-      onClick(id, function (params) {
-        var cell = geo && geo.byIndex[params.dataIndex];
-        // Gated on the node carrying metadata handleTreeNodeClick_ can act
-        // on — the same test the tooltip uses to decide whether to promise a
-        // click, so the two can never disagree. The node itself is then
-        // handed over UNTOUCHED, by reference, exactly as it arrived from the
-        // server.
-        if (!cell || !flowClickable_(cell.raw)) return;
-        // Carried over verbatim from the treemap, for the identical reason
-        // and still load-bearing: the handler mutates global filters and
-        // re-renders through renderOverviewFlow → Charts.decompFlow →
-        // render() → apply_(), which calls setOption(staged, true) on THIS
-        // SAME instance. ECharts can still be mid-flight showing or moving
-        // the old tooltip when the option is replaced, and throws trying to
-        // update a tooltip DOM node that no longer matches (TypeError:
-        // Cannot set properties of null (setting 'innerHTML'), reproducible
-        // by hover-then-click in the local preview). Nothing about swapping
-        // the series for a flow makes that safe.
-        if (instances[id]) instances[id].dispatchAction({ type: 'hideTip' });
-        opts.onNodeClick(cell.raw);
-      });
-    }
+    // No click handler. The flow is read-only as of 2026-08-25 (per user):
+    // clicking a block used to hand its node to handleTreeNodeClick_, which set
+    // global filters or switched tabs. That handler, flowClickable_ and the
+    // tooltip's "Click to filter..." lines all went with it, so nothing offers
+    // an action the chart no longer performs. The one visible remnant is the
+    // cursor: zrender defaults custom-series marks to `pointer` and ignores a
+    // `cursor` element option (see the renderItem notes above), so the canvas is
+    // pinned to `cursor: default` in Styles.html instead.
   }
 
   return {

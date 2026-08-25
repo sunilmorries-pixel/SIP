@@ -150,7 +150,19 @@ function filteredJiraDevices_(filters, dcm) {
       billable: filters.billable, machineTypes: filters.machineTypes,
       deviceIds: filters.deviceIds, macSerialIds: filters.macSerialIds
     };
-    out = out.filter(function (o) { return isFinite(o.cid) && centerPassesFilters_(cfMap[o.cid] || {}, centerDims); });
+    // A device whose serial never resolves to a center (isFinite(o.cid) false)
+    // is not evidence it fails the filter — it's evidence we can't evaluate
+    // the filter for it at all. Excluding it silently zeroed out entire Jira
+    // Issue Types whose Summary format never carries the XX-XXXXXX serial
+    // shape this regex expects (UPS, IV Trolley, ECHO MACHINE, WiFi Dongle —
+    // 100% unmatched in a live sample) every time ANY center-attribute filter
+    // was active, including the always-on default Status:Active chip. Found
+    // 2026-08-25 (per user: "why is [the Asset page's device count] 17,971,
+    // consider all devices in jira") — those devices are real, tracked-type
+    // Jira devices; they were vanishing from the fleet total, not failing a
+    // real test. An unmapped device now always counts; only a device that DID
+    // resolve gets tested against the filter.
+    out = out.filter(function (o) { return !isFinite(o.cid) || centerPassesFilters_(cfMap[o.cid] || {}, centerDims); });
   }
   if (filters.dateFrom || filters.dateTo) {
     out = out.filter(function (o) {
@@ -175,7 +187,7 @@ function filteredJiraDevices_(filters, dcm) {
  */
 function jiraDeviceStats_(filters) {
   filters = filters || {};
-  return withCache('jiradev_v10_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v10: billable/machineTypes/deviceIds/macSerialIds filters added
+  return withCache('jiradev_v11_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v11: unmapped devices no longer excluded by a center-attribute filter
     var dcm = deviceCenterMap_();
     var devices = filteredJiraDevices_(filters, dcm);
     var dTotal = 0, dStatus = {};
@@ -233,7 +245,7 @@ function apiGetNumbers(options) {
     // Hubs use the center-attribute chain + deploymentdate (matches Centers/
     // Map); Tickets bridge to center_details via CenterID + CreatedAt (matches
     // Support); Devices already accepted the full filters object.
-    return withCache('numbers_v10_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v10: billable/machineTypes/deviceIds/macSerialIds filters added
+    return withCache('numbers_v11_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v11: unmapped devices no longer excluded by a center-attribute filter (filteredJiraDevices_)
       var CD = T('center_details');
       var ZOHO = zohoDedupSql_();
       var techBool = techBoolSql_("IFNULL(IssueCategory,'')");

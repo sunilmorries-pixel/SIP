@@ -711,7 +711,7 @@ function apiGetDashboardCD(options) {
     // specs (device-status donut, firmware chart, device explorer all removed;
     // cloud_devices data is CDM/Numbers/Raw-Data only now).
     // v18: billable/machineTypes/deviceIds/macSerialIds filters added.
-    var cacheKey = 'dashcd_v18_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
+    var cacheKey = 'dashcd_v19_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub); // v19: unmapped Jira assets no longer excluded by a center-attribute filter
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -726,11 +726,15 @@ function apiGetDashboardCD(options) {
     });
     var results = runQueriesParallel(dashSpecs);
     enrichCenterNamesCD_(results.reliability);
-    // Jira metrics from the Sheet index; keep only assets whose center passes
-    // the global filter (unmapped devices drop out whenever ANY of
-    // Segment/Status/State/Hub/City/Country is active — matching the existing
-    // v5.8 behavior for Segment alone). Date range checks the asset's OWN Jira
-    // Created date directly, not the center's deployment date.
+    // Jira metrics from jira_data. An asset whose center is unresolved
+    // (center_id == null) now always passes the center-attribute filter
+    // instead of being dropped by it — matches the 2026-08-25 fix in
+    // Numbers.js's filteredJiraDevices_ (see its comment for the full
+    // reasoning: this exact "drop whenever ANY of Segment/Status/State/Hub/
+    // City/Country is active" behavior, present since v5.8, was silently
+    // zeroing out entire Jira Issue Types under the default Status:Active
+    // filter). Date range checks the asset's OWN Jira Created date directly,
+    // not the center's deployment date.
     var assetIdx = getAssetIndex_();
     // Device Type / Device Status (in Jira) option lists for the Filters
     // drawer — always the FULL vocabulary (unfiltered by any other active
@@ -745,7 +749,7 @@ function apiGetDashboardCD(options) {
     if (hasCenterFilter) {
       var cfMap = centerFilterMap_();
       assetIdx = assetIdx.filter(function (a) {
-        return a.center_id != null && centerPassesFilters_(cfMap[a.center_id] || {}, {
+        return a.center_id == null || centerPassesFilters_(cfMap[a.center_id] || {}, {
           segments: filters.segments, statuses: filters.statuses, states: filters.states, hubs: filters.hubs,
           cities: filters.cities, countries: filters.countries, centers: filters.centers || [],
           billable: filters.billable || [], machineTypes: filters.machineTypes || [],

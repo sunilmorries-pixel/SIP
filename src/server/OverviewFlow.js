@@ -270,7 +270,7 @@ function apiGetOverviewFlowCD(options) {
   options = options || {};
   var filters = options.filters || {};
   return respond_(function () {
-    return withCache('ovflow_v1_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
+    return withCache('ovflow_v2_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v2: unmapped devices no longer excluded by a center-attribute filter (filteredJiraDevices_)
       var ticketRows = runQueriesParallel(buildTicketsQuerySpecs(filters));
       return {
         customers: buildCustomersTree_(filters),

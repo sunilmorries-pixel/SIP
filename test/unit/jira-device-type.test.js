@@ -122,15 +122,20 @@ describe('filteredJiraDevices_ (Numbers.js)', function () {
     expect(keysFor({})).toEqual(['D-1', 'D-2', 'D-3']);
   });
 
-  test('a center-attribute filter narrows to devices at matching centers', function () {
-    expect(keysFor({ statuses: ['ACTIVE'] })).toEqual(['D-1']);
+  test('a center-attribute filter narrows to devices at matching centers, but never drops an unmapped one', function () {
+    // D-2 (center 2, INACTIVE) is correctly excluded. D-3 has no resolvable
+    // serial at all — since it can't be tested against the filter, it now
+    // always passes rather than being silently dropped (fixed 2026-08-25;
+    // see the comment on this filter in filteredJiraDevices_).
+    expect(keysFor({ statuses: ['ACTIVE'] })).toEqual(['D-1', 'D-3']);
   });
 
   test('a date range does NOT reject every device', function () {
     // The bug: centerFilterMap_ rows carried no deployment_date, so
     // centerPassesFilters_'s `!d` branch rejected every row and the whole
     // fleet read 0 the moment any date was set in the Filters drawer.
-    expect(keysFor({ statuses: ['ACTIVE'], dateFrom: '2020-01-01' })).toEqual(['D-1']);
+    // D-3 stays in for the same unmapped-always-passes reason as above.
+    expect(keysFor({ statuses: ['ACTIVE'], dateFrom: '2020-01-01' })).toEqual(['D-1', 'D-3']);
   });
 
   test('the date range filters on the device\'s own created date, not its center\'s deployment date', function () {
@@ -144,15 +149,21 @@ describe('filteredJiraDevices_ (Numbers.js)', function () {
   test('the centers dimension narrows the fleet when it is the only active filter', function () {
     // The bug: `centers` was absent from hasCenterFilter, so a Center-only
     // selection skipped filtering entirely and returned the whole fleet.
-    expect(keysFor({ centers: ['1'] })).toEqual(['D-1']);
+    // D-3 (unmapped) still passes through — see the test above; picking a
+    // specific center can't tell an unmapped device it doesn't belong there
+    // any more than any other center-attribute filter can.
+    expect(keysFor({ centers: ['1'] })).toEqual(['D-1', 'D-3']);
   });
 
   test('the centers dimension combines with another dimension instead of zeroing the result', function () {
     // The bug: hasCenterFilter was satisfied by `statuses`, then
     // centerPassesFilters_ compared f.centers against String(undefined) —
     // "undefined" never matches, so this returned 0 devices.
-    expect(keysFor({ centers: ['1'], statuses: ['ACTIVE'] })).toEqual(['D-1']);
-    expect(keysFor({ centers: ['2'], statuses: ['ACTIVE'] })).toEqual([]);
+    expect(keysFor({ centers: ['1'], statuses: ['ACTIVE'] })).toEqual(['D-1', 'D-3']);
+    // D-3 stays even here: centers ['2'] + statuses ACTIVE matches neither
+    // D-1 (center 1) nor D-2 (center 2, INACTIVE), but D-3 is unmapped so
+    // this dimension combination still can't exclude it.
+    expect(keysFor({ centers: ['2'], statuses: ['ACTIVE'] })).toEqual(['D-3']);
   });
 
   test('deviceTypes is an include list and deviceStatusExclude is an exclude list', function () {

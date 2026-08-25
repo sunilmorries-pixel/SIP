@@ -690,6 +690,17 @@ function buildCdmQuerySpecs(filters) {
         " WHEN SAFE_CAST(EcgCounter AS INT64) <= 20 THEN '6-20' " +
         " ELSE '21+' END AS k, COUNT(*) AS n " +
         "FROM " + CD + " WHERE SAFE_CAST(EcgCounter AS INT64) IS NOT NULL" + centerCond + " GROUP BY k"
+    },
+    {
+      // Every distinct center cloud_devices actually reports on — per user,
+      // 2026-08-25: the CDM map must plot ONLY these, not every center_details
+      // row that passes filters (apiGetCdmDataCD, EditionCD.js). CenterID is a
+      // real column on cloud_devices, no serial-parsing bridge needed here
+      // (unlike jira_data). maxRows raised well past CONFIG.MAX_ROWS (1000) —
+      // default would silently truncate this the same way getCenter360RowsCD_
+      // and the reliability/assetHealth specs above already had to guard against.
+      key: 'cdmCenterIds', maxRows: 40000,
+      sql: "SELECT DISTINCT CenterID AS center_id FROM " + CD + " WHERE CenterID IS NOT NULL" + centerCond
     }
   ];
 }

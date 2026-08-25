@@ -1176,7 +1176,7 @@ function apiGetCdmDataCD(options) {
     macSerialIds: (options.filters && options.filters.macSerialIds) || []
   };
   return respond_(function () {
-    var cacheKey = 'cdmcd_v3_' + getCacheEpoch_() + '_' + filterHash_(filters); // v3: billable/machineTypes/deviceIds/macSerialIds filters added
+    var cacheKey = 'cdmcd_v4_' + getCacheEpoch_() + '_' + filterHash_(filters); // v4: map restricted to centers cloud_devices actually reports on
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -1184,7 +1184,16 @@ function apiGetCdmDataCD(options) {
 
     var results = runQueriesParallel(buildCdmQuerySpecs(filters));
 
-    var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters); });
+    // Map scope = cloud_devices' own footprint, not every center_details row
+    // that passes filters — per user, 2026-08-25. A center_details center
+    // with no cloud_devices rows (e.g. Jira-only fleet) has nothing for this
+    // page to show and would otherwise inflate the map past what "Total
+    // Communicators" above it claims to cover.
+    var cdCenterIds_ = {};
+    (results.cdmCenterIds || []).forEach(function (r) { cdCenterIds_[r.center_id] = true; });
+    var centers = getCenter360RowsCD_().filter(function (row) {
+      return centerPassesFilters_(row, filters) && cdCenterIds_[row.center_id];
+    });
     var geoStore = loadGeoStore();
     var located = [], unlocated = 0;
     centers.forEach(function (row) {

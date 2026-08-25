@@ -274,7 +274,7 @@
           ticket_id: 'TRI-MAC-MC9-' + (16022026 + si),
           created: '2026-08-' + ('0' + (1 + (si % 12))).slice(-2),
           closed: '2026-08-' + ('0' + (2 + (si % 12))).slice(-2),
-          status: si % 10 === 0 ? 'Open' : 'Closed',
+          status: 'Open',
           contact: ['CDMO Khordha', 'SCB Accounts', 'Apollo Bhubaneswar'][si % 3],
           territory: ['Odisha India', 'Karnataka India', 'Bihar India'][si % 3],
           product: ['Mac 600 - DB9', 'BORON', 'TR 100 GSM'][si % 3],

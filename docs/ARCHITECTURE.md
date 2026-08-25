@@ -79,17 +79,17 @@ the FSE/CP layer state), and anything at `<script>` top level is shared by all t
 (`COUNTRY_GEOJSON_` and its precomputed bboxes, the point-in-polygon helpers, the two fill
 colours). The returned handle is the whole public surface — `ensureMap`, `setData`, `focusByName`,
 `setTheme`, the FSE entry points (`setFse`/`focusFse`/`focusFseByName`/`clearFseFocus`/
-`setFseVisible`), the CP ones (`setCp`/`focusCp`/`clearCpFocus`/`setCpVisible`) and
-`showGrayAreas` (the static zero-coverage markers, opt-in per instance and called by Overview
-only). A page that needs different marker semantics passes `opts.colorFn`/`opts.tooltipFn` into
-`setData` (CDM colours by battery severity) instead of forking the factory.
+`setFseVisible`), and the CP ones (`setCp`/`focusCp`/`clearCpFocus`/`setCpVisible`). A page that
+needs different marker semantics passes `opts.colorFn`/`opts.tooltipFn` into `setData` (CDM
+colours by battery severity) instead of forking the factory.
 
-The gray-area layer is **in production**: added in `106f894`, scoped to Overview in `f6ba080`,
-and shipped on the deploy `5dbb1d3` bumped for — which landed as `@92` while its embedded footer
-still read '91' (a concurrent session consumed 91 between `clasp push` and `clasp deploy`), so
-`e693a78` corrected `APP_VERSION` forward. **Take the live version from `src/server/Config.js`
-(`APP_VERSION`/`APP_DEPLOYED_AT`), never from a hard-coded @N in a doc** — `HANDOFF.md`'s header
-is stale on exactly this point.
+(The static zero-coverage "gray-area" marker layer — `GRAY_AREA_STATES`, `showGrayAreas` — that
+used to live here was removed 2026-08-25 per user request. It was a real, if minor, case study in
+the version-race problem this project has hit more than once: it shipped on the deploy `5dbb1d3`
+bumped for, which landed as `@92` while its embedded footer still read '91' (a concurrent session
+consumed 91 between `clasp push` and `clasp deploy`), and `e693a78` corrected `APP_VERSION`
+forward. **Take the live version from `src/server/Config.js` (`APP_VERSION`/`APP_DEPLOYED_AT`),
+never from a hard-coded @N in a doc** — that lesson outlives the feature that taught it.)
 
 **Country shading (v5.59/@88).** CARTO's basemap tiles are a flat raster image — there is no
 polygon in them to recolour — so the app ships its own: `COUNTRY_GEOJSON_`, one module-level

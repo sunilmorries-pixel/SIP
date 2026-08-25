@@ -44,8 +44,10 @@
     segmentOptions: [], stateOptions: [], cityOptions: [], countryOptions: [],
     deviceTypeOptions: [], deviceStatusOptions: [], machineTypeOptions: [],
     ticketBucket: '', // '' | none | low | high — clickable map legend
-    fseVisible: true,   // engineer pins on the map (layer toggle)
-    cpVisible: true,    // dealer pins on the map (layer toggle)
+    // Off by default (per user, 2026-08-25): only the customer/center pins
+    // show on first load; Engineers/Dealers are opt-in via their legend toggle.
+    fseVisible: false,  // engineer pins on the map (layer toggle)
+    cpVisible: false,   // dealer pins on the map (layer toggle)
     mapGapsOnly: false, // show only centers with open tickets and no FSE coverage
     activeTab: 'tab-overview',
     // Default sort: open tickets most->least (server tiebreaks 0-ticket rows
@@ -3446,10 +3448,6 @@
       if (!mainMap.ensureMap()) {
         toast('Map library failed to load — check your network and refresh.', 'error');
       } else {
-        // Static, so this belongs next to ensureMap() rather than inside
-        // loadMapData()'s payload handling — it draws once regardless of
-        // filters/refreshes (showGrayAreas() itself is idempotent).
-        mainMap.showGrayAreas();
         if (!state.mapLoaded) loadMapData();
       }
     }
@@ -3726,7 +3724,7 @@
     // Overview landing page (merged in 2026-08-21, was its own "Map" tab), so
     // it needs the same unconditional cold-load treatment, not the
     // state.xLoaded gating the still-lazy tabs below use.
-    if (mainMap.ensureMap()) { mainMap.showGrayAreas(); loadMapData(); }
+    if (mainMap.ensureMap()) loadMapData();
     loadDashboard(bypassCache);
     loadCenters();
     if (state.serviceLoaded) loadService();

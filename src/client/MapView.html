@@ -134,11 +134,6 @@ function MapView(containerId) {
   var fseFocused = null, fseSelectHandler = null;
   var REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // Gray-area markers are opt-in per map instance (see showGrayAreas below) —
-  // unlike fseGroup/cpGroup this guard exists purely for idempotency, not
-  // per-instance scoping choice.
-  var grayAreaGroup = null;
-
   // Violet, not the brand teal. Measured against both CARTO basemaps and the
   // three severity hues already on this map: teal #04E0B8 scores 1.13 against
   // the "no open tickets" green #34D399 — adjacent hue, near-identical
@@ -166,27 +161,10 @@ function MapView(containerId) {
   // already relies on for colour-vision accessibility.
   var CP_COLOR = '#C2410C';
 
-  // Gray-area states: zero dealer/engineer coverage, per the BRM 2026 dealer
-  // network review ("Gray areas" sheet). Purely static — unlike FSE/CP this
-  // never varies with data or filters, so it needs no server round-trip: the
-  // 7 states + their approximate centroids live here, client-side only.
-  // Drawn via showGrayAreas() (below), called explicitly by the Overview
-  // page only — not every MapView() instance should carry this context.
-  var GRAY_AREA_STATES = [
-    { name: 'Kerala', lat: 10.8505, lng: 76.2711 },
-    { name: 'Madhya Pradesh', lat: 22.9734, lng: 78.6569 },
-    { name: 'Gujarat', lat: 22.2587, lng: 71.1924 },
-    { name: 'Jammu & Kashmir', lat: 33.7782, lng: 76.5762 },
-    { name: 'Jharkhand', lat: 23.6102, lng: 85.2799 },
-    { name: 'Chhattisgarh', lat: 21.2787, lng: 81.8661 },
-    { name: 'Uttarakhand', lat: 30.0668, lng: 79.0193 }
-  ];
-
   // All 28 states + 8 union territories, approximate centroids (public-domain
-  // administrative geography — hand-authored the same way GRAY_AREA_STATES above
-  // is, not extracted from any licensed dataset). Superset of GRAY_AREA_STATES;
-  // those 7 keep their own coordinates unchanged here. Used by the state-tier
-  // proportional-circle layer (renderStateLayer_ below) — matching is exact-name
+  // administrative geography, hand-authored, not extracted from any licensed
+  // dataset). Used by the state-tier proportional-circle layer
+  // (renderStateLayer_ below) — matching is exact-name
   // against each center row's own `state` field, same trust-the-data convention
   // countryHasCenter_ already uses for COUNTRY_GEOJSON_'s `name` property. A row
   // whose state isn't one of these 36 names (typo, blank, non-India) silently
@@ -229,15 +207,6 @@ function MapView(containerId) {
     { name: 'Lakshadweep', lat: 10.5667, lng: 72.6417 },
     { name: 'Puducherry', lat: 11.9416, lng: 79.8083 }
   ];
-
-  // Slate, chosen to literally match "gray area" as well as clear contrast:
-  // #64748B scores 3.93 (dark) / 4.76 (light) against the two basemaps, same
-  // bar FSE_COLOR/CP_COLOR clear. It sits closer to violet/orange by raw
-  // luminance contrast (1.12/1.09) than to green/amber (2.48/2.85), but this
-  // layer is also shape-distinct (warning triangle, not a person or a
-  // briefcase) — the same "shape carries the accessibility load" principle
-  // as the other two marker layers.
-  var GRAY_AREA_COLOR = '#64748B';
 
   // Leaflet renders string tooltip/popup content as HTML, so any field that
   // originates from data (e.g. a center name) MUST be escaped first.
@@ -389,27 +358,6 @@ function MapView(containerId) {
     updateTier_(); // sets the correct initial tier for the map's starting zoom (5 -> state)
     if (pendingRender) { var run = pendingRender; pendingRender = null; run(); }
     return true;
-  }
-
-  /**
-   * Draws the 7 gray-area markers. Opt-in per map instance, called explicitly
-   * by the Overview page only (see App.html) — NOT wired into ensureMap()
-   * itself, because MapView() backs three map instances (Overview, CDM, Top
-   * Customers) and this context (BRM 2026 dealer-network coverage) only
-   * belongs on the one page that also carries the FSE/CP layers. Idempotent:
-   * a second call is a no-op, same guard style as ensureMap() itself.
-   */
-  function showGrayAreas() {
-    if (grayAreaGroup || !map) return;
-    grayAreaGroup = L.layerGroup().addTo(map);
-    GRAY_AREA_STATES.forEach(function (s) {
-      L.marker([s.lat, s.lng], {
-        icon: grayAreaIcon_(), keyboard: true, zIndexOffset: 800, interactive: true
-      }).bindTooltip(
-        '<strong>' + esc(s.name) + '</strong><br>No dealer/engineer coverage',
-        { direction: 'top', className: 'gray-area-tip' }
-      ).addTo(grayAreaGroup);
-    });
   }
 
   function defaultTooltip(c) {
@@ -763,24 +711,6 @@ function MapView(containerId) {
     if (visible) { cpGroup.addTo(map); } else { clearCpFocus(); map.removeLayer(cpGroup); }
   }
 
-  /* ── Gray-area (zero-coverage state) markers ─────────────────────
-     A third shape, matching neither FSE's person nor CP's briefcase: a
-     warning triangle, since this layer means "gap," not "someone is here." */
-  function grayAreaIcon_() {
-    return L.divIcon({
-      className: 'gray-area-pin',
-      iconSize: [30, 30], iconAnchor: [15, 15],
-      html:
-        '<span class="gray-area-glyph" aria-hidden="true">' +
-          '<svg viewBox="0 0 24 24" width="20" height="20">' +
-            '<path d="M12 3 L22 20 L2 20 Z"/>' +
-            '<line x1="12" y1="9" x2="12" y2="14"/>' +
-            '<line x1="12" y1="16.5" x2="12" y2="16.7" stroke-width="3"/>' +
-          '</svg>' +
-        '</span>'
-    });
-  }
-
   function focusByName(query, onClick) {
     var q = String(query || '').toLowerCase().trim();
     if (!q || !map) return false;
@@ -803,8 +733,7 @@ function MapView(containerId) {
     ensureMap: ensureMap, setData: setData, focusByName: focusByName, setTheme: setTheme,
     setFse: setFse, focusFse: focusFse, clearFseFocus: clearFseFocus,
     focusFseByName: focusFseByName, setFseVisible: setFseVisible,
-    setCp: setCp, focusCp: focusCp, clearCpFocus: clearCpFocus, setCpVisible: setCpVisible,
-    showGrayAreas: showGrayAreas
+    setCp: setCp, focusCp: focusCp, clearCpFocus: clearCpFocus, setCpVisible: setCpVisible
   };
 }
 </script>

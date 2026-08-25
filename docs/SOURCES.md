@@ -68,17 +68,18 @@ Those panels have no replacement; they're gone from the UI. `CONFIG.CS_SHEET_ID`
 
 ## Hand-maintained catalogs in source (not BigQuery)
 
-Five reference catalogs ship inside `src/` because the warehouse has no equivalent: there is no
+Four reference catalogs ship inside `src/` because the warehouse has no equivalent: there is no
 FSE table, no field on any ticket that names a Channel Partner, no SLA-target column on
-`zoho_data`, no polygon inside a raster basemap tile, and nothing anywhere that records which
-states the dealer network fails to reach. They are edited in place, and every one follows the same
-rule — **name the source and the import date in the file's docblock, keep the rows
+`zoho_data`, and no polygon inside a raster basemap tile. They are edited in place, and every one
+follows the same rule — **name the source and the import date in the file's docblock, keep the rows
 ordered so diffs read, and never invent a row**. `Fse.js`'s "NEVER PLACEHOLDERS — REAL ROWS ONLY"
 is the canonical statement of it, because a placeholder there draws a person who does not exist
-onto a production operations map. Three of the five — `FSE_ROSTER`, `CP_ROSTER` and
-`GRAY_AREA_STATES` — trace to the same BRM 2026 dealer-network review, whose workbook is **not
-tracked in this repo** (`*.xlsx` is gitignored as input data), so for those three the docblocks
-*are* the provenance record. `SLA_CATALOG` is the exception on both counts: its docblock embeds the
+onto a production operations map. Two of the four — `FSE_ROSTER` and `CP_ROSTER` — trace to the
+same BRM 2026 dealer-network review, whose workbook is **not tracked in this repo** (`*.xlsx` is
+gitignored as input data), so for those two the docblocks *are* the provenance record. (A third
+catalog from that same review, `GRAY_AREA_STATES` — zero-coverage state markers on the Overview
+map — was removed 2026-08-25 per user request; see git history for `MapView.html` if it needs
+resurrecting.) `SLA_CATALOG` is the exception on both counts: its docblock embeds the
 live Google Sheet URL (`SlaCatalog.js:18`), and a copy of that sheet *is* on disk —
 `SLA sheet.xlsx`, untracked but sitting in the repo root. Every count below was measured by
 evaluating the literal at HEAD, not taken from a commit message — `c470705`'s body claims `CP_ROSTER` holds 45; it holds 11.
@@ -89,7 +90,6 @@ evaluating the literal at HEAD, not taken from a commit message — `c470705`'s 
 | `FSE_ROSTER` | `src/server/Fse.js` | **26** engineers (11 HQ states, 17 carrying `territory`) | "Progress on the Service Dealer Network - BRM 2026.xlsx", **'direct'** sheet (27 rows), imported **2026-08-24** | Field-service ops supply names; roster edited in place | named engineer pins + coverage fan + Engineers/Coverage-gaps legend (Overview map) | **Real employee names paired with base towns**, in a repo with a GitHub remote; shipped EMPTY @83/@84–@88, so production drew no pins for six deploys |
 | `CP_ROSTER` | `src/server/Cp.js` | **11** dealer companies, **77** declared locations (7 HQ states) | the same BRM 2026 workbook, **'CP'** sheet, imported **2026-08-24** | Channel-partner ops supply the sheet; roster edited in place | burnt-orange dealer pins + focus fan + Dealers legend toggle (Overview map) | Coverage is **declared, never verified against tickets**; real trading-partner company names (commercially sensitive, not personal data); a length assertion in `test/unit/cp-coverage.test.js` breaks on any add/remove |
 | `COUNTRY_GEOJSON_` | `src/client/MapView.html` (one line) | **135** country features (116 Polygon / 19 MultiPolygon, 6,683 coordinate pairs, 3-decimal precision) | **third-party**: trimmed from `github.com/johan/world.geo.json` — licence and caveats below, and they matter | upstream project, not us; re-trim from upstream to change it | the "Country has centers / No centers" wash on all three maps | ~117 KiB — about four-fifths of `MapView.html`; the licence is **less settled than the in-source comment implies**, and 10 features sit outside the trim window the comment states |
-| `GRAY_AREA_STATES` | `src/client/MapView.html` | **7** state centroids (Kerala, Madhya Pradesh, Gujarat, Jammu & Kashmir, Jharkhand, Chhattisgarh, Uttarakhand) | the same BRM 2026 dealer-network review, **"Gray areas"** sheet | same review as the two rosters above; client-side only, no server round-trip | slate warning markers + a non-interactive legend note, Overview map only | Landed in `106f894`, scoped to Overview in `f6ba080`, and **is in production**: it shipped on the deploy `5dbb1d3` bumped for, which landed as `@92` while the embedded footer still read '91', and `e693a78` corrected `APP_VERSION` forward. Read the live version off `src/server/Config.js` (`APP_VERSION`/`APP_DEPLOYED_AT`) rather than any @N written down here. Purely static — never varies with data or filters, unlike FSE/CP |
 
 ### `SLA_CATALOG` — the catalog is also SQL
 

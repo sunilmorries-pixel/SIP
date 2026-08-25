@@ -226,7 +226,7 @@ function apiGetServiceCD(options) {
  * BigQuery's ORDER BY runs against the source table here.
  */
 var SERVICE_SORT_KEYS = {
-  created_on: 'created_on', status: 'status', ticket_territory: 'ticket_territory',
+  created_on: 'created_on', status: 'status', state: 'state', city: 'city',
   product: 'product', service_type: 'service_type', representative: 'representative',
   tat_days_: 'tat_days_', closure_type: 'closure_type'
 };
@@ -259,7 +259,10 @@ function buildServiceTicketsQuery(options) {
     ' FORMAT_DATE("%Y-%m-%d", DATE(created_on)) AS created, ' +
     ' FORMAT_DATE("%Y-%m-%d", DATE(closed_date)) AS closed, ' +
     ' status, IFNULL(contact_person_name, "") AS contact, ' +
-    ' IFNULL(ticket_territory, "") AS territory, IFNULL(product, "") AS product, ' +
+    // Per user, 2026-08-25: state/city (ServiceWRK's own columns, same ones
+    // swFilterCond_ already filters on) replace ticket_territory here — a
+    // sales-territory label, not a state (see swapsByRegion above).
+    ' IFNULL(state, "") AS state, IFNULL(city, "") AS city, IFNULL(product, "") AS product, ' +
     ' IFNULL(service_type, "") AS service_type, IFNULL(representative, "") AS representative, ' +
     ' tat_days_, IFNULL(closure_type, "") AS closure_type, ' +
     ' COUNT(*) OVER() AS total_rows ' +

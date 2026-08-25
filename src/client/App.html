@@ -276,7 +276,8 @@
           closed: '2026-08-' + ('0' + (2 + (si % 12))).slice(-2),
           status: 'Open',
           contact: ['CDMO Khordha', 'SCB Accounts', 'Apollo Bhubaneswar'][si % 3],
-          territory: ['Odisha India', 'Karnataka India', 'Bihar India'][si % 3],
+          state: ['Odisha', 'Karnataka', 'Bihar'][si % 3],
+          city: ['Khordha', 'Bengaluru', 'Patna'][si % 3],
           product: ['Mac 600 - DB9', 'BORON', 'TR 100 GSM'][si % 3],
           service_type: ['Breakdown call', 'Preventive maintenance', 'Training'][si % 3],
           representative: ['Abhisekh Mohapatra', 'Dadapeer Z', 'Saidha Rao'][si % 3],
@@ -1713,7 +1714,8 @@
     { key: 'created_on', label: 'Created', sortable: true },
     { key: 'status', label: 'Status', sortable: true },
     { key: 'contact', label: 'Contact', sortable: false },
-    { key: 'ticket_territory', label: 'Territory', sortable: true },
+    { key: 'state', label: 'State', sortable: true },
+    { key: 'city', label: 'City', sortable: true },
     { key: 'product', label: 'Product', sortable: true },
     { key: 'service_type', label: 'Service type', sortable: true },
     { key: 'representative', label: 'Engineer', sortable: true },
@@ -1818,7 +1820,8 @@
           '<td>' + escapeHtml(r.created || '—') + '</td>' +
           '<td><span class="badge badge-' + statusBadge + '">' + escapeHtml(r.status || '—') + '</span></td>' +
           '<td>' + escapeHtml(r.contact || '—') + '</td>' +
-          '<td>' + escapeHtml(r.territory || '—') + '</td>' +
+          '<td>' + escapeHtml(r.state || '—') + '</td>' +
+          '<td>' + escapeHtml(r.city || '—') + '</td>' +
           '<td>' + escapeHtml(r.product || '—') + '</td>' +
           '<td>' + escapeHtml(r.service_type || '—') + '</td>' +
           '<td>' + escapeHtml(r.representative || '—') + '</td>' +

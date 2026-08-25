@@ -154,19 +154,38 @@ function buildServiceQuerySpecs(filters) {
       key: 'reps', maxRows: 12,
       sql: 'SELECT IFNULL(NULLIF(TRIM(representative), ""), "Unassigned") AS label, COUNT(*) AS cnt ' +
         'FROM ' + SW + where + ' AND status = "Closed" GROUP BY label ORDER BY cnt DESC LIMIT 12'
+    },
+    {
+      // Same '%swap%' service_type match as Queries.js's svcSwappedTickets
+      // (center-detail drawer) and centerTickets' Zoho `swapped` column
+      // (Center-360) — one vocabulary for "swap" across the app. Per user,
+      // 2026-08-25: replacements/swaps by region.
+      key: 'swapsByRegion', maxRows: 15,
+      sql: 'SELECT IFNULL(NULLIF(TRIM(ticket_territory), ""), "Unknown") AS label, COUNT(*) AS cnt ' +
+        'FROM ' + SW + where + ' AND LOWER(IFNULL(service_type, "")) LIKE "%swap%" ' +
+        'GROUP BY label ORDER BY cnt DESC LIMIT 15'
+    },
+    {
+      // Same swap match as swapsByRegion above; representative's "Unassigned"
+      // fallback mirrors the reps spec (this page's existing FSE breakdown).
+      key: 'swapsByRep', maxRows: 12,
+      sql: 'SELECT IFNULL(NULLIF(TRIM(representative), ""), "Unassigned") AS label, COUNT(*) AS cnt ' +
+        'FROM ' + SW + where + ' AND LOWER(IFNULL(service_type, "")) LIKE "%swap%" ' +
+        'GROUP BY label ORDER BY cnt DESC LIMIT 12'
     }
   ];
 }
 
 /**
- * Service page payload — KPIs plus all six charts, in one cached round trip.
+ * Service page payload — KPIs plus all eight charts, in one cached round trip.
  * @param {{filters:Object, bypassCache:boolean}=} options
  */
 function apiGetServiceCD(options) {
   options = options || {};
   var filters = options.filters || {};
   return respond_(function () {
-    return withCache('svc_v1_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
+    // v2: added swapsByRegion/swapsByRep
+    return withCache('svc_v2_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
       var r = runQueriesParallel(buildServiceQuerySpecs(filters));
       var k = (r.kpis && r.kpis[0]) || {};
       return {
@@ -177,6 +196,8 @@ function apiGetServiceCD(options) {
         serviceTypes: r.serviceTypes || [],
         models: r.models || [],
         reps: r.reps || [],
+        swapsByRegion: r.swapsByRegion || [],
+        swapsByRep: r.swapsByRep || [],
         invalidTat: Number(k.invalid_tat || 0)
       };
     }, options.bypassCache === true);

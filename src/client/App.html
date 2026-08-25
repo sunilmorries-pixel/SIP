@@ -256,6 +256,14 @@
           'Anil Sharma', 'Prakash N', 'Vinod S'].map(function (s) {
           return { label: s, cnt: rnd(200, 900) };
         }).sort(function (a, b) { return b.cnt - a.cnt; }),
+        swapsByRegion: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'West Bengal',
+          'Delhi', 'Gujarat', 'Odisha'].map(function (s) {
+          return { label: s, cnt: rnd(20, 260) };
+        }).sort(function (a, b) { return b.cnt - a.cnt; }),
+        swapsByRep: ['Abhisekh Mohapatra', 'Dadapeer Z', 'Saidha Rao', 'Mustaq Ahmed', 'Ravi Kumar',
+          'Anil Sharma', 'Prakash N', 'Vinod S'].map(function (s) {
+          return { label: s, cnt: rnd(10, 120) };
+        }).sort(function (a, b) { return b.cnt - a.cnt; }),
         invalidTat: 12
       });
     }
@@ -1751,6 +1759,8 @@
     Charts.rankBar('chartSvcTypes', d.serviceTypes || [], { color: '#2E9BD6', empty: 'No service data' });
     Charts.rankBar('chartSvcModels', d.models || [], { color: '#7C5CFF', empty: 'No model data' });
     Charts.rankBar('chartSvcReps', d.reps || [], { color: '#2FD39B', empty: 'No engineer data' });
+    Charts.rankBar('chartSvcSwapsByRegion', d.swapsByRegion || [], { color: '#F5B301', empty: 'No swap data' });
+    Charts.rankBar('chartSvcSwapsByRep', d.swapsByRep || [], { color: '#FB7185', empty: 'No swap data' });
   }
 
   var serviceTicketsRequestId = 0;

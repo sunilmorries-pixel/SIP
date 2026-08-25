@@ -89,7 +89,7 @@ describe('ServiceWRK SQL helpers (ServiceWrk.js)', function () {
       const specs = sandbox.buildServiceQuerySpecs({});
       const keys = specs.map(function (s) { return s.key; });
       expect(keys).toEqual(['kpis', 'flow', 'tatBands', 'resolution',
-        'serviceTypes', 'models', 'reps']);
+        'serviceTypes', 'models', 'reps', 'swapsByRegion', 'swapsByRep']);
       specs.forEach(function (s) {
         expect(typeof s.sql).toBe('string');
         expect(s.sql.length).toBeGreaterThan(0);
@@ -137,13 +137,32 @@ describe('ServiceWRK SQL helpers (ServiceWrk.js)', function () {
 
     test('every chart spec aliases its columns to label/cnt for rankBar', function () {
       const charts = sandbox.buildServiceQuerySpecs({}).filter(function (s) {
-        return ['resolution', 'serviceTypes', 'models', 'reps'].indexOf(s.key) !== -1;
+        return ['resolution', 'serviceTypes', 'models', 'reps', 'swapsByRegion', 'swapsByRep']
+          .indexOf(s.key) !== -1;
       });
-      expect(charts).toHaveLength(4);
+      expect(charts).toHaveLength(6);
       charts.forEach(function (s) {
         expect(s.sql).toContain('AS label');
         expect(s.sql).toContain('AS cnt');
       });
+    });
+
+    test('swap breakdowns match on the same %swap% service_type convention as the rest of the app', function () {
+      const swaps = sandbox.buildServiceQuerySpecs({}).filter(function (s) {
+        return s.key === 'swapsByRegion' || s.key === 'swapsByRep';
+      });
+      expect(swaps).toHaveLength(2);
+      swaps.forEach(function (s) {
+        expect(s.sql).toContain('LOWER(IFNULL(service_type, "")) LIKE "%swap%"');
+      });
+    });
+
+    test('swapsByRegion groups by ticket_territory, swapsByRep by representative', function () {
+      const specs = sandbox.buildServiceQuerySpecs({});
+      const byRegion = specs.filter(function (s) { return s.key === 'swapsByRegion'; })[0];
+      const byRep = specs.filter(function (s) { return s.key === 'swapsByRep'; })[0];
+      expect(byRegion.sql).toContain('ticket_territory');
+      expect(byRep.sql).toContain('representative');
     });
   });
 

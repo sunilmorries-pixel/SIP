@@ -1789,10 +1789,13 @@ var Charts = (function () {
    *
    * `treeNode` is the exact {name, value, children, stats?, filterDim?,
    * filterValue?, clearDims?, resetSet?, filterSet?, navTab?,
-   * navDeviceType?} shape OverviewFlow.js's builders return. The server
-   * needed no change: the metadata rides along on the node object, which
-   * this renderer carries by reference and hands back to opts.onNodeClick
-   * untouched.
+   * navDeviceType?} shape OverviewFlow.js's builders return, carried by
+   * reference so a cell can name its own payload node in the tooltip.
+   *
+   * There is NO opts.onNodeClick. The flow was read-only from 2026-08-25
+   * (per user); the filter/nav fields above still arrive on the node because
+   * the server builds one payload shape, but nothing here acts on them —
+   * don't wire a handler back in expecting the old behaviour without asking.
    *
    * opts.levels names the two ranks ({l1, l1s, l2, l2s, ordinal2}); the
    * plurals are explicit because "Country" does not pluralise by suffix (and

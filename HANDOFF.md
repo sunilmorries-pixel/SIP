@@ -1,15 +1,28 @@
 # SIP Insights — Session Handoff / Start-Here Context
 
-**Last updated:** 2026-08-24 · **Live version:** 5.61 · **Status:** ✅ Production. **`36a38e4` is cited
-here and below as the *last-deployed commit*, never as a tip** — the two happened to coincide when
-this was written and stop coinciding at the next commit, so read it as "what production ships" and
-re-derive currency with the gap command below. Production
-(`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as always —
-the stable deployment ID has never changed) serves Apps Script **@90 / v5.61**, deployed
-2026-08-24 5:28 AM (`APP_VERSION: '90'` / `APP_DEPLOYED_AT: 'Aug 24, 2026, 5:28 AM'`,
+**Last updated:** 2026-08-31 · **Live version:** 5.80 (verified — see the numbering-gap note below
+for why the versions between v5.61 and here aren't) ·
+**Status:** ✅ Production. **`02f6b73` is cited here and below as the *last-deployed commit*, never
+as a tip** — the two happened to coincide when this was written and stop coinciding at the next
+commit, so read it as "what production ships" and re-derive currency with the gap command below.
+Production (`AKfycbwV6hHzDT1ZjkH49aFxVfoLF9wcFrBtv9FzrYzdd5RA9R3HAVOMcXrOgzwthI49KK7x`, same URL as
+always — the stable deployment ID has never changed) serves Apps Script **@113**, deployed
+2026-08-25 ~4:20 PM (`APP_VERSION: '113'` / `APP_DEPLOYED_AT: 'Aug 25, 2026, 4:05 PM'`,
 `src/server/Config.js:134-135`). Working tree is clean. **@81/v5.52
 was never deployed standalone** — see its entry below; the version-bump discipline held (nobody
 shipped code claiming to be `'81'`), it was simply superseded by `'82'` before a deploy ever ran.
+
+**The `v5.x` numbering has a real gap this pass, stated plainly rather than papered over.** The
+last independently-verified mapping was **@90 = v5.61** (previous catch-up). This pass's own
+deploys used **v5.76 (@109) through v5.80 (@113)** — verifiable, since those deploy descriptions
+are this session's own and still readable via `git log`/commit messages. **Everything between,
+@91 through @108, has NO verifiable v5.xx label**: `clasp deployments` only retains the CURRENT
+description per deployment ID, not history, so the transient "v5.XX/@N" strings used in past
+`clasp deploy -d "…"` calls for @91–@108 are gone and cannot be recovered from this pass. Do not
+invent a smooth v5.62→v5.75 sequence to fill the gap — it would be fabricated precision. **Treat
+the Apps Script `@N` number as the only authoritative version identifier going forward** (it's
+literally what `Config.js` stores and what the footer shows); cite `v5.xx` only where a specific
+value was independently verified, same rule this file has always tried to hold itself to.
 
 **No figure in this header is measured against a moving ref — no tip SHA, and no "N commits ahead
 of production" count.** It kept going stale, twice because of commits that edited nothing but this
@@ -23,12 +36,17 @@ git log <last-deployed-commit>..HEAD -- src/
 
 The `-- src/` pathspec is the point: `rootDir` is `src/`, so nothing outside it can reach production
 and doc-only commits never show up in the deployable gap. **As of this pass that gap is empty:**
-`git log 36a38e4..HEAD -- src/` returns nothing, because @90's version bump lives *inside* `36a38e4`
-rather than in a separate marker commit — HEAD **is** the last-deployed commit and nothing is staged
-for a @91. (This catch-up covers `921d39b..36a38e4`, written as a **closed** range on purpose: 16 of
-its 20 commits touch `src/`, and because both ends are fixed SHAs that figure stays true forever
-instead of rotting at the next commit. It is history, not a pending-deploy count — never respell it
-against `HEAD`, and never read a *pending* gap out of this file; recompute that one.)
+`git log 02f6b73..HEAD -- src/` returns nothing (this doc-only pass is the only thing after it) —
+HEAD **is** the last-deployed commit and nothing is staged for a @114. (This catch-up covers
+`36a38e4..02f6b73`, written as a **closed** range on purpose: 49 of its 54 commits touch `src/`,
+and because both ends are fixed SHAs that figure stays true forever instead of rotting at the next
+commit. It is history, not a pending-deploy count — never respell it against `HEAD`, and never
+read a *pending* gap out of this file; recompute that one.) **This pass did NOT re-verify every
+claim in the @91–@102 entries below to the same forensic depth as the concurrent-session incidents
+further down** — those are a broad-strokes catch-up written from `git log`/`git show` alone (@103
+onward, through this pass's own @113, is this session's own directly-known work). Treat the
+@91–@102 entries as reliable on the "what shipped and why" level and re-verify anything
+load-bearing before quoting a specific number from them.
 
 **RETIRED (was a live blocker through @81, resolved @82, 2026-08-21/22):** this header used to carry
 ~90 lines describing a silently-wrong-data bug — `filtersEqual_`/`filterActiveCount_`/
@@ -213,7 +231,136 @@ reverted by the other's save at least once. Consequences to know:
   the other session's eight commits only `78ed2f8`, `e4eca78` and `f6fb2d2` carry explanatory prose
   at all; the bump `8dc6f69` has nothing below its subject line but the trailer.
 
-### v5.61 / @90 (2026-08-24) — Overview treemaps become bracket-aligned flow diagrams — CURRENT LIVE
+### @91–@113 (2026-08-24 through 2026-08-25) — catch-up, broad-strokes (see the header's honesty note on verification depth)
+
+**@113 (2026-08-25 ~4:20 PM) — CURRENT LIVE.** Overview's decomposition flow chart's level-2 row
+reads as per-parent **subbranches** now, not one continuous strip (`1a3d1bf`). The @112 rewrite
+(next entry) already kept each level-1 block's own children confined to that block's own x-span —
+they never overlapped a neighbor's — but the gap between different parents' clusters (`GAP_OUT`,
+4px) was too small to actually READ as separate branches once drawn. Bumped `GAP_OUT` to 14px
+(the much smaller `GAP_IN`, 2px, within one cluster, stayed put) — same constant, so the wider gap
+propagates straight down from the level-1 band to the level-2 row underneath it with no other code
+change. Also brought `Charts.html`'s architecture docstring above `decompFlow` up to date — it had
+been left describing the pre-@112 left/right design after that rewrite shipped. Verified via
+`scripts/build_preview.ps1` (all three flow cards, both themes, zero console warnings) before
+deploying, per an explicit user visual-comparison approval (they picked "tree/dendrogram" over
+keeping the two-band layout or reverting to left/right connectors).
+
+**@112 (2026-08-25) — Overview's decomposition flow runs top-to-bottom, not left-right** (`0d68fa1`,
+per user). A near-total rewrite of `flowLayout_` and the ribbon/arrow geometry primitives in
+`Charts.html`: level-1 band across the top, level-2 band across the bottom, ribbons crossing a
+vertical gutter, arrows pointing down. Blocks now lay out side by side within a band, so the
+value-proportional dimension flipped from height to width — `flowFitLabel_` needed no change, just
+a different width argument per block instead of one shared column constant. `.chart-flow`'s
+min-height grew 340px → 480px for the vertical gutter. Applies to all three flow cards (Customers,
+Devices, Tickets) since they share one renderer. This shipped once, then got corrected the same day
+by @113 above once the user saw it (initial full-width "SEGMENT"/"AGE BAND" bands read as one
+strip, not as branches) — read @113's fix as the intended final shape, not this entry alone.
+
+**@111 (2026-08-25) — fix a stale-cache bug that hid @110's own state-join change** (`7eb842c`).
+The Service page's payload cache key (`svc_v2_…`) wasn't bumped when @110 (below) changed the
+`swapsByRegion` query's join/output shape, so the 900s-TTL cache kept serving the pre-change,
+`ticket_territory`-based payload for up to 15 minutes after @110 deployed — user reported "I don't
+see these changes." Re-keyed to `svc_v3_…`; same class of bug this file's cache-versioning
+convention already exists to prevent (see the Center-360/Top-Customers cache-key discipline
+elsewhere in this doc), just missed once on a specific chart.
+
+**@110 (2026-08-25) — two independent Service-page changes, one deploy: `be57b82` + `ab28fb4`.**
+(1) **Replacements/swaps by region now groups by the center's actual `State`**, via
+`customer_id`→`CenterID` (same bridge the center-detail drawer and `Fse.js` already use, verified
+87.7% coverage 2026-08-23), not by `ticket_territory` — a sales-region label, not a state. (2) **The
+Service ticket explorer shows open tickets only** (`AND status = "Open"` added to
+`buildServiceTicketsQuery`), per user; card subtitle and the local-preview mock updated to match.
+
+**@109 (2026-08-25) — add Replacements/swaps by region and by FSE to the Service page** (`c2fd707`).
+Two new `rankBar` charts, reusing the app-wide `%swap%` service_type/IssueCategory convention
+already established for Center-360's `swapped` column and the center-drawer's Swapped ticket tab.
+
+**@108 (2026-08-25) — Overview's decomposition flow is read-only** (`10a3b86`). Clicking a block
+used to drill the global filters via `handleTreeNodeClick_`; per user, that's gone — the tooltip is
+the whole interaction now. `flowClickable_` and the "Click to filter…" tooltip lines were removed;
+`.chart-flow canvas { cursor: default }` corrects the one visible remnant (zrender ignores a
+`cursor` element option and defaults every custom-series mark to `pointer`).
+
+**@107 (2026-08-25) — remove the gray-area map layer for good; Engineers/Dealers off by default**
+(`51d4dae`). The zero-coverage-state marker layer (`GRAY_AREA_STATES`, `showGrayAreas`) that
+shipped @91–@92 (below) is gone — code, docs, and the map legend. `state.fseVisible`/
+`state.cpVisible` now start `false` (was `true`) — per user, "by default in map I only want to see
+my customer." Both layers still compute server-side every load (same payload/cache key); this is a
+client-side visibility toggle only.
+
+**@106 (2026-08-25) — CDM map footprint restricted to centers `cloud_devices` actually reports on**
+(`b0fc2e8`). Previously plotted every `center_details` center passing the global filters regardless
+of telemetry; a new `cdmCenterIds` query intersects the plotted set.
+
+**@105 (2026-08-24/25) — Top Customers KPI grid alignment + a Jira fleet-count fix**
+(`dab09f2`/`2915992`). The 4-tile Top Customers KPI row was rendering in a leftover 6-column grid
+(missing the `kpi-grid-4` modifier class) — fixed. Separately, stopped excluding unmapped Jira
+devices from fleet counts.
+
+**@104 (2026-08-24/25) — Top Customers leaderboard rewrite: MRR out, Swapped + oldest-open-ticket
+age in** (`c73d195`/`a2ca851`), per user. Devices/Assets/MRR columns dropped from the leaderboard
+(MRR aggregation removed from `computeTopCustomersCD_` entirely — nothing else read it); added a
+`swapped` count (same `%swap%` convention as everywhere else) and `openAgeBucket` (same Same
+day/1-2d/3-7d/8-30d/30d+ bucketing as the Zoho open-age chart), backed by a genuinely new
+server-side field, `max_open_age_days`, added to the `centerTickets` query spec. Also: the stale
+"top 27, ranked by devices" KPI tooltip text was corrected — `TOP_CUSTOMERS.length` is actually 22
+(confirmed by direct count), and the hardcoded number was removed entirely rather than just fixed,
+since the KPI tile's own live count is the only source of truth that won't drift again.
+
+**@103 (2026-08-24/25) — fix "I can't see my customers in the map" (regression) + revert the
+country ramp** (`cddeb06`/`d29b22d`). Root-caused via systematic debugging: `updateTier_()`
+(added @98–@102, next entries) removed the marker `cluster` layer at BOTH the country and state
+zoom tiers, and since `fitBounds` for this data (India + Philippines/Kenya/Malaysia/Rwanda) lands
+around zoom 5 by default, every real customer pin was hidden on page load — exactly the reported
+symptom. Fixed by making `cluster` always-visible; country/state layers are additive context shown
+only between each other. Separately (and per a distinct, later user request), the @98–@102 5-step
+count-shaded country ramp was reverted back to the original binary has-center/no-center fill —
+read the country layer as binary today, not ramped.
+
+**@102 (2026-08-24) — map zoom-tier drill-down: country → state → city, plus a first-run
+onboarding panel.** Full brainstorm→spec→plan→execute cycle (`docs/superpowers/specs/
+2026-08-24-map-zoom-tier-drilldown*.md`): `updateTier_()` gates three layers on zoom level — a
+country choropleth (initially upgraded to a validated 5-step sequential ramp, later reverted, see
+@103 above), a new India state-tier proportional-circle layer (`renderStateLayer_`,
+`INDIA_STATE_CENTROIDS_` — 36 hand-authored centroids, see `docs/SOURCES.md`), and the existing
+marker cluster restyled to match the app's palette. `stateIdx` was threaded through all three maps'
+`setData()` calls, including a new `TCI` index constant for Top Customers' previously-unnamed
+map-row shape. Same batch: a first-run onboarding welcome panel (`61d4db9`). **This deploy is the
+messiest version race in this whole window** — two concurrent Claude Code sessions deploying to
+the same stable deployment ID: intended target was @99, an attempt raced and never cleanly landed
+there, the peer session's own deploy hit an ECONNRESET but still consumed a version (landing @100),
+a retry landed @101, and `eea5d57` corrected forward to @102 — that's where this feature batch
+actually shipped. Each step was caught via this file's established verify-then-correct pattern
+(check `clasp deployments` immediately before every deploy, re-check immediately after, correct
+forward on drift). See `git log 36a38e4..02f6b73 --oneline` for the exact commit sequence if a
+similar race needs diagnosing — don't trust any single "(@N)" in a bump commit's own message as
+where it actually landed without cross-checking the correction commits around it, this stretch is
+the cautionary example.
+
+**@98 (2026-08-24) — fix `TAB_IDS` array order to match sidebar DOM order** (`332ef58`), for
+keyboard sidebar navigation. The ACTUAL reported click-misrouting symptom that prompted this fix
+was separately root-caused as a browser-automation-environment artifact on the machine used to
+test it, not an app bug — the array-order fix was a genuine but unrelated bug found along the way.
+Landed cleanly at @98, no race.
+
+**@97 (2026-08-24) — add per-account MRR to the Top Customers leaderboard** (`cecfa68`) —
+**superseded by @104 above**, which removed MRR from this same leaderboard 12 hours later per a
+follow-up user request. Read as: built, shipped, then explicitly reversed — not a bug.
+
+**@95 (2026-08-24) — real focus-trap + focus-restore for both modal drawers** (`cc3d7de`, intended
+as @94 but raced to @95 by a concurrent session — corrected forward in `89a9572`) — closes open
+item 14 from the prior catch-up pass (filter drawer AND center-detail drawer both now trap focus
+and restore it on close).
+
+**@91–@92 (2026-08-24) — gray-area map layer (zero-coverage state markers), later removed at @107
+above.** Shipped, lived for a few days, then fully removed per user request — see @107's entry.
+Don't resurrect from a stale doc reference; `git log -- src/client/MapView.html` has the code if it
+matters again.
+
+---
+
+### v5.61 / @90 (2026-08-24) — Overview treemaps become bracket-aligned flow diagrams
 
 > Deployed 2026-08-24 5:28 AM. **Single commit `36a38e4`**, which carries its own `Config.js` bump
 > (`'89'` → `'90'`) — no separate marker commit for this deploy (see the header note). It also
@@ -2339,6 +2486,7 @@ in `App.html`). The blocked metrics auto-unlock when DE loads the missing Zoho q
 25. **(2026-08-24) `Fse.js`'s own docblock now contradicts its data — fix the comment before someone "fixes" the data.** `src/server/Fse.js:14` still opens "**FSE_ROSTER SHIPS EMPTY ON PURPOSE** … Until real roster rows are pasted in, the map simply has no FSE layer", and still says "Example row (commented — do not ship invented names)", while the same docblock's later SOURCE paragraph documents the 2026-08-24 BRM import and the array at `:60` holds **26 real named engineers** (`78ed2f8`, shipped @89). `src/server/EditionCD.js`'s guard comment (just above `if (fseRosterActive_().length)`) is stale the same way ("ships empty, and until it's filled this layer draws nothing"), and **`src/server/Cp.js:11` already reads the old sentence as still true** ("unlike FSE_ROSTER's deliberate empty start"). Low risk but real: the stale wording invites a reader to conclude the roster was populated by mistake and empty it again. Keep the *reasoning* (don't invent names onto a production ops map) — only the "ships empty" status claim is wrong.
 26. **(2026-08-24) `docs/SOURCES.md` is the one doc still stopped at @84** — last touched by `afe0d08`, so it knows nothing about the populated FSE roster, the CP dealer layer, the country-fill layer, or `decompFlow`. `README.md` and `docs/ARCHITECTURE.md` were brought current at @90 by `36a38e4` **for the flow renderer only**: neither mentions the CP / Channel Partner layer or `Cp.js` at all (grep for "dealer", "channel partner", "Cp.js" returns nothing in either), neither mentions @88's bundled country-polygon fill, and `README.md:14` still credits the FSE coverage layer to "v5.54/@83-84" with no note that the roster shipped empty until @89. **So @88 and @89 are documented nowhere outside this file.** One *inherited* error to fix while you are in there: `docs/ARCHITECTURE.md:40` opens "**@77/v5.48–@88 the renderer was a treemap**", copying the range straight from `36a38e4`'s commit message — and both ends are wrong (@77 was authored-but-stashed; @89 still shipped the treemap). The correct range is **@78–@89**; derivation in the v5.61/@90 entry above.
 27. **(2026-08-24) Section 3's file map is materially wrong and was NOT repaired by this pass** (deliberately out of scope — it is stale since `b83076a`/2026-07-30 and v5.10, not since @85, and repairing it properly means re-reading every server file). Known defects, all verified: it lists **three files that no longer exist** (`SheetSource.js`, `JiraDump.js`, `ExecOverview.js`), **omits eight that do** (`Cp.js`, `Fse.js`, `OverviewFlow.js`, `ServiceWrk.js`, `SlaRisk.js`, `TomTickets.js`, `Warm.js`, `ProfileNewSources.js` — including all four that @84–@90 depend on), attributes `JIRA_SHEET_ID`/`CS_SHEET_ID`/`JIRA_DEVICE_TYPES` to `Config.js` (none of the three exists in `src/`), lists deleted endpoints/helpers (`apiGetExecOverviewCD`, `apiGetCenters`/`apiGetMapData`/`apiGetCenterDetail`, `apiGetTopCustomers`/`computeTopCustomers_`, `getCenter360Rows_`, `enrichCenterNames_`), says "8 tabs" and `#activeOnlyBtn` for `Index.html` (10 tabs; that toggle is gone since v5.11 — filtering is the Filters drawer with 11 dimensions + date range, Status defaulting to ACTIVE as a removable chip), omits `decompFlow` from the `Charts.html` line, and omits the FSE pins, CP layer, `SERVICE_REGION_BOUNDS_` and the 117KB embedded `COUNTRY_GEOJSON_` from the `MapView.html` line. **Sections 1 and 4 have the same vintage of error** — Section 1 names the old sandbox dataset and two Google Sheets as live sources (it is `tricogde-dwh.abi_tables`, and no code reads either sheet — no `JIRA_SHEET_ID`, no `CS_SHEET_ID`, no `readCsTracker` anywhere in `src/`), Section 1 item 8 says Raw Data exposes "6 BQ tables + 2 Sheets" (`rawSources_()` in `RawData.js:34-42` registers **four** BQ tables and no sheets, which Section 7 already states correctly), and Section 4 has it exactly **inverted** on Jira ("ALL Jira data comes from the Jira Google Sheet; the `jira_data` BQ table is ignored app-wide" — since `b83076a`, `jira_data` **is** the source) and claims `zoho_data`'s `CreatedAt`/`ClosedAt` are strings, which is precisely the assumption the v5.24/@53 hotfix entry records as having **crashed production** (they are native `DATETIME` in `tricogde-dwh`). **Treat Sections 1, 3 and 4 as untrusted until rewritten**; the release entries and Sections 6–7 are the current parts of this file.
+28. **(2026-08-31) `README.md`, `docs/ARCHITECTURE.md` and `docs/SOURCES.md` caught up through @113** (this pass) — item 26 above flagged `docs/SOURCES.md` as stopped at @84 and both other docs as current only through @90's flow renderer; all three now cover the map's zoom-tier country/state/city system and its `INDIA_STATE_CENTROIDS_` catalog (new 5th entry in the hand-maintained-catalogs table), the flow chart's top-to-bottom + subbranch-clustering rewrite (@112–@113), its read-only click behavior (@108), the CDM map's footprint restriction (@106), the FSE/CP layers defaulting to hidden (@107), the Overview map marker coloring switching from ticket-count to ticket-age (@107's sibling commit, `8306c91`), the Service page's swap-by-region state-join + open-tickets-only filter (@109–@111), and the Top Customers leaderboard rewrite (@104). **This pass explicitly did NOT repair Section 3's file map or Sections 1/4** (item 27's scope stands — that needs a full re-read of every server file, not a doc-currency pass) and did not attempt to reconstruct the unverifiable v5.6x–v5.7x labels for @91–@108 (see the header's numbering-gap note) — cite `@N` from `Config.js`, not a guessed `v5.xx`, for anything in that range.
 
 ---
 

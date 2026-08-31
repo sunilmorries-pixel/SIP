@@ -53,21 +53,49 @@ was never deployed** — it fixed a renderer that no longer exists.)
 (`src/client/Charts.html`), replacing `Charts.decompTreemap`, which is deleted along with
 `decompPalette_`, `decompTileLabel_`, `decompPrepLevel1_` and the 5% `DECOMP_COLLAPSE_SHARE` fold
 (`decompEsc_` and `decompShare_` survive and now serve the flow's labels and tooltip). The payload
-shape is unchanged again, so `OverviewFlow.js` and the click handler were untouched — the renderer
-still hands `opts.onNodeClick` the raw payload node by reference. The treemap was correct but was a
+shape is unchanged again, so `OverviewFlow.js` was untouched. The treemap was correct but was a
 *mosaic*: no total flowing into parts and no connector anywhere on the card, which is what the user
-asked to replace. The flow is one ECharts `custom` series with `coordinateSystem: 'none'`: a left
-column of level-1 blocks, a right column of level-2 blocks, and one polygon ribbon per parent→child
-relationship, every pixel computed inside `renderItem` from `api.getWidth()/getHeight()`. "Rectangle
-area = share of the total" is therefore no longer the encoding: a row's height is a floor
-(`ROW1_MIN`) plus an exactly-proportional share of the remaining free height, one scale for the left
-column, and level 2 is normalised within its parent — compressed rather than ratio-true, which is
-why every drawn block prints its own count and share and the tooltip prints both denominators. Read
-the comment block above `flowPalette_` in `Charts.html` before changing any of it: it carries the
+asked to replace. The flow is one ECharts `custom` series with `coordinateSystem: 'none'`, every
+pixel computed inside `renderItem` from `api.getWidth()/getHeight()`.
+
+**@90–@111 it ran left-to-right** (a left column of level-1 blocks, a right column of level-2
+blocks, one ribbon per parent→child relationship crossing a horizontal gutter). **As of @112–@113
+it runs top-to-bottom** (per user, 2026-08-25 — first a full re-orientation to a level-1 band
+across the top and a level-2 band across the bottom, then a same-day follow-up correction once it
+shipped as one continuous strip: each level-1 block's own children were already confined to that
+block's own x-span — they never overlapped a neighbor's — but the gap between them (`GAP_OUT`) was
+too small to actually READ as separate branches. Bumping `GAP_OUT` from 4px to 14px, while the
+much smaller `GAP_IN` (2px, within one cluster) stayed put, is what makes the level-2 row read as
+distinct **subbranches** per parent instead of one strip — see `FLOW`'s own comment in
+`Charts.html` for the full argument). The click-through described two paragraphs down predates
+both changes and no longer applies (see the read-only note below) — orientation only changed which
+axis carries value and which is fixed, not what the renderer does with a click.
+
+Blocks sit side by side WITHIN a band now, so the value-proportional dimension is **width**, not
+height — text still reads left-to-right as ever, which is what let `flowFitLabel_` carry over
+unchanged: it always took "available width" as a parameter, that parameter is just each block's
+own drawn width now instead of one constant shared by a whole column. "Rectangle area = share of
+the total" is not the encoding either way: a block's width is a floor (`BLOCK1_MIN`/`BLOCK2_MIN`)
+plus an exactly-proportional share of the remaining free width, one scale for the whole top band,
+and level 2 is normalised within its parent — compressed rather than ratio-true, which is why every
+drawn block prints its own count and share and the tooltip prints both denominators. Read the
+comment block above `flowPalette_` in `Charts.html` before changing any of it: it carries the
 alignment argument (five arithmetic identities plus runtime postcondition checks), the measured
 role-palette ΔE/contrast numbers, and the label-fitting ladder. Capacity is bounded by the card
-height, so a folded tail is drawn as its own block sized by the tail's true sum, labelled with what
-it stands for, listing its members in its tooltip, and clicking through to where they split out.
+WIDTH now (`.chart-flow`'s min-height grew from 340px to 480px at @112 to give the vertical gutter
+room to read as a flow — the two bands themselves stay small fixed strips), so a folded tail is
+drawn as its own block sized by the tail's true sum, labelled with what it stands for, listing its
+members in its tooltip, and clicking through to where they split out — wait, no: as of @108 (see
+below) a folded tail's tooltip still enumerates its members, but nothing on the card clicks through
+any more.
+
+**The flow is read-only as of @108/2026-08-25** — clicking a block used to hand its node to
+`handleTreeNodeClick_`, which set global filters or switched tabs; that handler, `flowClickable_`
+and the tooltip's "Click to filter…" lines all went with it, so nothing on the card offers an
+action it no longer performs. `.chart-flow canvas { cursor: default }` in `Styles.html` corrects
+the one visible remnant (zrender defaults every custom-series mark to `cursor: pointer` and ignores
+a `cursor` element option, so the canvas kept advertising a click with no code change). Marks stay
+hoverable — the tooltip is the entire interaction now.
 
 ## The map — one factory, three instances
 
@@ -80,8 +108,24 @@ the FSE/CP layer state), and anything at `<script>` top level is shared by all t
 colours). The returned handle is the whole public surface — `ensureMap`, `setData`, `focusByName`,
 `setTheme`, the FSE entry points (`setFse`/`focusFse`/`focusFseByName`/`clearFseFocus`/
 `setFseVisible`), and the CP ones (`setCp`/`focusCp`/`clearCpFocus`/`setCpVisible`). A page that
-needs different marker semantics passes `opts.colorFn`/`opts.tooltipFn` into `setData` (CDM
-colours by battery severity) instead of forking the factory.
+needs different marker semantics passes `opts.colorFn`/`opts.tooltipFn` into `setData` instead of
+forking the factory. `ticketColor(n)` (top-level in `MapView.html`, moved there @107 so `App.html`
+can call it directly for its own overrides — it used to be a private closure inside
+`MapView(containerId)`) is the shared 0/1-3/4+ green/amber/red bucketer every map's markers run
+through; `setData`'s own default is `colorFn: c => ticketColor(c[6])`, and **CDM is the one map
+that still uses that default** — its row shape puts low-battery count at index 6, so nothing there
+changed. Overview and Top Customers now both pass an explicit override, `ticketColor(c[maxOpenAgeDays
+index])` (@107, `CI.maxOpenAgeDays` / `TCI.maxOpenAgeDays`) — colored by the **oldest open ticket's
+age in days** at that center, not by open-ticket count as before the same thresholds bucketed
+count. Overview's map click-to-filter buckets and both maps' legends/tooltips were updated to match
+(a clicked bucket now filters by age, and the tooltip states the oldest ticket's age so the color
+has a visible reason).
+
+**CDM's map footprint (@106).** `apiGetCdmDataCD` used to plot every `center_details` center
+passing the global filters, regardless of whether that center had any `cloud_devices` telemetry at
+all. A `cdmCenterIds` query (`buildCdmQuerySpecs`, `Queries.js`) now intersects the plotted set
+with centers `cloud_devices` actually reports on, so the CDM map's footprint matches what the page
+is actually about instead of the full center universe.
 
 (The static zero-coverage "gray-area" marker layer — `GRAY_AREA_STATES`, `showGrayAreas` — that
 used to live here was removed 2026-08-25 per user request. It was a real, if minor, case study in
@@ -106,6 +150,24 @@ rings so a hole flips a point back outside; MultiPolygon via `.some()`), and rep
 `countryLayer`), and the near-equal alphas are deliberate: a much fainter "no center" wash just
 blended into the basemap. The layer is added after the tiles and before the marker cluster, with
 `interactive: false`, so it sits under the markers and cannot steal a click.
+
+**Zoom-driven country → state → city tiers (@98–@103).** `updateTier_()` (`MapView.html`) reads
+the map's current zoom on load and on every `zoomend` and shows exactly one of three layers:
+`countryLayer` at zoom ≤ `MAP_TIER_COUNTRY_MAX_` (4), a new India state-level proportional-circle
+layer (`renderStateLayer_`, `INDIA_STATE_CENTROIDS_` — 36 hand-maintained centroids, see
+`docs/SOURCES.md`) between 5 and `MAP_TIER_STATE_MAX_` (6), and the individual center pins/marker
+cluster above that. **The cluster is never actually hidden** — an early version of `updateTier_()`
+removed it at the country and state tiers too, which (since `fitBounds` for this data naturally
+lands around zoom 5) hid every real customer pin by default and was the exact production
+regression a user reported as "I can't see my customers in the map"; the fix keeps `cluster`
+always on the map and treats the country/state layers as additive context shown only between each
+other. The country layer itself went through a **count-shaded 5-step sequential ramp** (@98–@102,
+replacing the older binary has-center/no-center fill, validated with the dataviz skill's
+`validate_palette.js`) and was then **reverted back to the binary fill** at @103 per user — read
+that as the current, shipped state, not the ramp; `d29b22d`'s commit message and `HANDOFF.md` carry
+the reasoning if the ramp is ever revisited. `stateIdx` (the row index carrying a center's `State`)
+had to be threaded through all three `setData()` call sites, including a new `TCI` index constant
+for Top Customers' previously-unnamed map-row array shape.
 
 **Region-bounded auto-fit (v5.58/@87).** `SERVICE_REGION_BOUNDS_` (lat −12..40, lng −5..130) exists
 because `fitBounds` used to fit *every* plotted center, so one bad geocode in the Americas or
@@ -138,7 +200,12 @@ the Overview map is taller than the screen.
 
 **Two coverage layers, computed vs declared.** Both draw pins plus a focus fan on the Overview
 map and both are hand-maintained catalogs in source (see `docs/SOURCES.md`), but they are
-architecturally different:
+architecturally different. **Both default to hidden as of @107** (`state.fseVisible`/
+`state.cpVisible` now start `false`, per user — "by default in map I only want to see my
+customer") — the server still computes and sends both layers every load (same payload/cache key
+as always), this is a client-side visibility toggle only: `setFseVisible`/`setCpVisible`
+(`MapView.html`) just add/remove the already-built Leaflet layer group from the map, so turning a
+layer on is instant, with no round trip:
 
 - **FSE — computed** (`src/server/Fse.js`, v5.54/@83–84). `FSE_ROSTER` supplies the engineers;
   coverage is *derived* from `servicewrk_Tickets` — an engineer is fanned to every center they

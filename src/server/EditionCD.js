@@ -1040,7 +1040,10 @@ function apiGetMapDataCD(options) {
     // "no dealers" for up to the 30-min TTL rather than "not loaded yet".
     // v17: payload rows gained index 13 (max_open_age_days) for the map's
     // ticket-severity color/legend/filter, switched from open-ticket count.
-    var cacheKey = 'mapcd_v17_' + getCacheEpoch_() + '_' + filterHash_(filters);
+    // v18: payload rows gained index 14 (country, from hub_country) for the
+    // map's country-outline layer, switched from point-in-polygon to an
+    // exact-name match.
+    var cacheKey = 'mapcd_v18_' + getCacheEpoch_() + '_' + filterHash_(filters);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -1103,7 +1106,12 @@ function apiGetMapDataCD(options) {
           // AGE in days, same field getCenter360RowsCD_ already computes for
           // the Top Customers leaderboard. c[6] (open ticket count) stays as
           // it was for the tooltip text — only the color/bucket source moved.
-          row.segment || '', row.state || '', approx, row.max_open_age_days
+          // index 14 (country, from hub_country — already computed on `row`
+          // by getCenter360RowsCD_, just not previously projected here) feeds
+          // the map's country-outline layer, which switched from a lat/lng
+          // point-in-polygon test to an exact-name match against this field.
+          row.segment || '', row.state || '', approx, row.max_open_age_days,
+          row.country || ''
         ]);
       }
     });
@@ -1184,7 +1192,7 @@ function apiGetCdmDataCD(options) {
     macSerialIds: (options.filters && options.filters.macSerialIds) || []
   };
   return respond_(function () {
-    var cacheKey = 'cdmcd_v4_' + getCacheEpoch_() + '_' + filterHash_(filters); // v4: map restricted to centers cloud_devices actually reports on
+    var cacheKey = 'cdmcd_v5_' + getCacheEpoch_() + '_' + filterHash_(filters); // v5: map rows gained index 11 (country) for the map's country-outline layer; v4: map restricted to centers cloud_devices actually reports on
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;
@@ -1209,7 +1217,8 @@ function apiGetCdmDataCD(options) {
       if (c) {
         located.push([
           row.center_id, row.center, c[0], c[1], row.devices, row.online,
-          row.low_battery || 0, row.avg_csq, row.hub || '', row.hub_id != null ? row.hub_id : '', row.state || ''
+          row.low_battery || 0, row.avg_csq, row.hub || '', row.hub_id != null ? row.hub_id : '', row.state || '',
+          row.country || ''
         ]);
       } else { unlocated++; }
     });
@@ -1292,7 +1301,7 @@ function computeTopCustomersCD_(filters) {
       // map instance supplied the row.
       mapCenters.push([row.center_id, row.center, c[0], c[1], row.jira_devices, 0,
         row.open_tickets, 0, row.hub || a.hub, row.hub_id, row.segment || '', row.state || '',
-        0, row.max_open_age_days]);
+        0, row.max_open_age_days, row.country || '']);
     }
   });
 
@@ -1340,7 +1349,7 @@ function apiGetTopCustomersCD(options) {
     dateTo: String((options.filters && options.filters.dateTo) || '')
   };
   return respond_(function () {
-    return withCache('topcustcd_v15_' + getCacheEpoch_() + '_' + filterHash_(filters), // v15: mapCenters rows gained max_open_age_days for the map's ticket-severity coloring
+    return withCache('topcustcd_v16_' + getCacheEpoch_() + '_' + filterHash_(filters), // v16: mapCenters rows gained index 14 (country) for the map's country-outline layer; v15: gained max_open_age_days for the map's ticket-severity coloring
       function () { return computeTopCustomersCD_(filters); },
       options.bypassCache === true);
   });

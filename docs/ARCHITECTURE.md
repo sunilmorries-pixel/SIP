@@ -135,39 +135,51 @@ consumed 91 between `clasp push` and `clasp deploy`), and `e693a78` corrected `A
 forward. **Take the live version from `src/server/Config.js` (`APP_VERSION`/`APP_DEPLOYED_AT`),
 never from a hard-coded @N in a doc** — that lesson outlives the feature that taught it.)
 
-**Country shading (v5.59/@88).** The basemap tiles are a flat raster image — there is no
-polygon in them to recolour — so the app ships its own: `COUNTRY_GEOJSON_`, one module-level
+**Country + state shading (v5.59/@88, attribute-matched + state-outline rework @114).** The
+basemap tiles are a flat raster image — there is no polygon in them to recolour — so the app
+ships its own bundled polygon layers for both tiers. `COUNTRY_GEOJSON_` is one module-level
 literal of 135 country features (116 Polygon / 19 MultiPolygon, 6,683 coordinate pairs rounded to
-3 decimals), roughly 117 KiB of `MapView.html`'s 147 KiB. Provenance and licence live in
+3 decimals); `INDIA_STATE_GEOJSON_` (added @114, replacing the old proportional-circle layer) is a
+second literal of 36 India state/union-territory features from geoBoundaries, simplified with
+`mapshaper` so adjacent states share borders with no gaps. Provenance and licence for both live in
 `docs/SOURCES.md` → *Hand-maintained catalogs in source*; read that before re-sourcing or
-extending the set. A per-feature `_bbox` is precomputed once at parse time; the Leaflet layer and
-the `countryHasCenter_` flags are per instance. `refreshCountryFill_` runs once per `setData()`
-(not per frame): for every center row it walks the features, skipping any country already flagged
-and any whose bbox rejects the point, then runs an even-odd ray cast (`pointInRing_`, XORed across
-rings so a hole flips a point back outside; MultiPolygon via `.some()`), and repaints with one
-`countryLayer.setStyle()`. Fill is `#2E9BD6` at 0.22 for "has a center" and `#869AB2` at 0.16 for
-"no center" — **one pair for both themes** (`setTheme` only swaps the tile URL and never restyles
-`countryLayer`), and the near-equal alphas are deliberate: a much fainter "no center" wash just
-blended into the basemap. The layer is added after the tiles and before the marker cluster, with
-`interactive: false`, so it sits under the markers and cannot steal a click.
+extending either set. Both are Leaflet `interactive: true` `L.geoJSON` layers with a `bindTooltip`
+per feature (name + live center count) — sitting in the overlay pane, below the marker pane, so
+hovering them never blocks clicking a marker on top.
 
-**Zoom-driven country → state → city tiers (@98–@103).** `updateTier_()` (`MapView.html`) reads
-the map's current zoom on load and on every `zoomend` and shows exactly one of three layers:
-`countryLayer` at zoom ≤ `MAP_TIER_COUNTRY_MAX_` (4), a new India state-level proportional-circle
-layer (`renderStateLayer_`, `INDIA_STATE_CENTROIDS_` — 36 hand-maintained centroids, see
-`docs/SOURCES.md`) between 5 and `MAP_TIER_STATE_MAX_` (6), and the individual center pins/marker
-cluster above that. **The cluster is never actually hidden** — an early version of `updateTier_()`
-removed it at the country and state tiers too, which (since `fitBounds` for this data naturally
-lands around zoom 5) hid every real customer pin by default and was the exact production
-regression a user reported as "I can't see my customers in the map"; the fix keeps `cluster`
-always on the map and treats the country/state layers as additive context shown only between each
-other. The country layer itself went through a **count-shaded 5-step sequential ramp** (@98–@102,
-replacing the older binary has-center/no-center fill, validated with the dataviz skill's
+Matching switched from geometry to attributes at @114: `refreshCountryFill_(rows, countryIdx)` and
+`refreshStateFill_(rows, stateIdx)` both run once per `setData()` (not per frame), tallying each
+row's own `country`/`state` field into a name→count map and repainting with one `setStyle()` call
+plus a `setTooltipContent()` per feature. This replaced the previous point-in-polygon approach
+(`pointInGeometry_`/`pointInRing_`, an even-odd ray cast against a precomputed per-feature `_bbox`)
+— country highlighting now keys off `hub_country` (via `EditionCD.js`'s `row.country`, index 14 on
+the main/Top-Customers map payloads and index 11 on CDM's) exactly like state already keyed off
+`state`, rather than depending on a center's lat/lng happening to land inside the right polygon.
+Fill is `#2E9BD6` at 0.22 for "has a center" and `#869AB2` at 0.16 for "no center" — **one pair for
+both themes and both tiers** — and the near-equal alphas are deliberate: a much fainter "no center"
+wash just blended into the basemap.
+
+**Zoom-driven country → state → city tiers (@98–@103, state tier reworked @114).** `updateTier_()`
+(`MapView.html`) reads the map's current zoom on load and on every `zoomend`. At zoom ≤
+`MAP_TIER_COUNTRY_MAX_` (4, "country" tier) only `countryLayer` shows. Between 5 and
+`MAP_TIER_STATE_MAX_` (6, "state" tier) **both layers show together**: `countryLayer` stays visible
+for every country except India (whose own polygon `countryStyle_` renders fully transparent at
+this tier, tracked via a module-level `currentTier_`), while `stateLayer` draws India's own states
+on top of it — added to the map after `countryLayer` each time, so it wins the Leaflet DOM/z-order
+without an explicit `bringToFront()`. Above that is city tier: neither layer shows, just the
+individual center pins/marker cluster. **The cluster is never actually hidden** at any tier — an
+early version of `updateTier_()` removed it at the country and state tiers too, which (since
+`fitBounds` for this data naturally lands around zoom 5) hid every real customer pin by default and
+was the exact production regression a user reported as "I can't see my customers in the map"; the
+fix keeps `cluster` always on the map and treats the country/state layers as additive context. The
+country layer itself went through a **count-shaded 5-step sequential ramp** (@98–@102, replacing
+the older binary has-center/no-center fill, validated with the dataviz skill's
 `validate_palette.js`) and was then **reverted back to the binary fill** at @103 per user — read
 that as the current, shipped state, not the ramp; `d29b22d`'s commit message and `HANDOFF.md` carry
-the reasoning if the ramp is ever revisited. `stateIdx` (the row index carrying a center's `State`)
-had to be threaded through all three `setData()` call sites, including a new `TCI` index constant
-for Top Customers' previously-unnamed map-row array shape.
+the reasoning if the ramp is ever revisited. `stateIdx`/`countryIdx` (the row indices carrying a
+center's `State`/`country`) are threaded through all three `setData()` call sites, via `CI`/`TCI`/
+`CDMI` index constants (`App.html`) — Top Customers' and CDM's previously-unnamed/partial map-row
+array shapes both gained a `country` index at @114 to match.
 
 **Region-bounded auto-fit (v5.58/@87).** `SERVICE_REGION_BOUNDS_` (lat −12..40, lng −5..130) exists
 because `fitBounds` used to fit *every* plotted center, so one bad geocode in the Americas or

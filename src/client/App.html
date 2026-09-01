@@ -2085,14 +2085,14 @@
   }
 
   // Compact center array indices (must match EditionCD.js apiGetMapDataCD).
-  var CI = { id: 0, name: 1, lat: 2, lng: 3, devices: 4, online: 5, tickets: 6, assets: 7, hub: 8, hubId: 9, segment: 10, state: 11, approx: 12, maxOpenAgeDays: 13 };
+  var CI = { id: 0, name: 1, lat: 2, lng: 3, devices: 4, online: 5, tickets: 6, assets: 7, hub: 8, hubId: 9, segment: 10, state: 11, approx: 12, maxOpenAgeDays: 13, country: 14 };
   // Compact asset array indices (must match EditionCD.js apiGetMapDataCD) —
   // trimmed to just what the map's serial search needs (2026-08-21): type/
   // category/age only fed the Map page's now-removed charts.
   var AI = { center: 0, serial: 1 };
   // Compact center array indices for Top Customers' mapCenters (EditionCD.js
   // computeTopCustomersCD_) — same 12-element shape as CI minus `approx`.
-  var TCI = { id: 0, name: 1, lat: 2, lng: 3, devices: 4, online: 5, tickets: 6, assets: 7, hub: 8, hubId: 9, segment: 10, state: 11, maxOpenAgeDays: 13 };
+  var TCI = { id: 0, name: 1, lat: 2, lng: 3, devices: 4, online: 5, tickets: 6, assets: 7, hub: 8, hubId: 9, segment: 10, state: 11, maxOpenAgeDays: 13, country: 14 };
 
   function loadMapData() {
     gsCall(ep('apiGetMapData'), { filters: state.globalFilters })
@@ -2111,7 +2111,7 @@
    * main Map's CI (index 6 is low-battery count here, not open tickets), but
    * deliberately keeps low-battery at index 6 so MapView's default colorFn
    * (ticketColor(c[6])) still applies unmodified — only the tooltip differs. */
-  var CDMI = { id: 0, name: 1, lat: 2, lng: 3, devices: 4, online: 5, lowBattery: 6, avgCsq: 7, hub: 8, hubId: 9, state: 10 };
+  var CDMI = { id: 0, name: 1, lat: 2, lng: 3, devices: 4, online: 5, lowBattery: 6, avgCsq: 7, hub: 8, hubId: 9, state: 10, country: 11 };
 
   function cdmTooltip_(c) {
     var n = c[CDMI.devices] || 0, lb = c[CDMI.lowBattery] || 0;
@@ -2143,7 +2143,7 @@
         Charts.jiraStatus(payload.battery, 'chartCdmBattery');
         Charts.cdmHardware(payload.hardware);
         Charts.cdmEcg(payload.ecg);
-        cdmMap.setData(payload.centers, CenterDetail.open, { tooltipFn: cdmTooltip_, stateIdx: CDMI.state });
+        cdmMap.setData(payload.centers, CenterDetail.open, { tooltipFn: cdmTooltip_, stateIdx: CDMI.state, countryIdx: CDMI.country });
       })
       .catch(function (err) {
         toast('CDM data failed: ' + err.message, 'error');
@@ -2764,7 +2764,7 @@
     });
 
     mainMap.setData(centers, CenterDetail.open, {
-      stateIdx: CI.state,
+      stateIdx: CI.state, countryIdx: CI.country,
       // Per user, 2026-08-25: severity color is the oldest open ticket's AGE
       // (days), not the open-ticket COUNT — ticketColor's 0/1-3/4+ bucketing
       // is unchanged, just fed a different number. -1 sentinel ("no open
@@ -3277,7 +3277,7 @@
     setKpi('tcSlaBreach', t.sla_breach, (t.sla_within_pct != null ? t.sla_within_pct + '% within SLA' : 'past target'));
 
     tcMap.setData(payload.mapCenters || [], CenterDetail.open, {
-      stateIdx: TCI.state,
+      stateIdx: TCI.state, countryIdx: TCI.country,
       // Same switch as Overview's map, same reasoning — see mainMap.setData.
       colorFn: function (c) { return ticketColor(c[TCI.maxOpenAgeDays]); }
     });

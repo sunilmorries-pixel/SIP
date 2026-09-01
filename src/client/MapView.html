@@ -126,9 +126,13 @@ function ticketColor(n) {
 function MapView(containerId) {
   'use strict';
 
+  // CARTO's free dark_all/light_all raster tiles now require a signed-up
+  // API key (else the tile renders with an "API KEY REQUIRED" watermark) —
+  // swapped to Esri's key-free World Dark/Light Gray Canvas base. See
+  // --tile-filter in Styles.html for why dark theme dims these tiles.
   var TILES = {
-    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+    dark: 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    light: 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'
   };
 
   var map = null, cluster = null, tileLayer = null, countryLayer = null, stateLayer = null;
@@ -346,8 +350,8 @@ function MapView(containerId) {
     if (typeof L === 'undefined') return false;
     map = L.map(containerId, { preferCanvas: true, worldCopyJump: true }).setView([21.5, 79], 5);
     tileLayer = L.tileLayer(TILES[theme], {
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-      subdomains: 'abcd', maxZoom: 18
+      attribution: 'Tiles &copy; Esri',
+      maxZoom: 19, maxNativeZoom: 16
     }).addTo(map);
     // Below the markers/clusters (added next), above the base tiles — a wash
     // showing which countries have at least one plotted center. Not meant to

@@ -157,9 +157,10 @@ deliberate call at this size; follow `Fse.js` if the roster grows enough to need
 
 This is the one entry here whose **licence** a reader may have to act on, and until now the comment
 at the top of `MapView.html` was the only record of it anywhere: there is **no `LICENSE` file in
-this repo**, and **no on-map attribution for the polygons** (the map's
-`© OpenStreetMap contributors © CARTO` line covers the basemap tiles only). Why it is bundled at
-all: CARTO's tiles are a flat raster image, so there is no polygon in the basemap to recolour for
+this repo**, and **no on-map attribution for the polygons** (the map's `Tiles © Esri` line — CARTO's
+free `dark_all`/`light_all` tiles started requiring a signed-up API key, so the basemap moved to
+Esri's key-free World Dark/Light Gray Canvas — covers the basemap tiles only). Why it is bundled at
+all: the basemap tiles are a flat raster image, so there is no polygon in them to recolour for
 the "has a center / no center" wash.
 
 - **Confirmed:** the data was trimmed from **`github.com/johan/world.geo.json`**, and that repo

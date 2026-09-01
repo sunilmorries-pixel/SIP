@@ -55,7 +55,15 @@
   --dur: 240ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
-  --tile-filter: none; /* Leaflet handled in JS; kept for parity */
+  /* Esri's free dark-canvas tile land fill (#3F3F41) is medium-grey, not
+     near-black like CARTO's dark_all was — FSE_COLOR/CP_COLOR in MapView.html
+     were contrast-tuned against a near-black basemap and drop below 3:1 on
+     the raw tile (measured: violet 2.48, orange 2.03). Dimming only the
+     .leaflet-tile-pane (not markers/overlays, which are separate Leaflet
+     panes) restores that headroom without touching the marker hex values
+     or their duplicated declarations in this file's FSE/CP button/legend
+     rules. brightness(0.4) measured back up to violet 4.14 / orange 3.39. */
+  --tile-filter: brightness(0.4);
 
   /* sidebar layout */
   --sidebar-w: 252px;
@@ -91,6 +99,8 @@ body[data-theme="light"] {
 
   --shadow-card: 0 12px 36px rgba(1, 41, 78, 0.12);
   --glow-primary: 0 0 0 1px rgba(218, 44, 70, 0.15);
+
+  --tile-filter: none; /* light-canvas tile fill already clears 3:1 undimmed */
 }
 /* light-theme fixes for the few surfaces with hardcoded dark values */
 body[data-theme="light"] .brand-name,
@@ -1244,6 +1254,7 @@ body[data-theme="light"] .cp-focus-bar { border-color: rgba(194, 65, 12, 0.5); }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 
 .leaflet-container { font-family: var(--font-body); background: #0B111E; }
+.leaflet-tile-pane { filter: var(--tile-filter); }
 .leaflet-control-attribution {
   background: rgba(4, 18, 34, 0.75) !important;
   color: var(--text-3) !important;

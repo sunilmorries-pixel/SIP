@@ -135,7 +135,7 @@ consumed 91 between `clasp push` and `clasp deploy`), and `e693a78` corrected `A
 forward. **Take the live version from `src/server/Config.js` (`APP_VERSION`/`APP_DEPLOYED_AT`),
 never from a hard-coded @N in a doc** — that lesson outlives the feature that taught it.)
 
-**Country shading (v5.59/@88).** CARTO's basemap tiles are a flat raster image — there is no
+**Country shading (v5.59/@88).** The basemap tiles are a flat raster image — there is no
 polygon in them to recolour — so the app ships its own: `COUNTRY_GEOJSON_`, one module-level
 literal of 135 country features (116 Polygon / 19 MultiPolygon, 6,683 coordinate pairs rounded to
 3 decimals), roughly 117 KiB of `MapView.html`'s 147 KiB. Provenance and licence live in

@@ -1,0 +1,352 @@
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   Decomp.html — the breakdown layout for the Overview page's three
+   metrics (Customers / Devices / All tickets).
+
+   Answers what a total is made of, two levels deep. Replaces
+   Charts.decompFlow (the ECharts ribbon/flow diagram) — that renderer
+   could not survive this data: level-1 shares run to 474:1 on Devices,
+   so ten of thirteen types landed under 40px in a single linear band
+   and their labels truncated to noise, while the ribbon gutter that
+   cost most of the canvas carried no crossings to justify itself. A
+   rail sidesteps the whole problem — rank is a list, and a list has no
+   scale to break.
+
+   A rail ranks every level-1 item at full label length, and a panel
+   draws the selected one at full width. Each level-2 bar carries a
+   dotted marker at that member's share of the OVERALL mix, so "this
+   parent runs heavy on X" is readable without a second chart.
+
+   Colour is by ROLE and by CATEGORY KIND, never by magnitude. An
+   ordinal level 2 (age bands) gets a sequential ramp that brightens
+   with age so the old fleet is what catches the eye; a nominal one
+   (segments, outcomes) gets a categorical set whose first five are
+   maximally separated.
+   ═══════════════════════════════════════════════════════════════════ */
+var Decomp = (function () {
+  'use strict';
+
+  var FMT = new Intl.NumberFormat('en-IN');
+  var RAMP = ['#14568C', '#1E7AB8', '#2E9BD6', '#63BCE8', '#A8DEF7'];
+  var CAT  = ['#2E9BD6', '#F5B301', '#04E0B8', '#A78BFA', '#FB923C',
+              '#8FA9C4', '#2FD39B', '#E5344F', '#38BDF8', '#6366F1'];
+
+  function fmt(n) { return FMT.format(n); }
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+  function pctTxt(n, t) {
+    if (!t) return '0.0%';
+    var p = Math.round(n / t * 1000) / 10;
+    return (p < 0.1 && n > 0 ? '<0.1' : p.toFixed(1)) + '%';
+  }
+
+  /* ── model ─────────────────────────────────────────────────────
+     Drop non-positive level-1 nodes, sort a nominal level 2 by value
+     (an ordinal one keeps server order), and record a real SHORTFALL
+     where the children sum below their parent (e.g. buildDevicesTree_
+     drops devices whose age is null). */
+  function model(root, lv) {
+    if (!root || !root.children || !root.children.length) return null;
+    var rows = [], total = 0;
+    root.children.forEach(function (node) {
+      var v = node && node.value > 0 ? node.value : 0;
+      var kids = ((node && node.children) || []).filter(function (k) { return k && k.value > 0; });
+      if (!lv.ordinal2) kids = kids.slice().sort(function (a, b) { return b.value - a.value; });
+      var kidSum = kids.reduce(function (t2, k) { return t2 + k.value; }, 0);
+      total += v;
+      rows.push({ name: String(node && node.name != null ? node.name : ''), value: v,
+                  kids: kids, gap: kids.length && v - kidSum > 0 ? v - kidSum : 0 });
+    });
+    if (!(total > 0)) return null;
+    rows.sort(function (a, b) { return b.value - a.value; });
+
+    // One colour per level-2 name across the WHOLE card, so a hue means
+    // the same category in every row and every column.
+    var order, seen = {};
+    rows.forEach(function (r) {
+      r.kids.forEach(function (k) { seen[k.name] = (seen[k.name] || 0) + k.value; });
+    });
+    if (lv.ordinal2) {
+      // Server order, taken from the widest row so a short row can't
+      // truncate the scale.
+      var widest = rows.reduce(function (a, b) { return b.kids.length > a.kids.length ? b : a; }, rows[0]);
+      order = widest.kids.map(function (k) { return k.name; });
+      Object.keys(seen).forEach(function (n) { if (order.indexOf(n) < 0) order.push(n); });
+    } else {
+      order = Object.keys(seen).sort(function (a, b) { return seen[b] - seen[a]; });
+    }
+
+    var aggTotal = Object.keys(seen).reduce(function (t2, n) { return t2 + seen[n]; }, 0);
+    var overall = {};
+    Object.keys(seen).forEach(function (n) { overall[n] = aggTotal ? seen[n] / aggTotal : 0; });
+
+    return { rows: rows, total: total, order: order, overall: overall,
+             max: rows[0].value, lv: lv };
+  }
+
+  function colorFor(m, name) {
+    var i = m.order.indexOf(name);
+    if (i < 0) i = 0;
+    return m.lv.ordinal2 ? RAMP[i % RAMP.length] : CAT[i % CAT.length];
+  }
+  function gapLabel(m) { return m.lv.gapLabel || 'Not classified'; }
+  function unitOf(m) { return m.lv.unit || 'records'; }
+
+  /* ── hover card ────────────────────────────────────────────────
+     One floating element for the page; marks declare their content as
+     JSON in data-dctip and a single delegated listener reads the
+     nearest one. pointer-events:none so it can never sit between the
+     cursor and the mark it describes. */
+  var Tip = (function () {
+    var node = null, active = null, raf = 0, lx = 0, ly = 0;
+
+    function ensure() {
+      if (node) return node;
+      node = document.createElement('div');
+      node.className = 'dc-tip';
+      node.setAttribute('role', 'tooltip');
+      node.style.display = 'none';
+      document.body.appendChild(node);
+      return node;
+    }
+    function build(d) {
+      var h = '<div class="dc-tip-head">';
+      if (d.k) h += '<div class="dc-tip-kicker">' + esc(d.k) + '</div>';
+      h += '<div class="dc-tip-name">' +
+        (d.c === null ? '<span class="sw gap"></span>' :
+         d.c ? '<span class="sw" style="background:' + d.c + '"></span>' : '') +
+        '<span>' + esc(d.n) + '</span></div></div>';
+      if (d.v != null) {
+        h += '<div class="dc-tip-val"><b>' + esc(d.v) + '</b>' +
+             (d.u ? '<span>' + esc(d.u) + '</span>' : '') + '</div>';
+      }
+      if (d.b) {
+        h += '<div class="dc-tip-bar"><i style="width:' + d.b.p + '%' +
+             (d.b.c ? ';background:' + d.b.c : '') + '"></i>' +
+             (d.b.g != null ? '<u style="left:' + d.b.g + '%"></u>' : '') + '</div>';
+      }
+      if (d.s && d.s.length) {
+        h += '<dl class="dc-tip-stats">';
+        d.s.forEach(function (x) {
+          h += '<div><dt>' + esc(x[0]) + '</dt><dd' +
+               (x[2] ? ' class="' + x[2] + '"' : '') + '>' + esc(x[1]) + '</dd></div>';
+        });
+        h += '</dl>';
+      }
+      if (d.r && d.r.length) {
+        h += '<div class="dc-tip-rows">';
+        d.r.forEach(function (x) {
+          h += '<div><span class="sw' + (x[0] ? '' : ' gap') + '"' +
+            (x[0] ? ' style="background:' + x[0] + '"' : '') + '></span>' +
+            '<span class="nm">' + esc(x[1]) + '</span>' +
+            '<span class="vl">' + esc(x[2]) + '</span>' +
+            '<span class="pc">' + esc(x[3]) + '</span></div>';
+        });
+        if (d.more) h += '<div class="dc-tip-more">+ ' + d.more + ' more</div>';
+        h += '</div>';
+      }
+      h += d.note ? '<div class="dc-tip-note">' + esc(d.note) + '</div>' : '<div class="dc-tip-pad"></div>';
+      return h;
+    }
+    /* Anchored to the cursor, then pulled inside the viewport. Flips to
+       the other side rather than sliding, so the card never covers the
+       mark the pointer is on. */
+    function place() {
+      raf = 0;
+      if (!node || node.style.display === 'none') return;
+      var pad = 10, off = 16, w = node.offsetWidth, h = node.offsetHeight;
+      var vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+      var x = lx + off, y = ly + off;
+      if (x + w > vw - pad) x = lx - off - w;
+      if (x < pad) x = pad;
+      if (y + h > vh - pad) y = ly - off - h;
+      if (y < pad) y = pad;
+      node.style.transform = 'translate(' + Math.round(x) + 'px,' + Math.round(y) + 'px)';
+    }
+    function show(t, x, y) {
+      var raw = t.getAttribute('data-dctip');
+      if (!raw) return;
+      var d;
+      try { d = JSON.parse(raw); } catch (e) { return; }
+      var n = ensure();
+      if (active && active !== t) active.classList.remove('dc-tipped');
+      active = t;
+      t.classList.add('dc-tipped');
+      n.innerHTML = build(d);
+      n.style.display = '';
+      lx = x; ly = y;
+      place();
+      // Flush the start state before flipping the class so the fade has
+      // something to animate from. requestAnimationFrame would be
+      // throttled to nothing in a background tab and leave it invisible.
+      void n.offsetWidth;
+      n.classList.add('is-on');
+    }
+    function hide() {
+      if (active) { active.classList.remove('dc-tipped'); active = null; }
+      if (!node) return;
+      node.classList.remove('is-on');
+      node.style.display = 'none';
+    }
+    document.addEventListener('mouseover', function (e) {
+      var t = e.target.closest && e.target.closest('[data-dctip]');
+      if (!t) { if (active) hide(); return; }
+      if (t !== active) show(t, e.clientX, e.clientY);
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!active) return;
+      lx = e.clientX; ly = e.clientY;
+      if (!raf) raf = requestAnimationFrame(place);
+    });
+    document.addEventListener('focusin', function (e) {
+      var t = e.target.closest && e.target.closest('[data-dctip]');
+      if (!t) return hide();
+      var r = t.getBoundingClientRect();
+      show(t, r.left + Math.min(r.width / 2, 120), r.bottom - 6);
+    });
+    document.addEventListener('focusout', hide);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
+    window.addEventListener('scroll', hide, true);
+    window.addEventListener('resize', hide);
+    return { hide: hide };
+  })();
+
+  function tipAttr(d) { return ' data-dctip="' + esc(JSON.stringify(d)) + '"'; }
+
+  /** A level-2 member, read against its parent, the card, and the
+      overall level-2 mix all at once. */
+  function childTip(m, parent, k, isGap) {
+    var share = k.value / parent.value;
+    var ghost = isGap ? null : (m.overall[k.name] || 0);
+    var stats = [['Share of ' + parent.name, pctTxt(k.value, parent.value)]];
+    var allTxt = pctTxt(k.value, m.total);
+    if (ghost != null) {
+      var gTxt = (Math.round(ghost * 1000) / 10).toFixed(1) + '%';
+      // A member living under a single parent has share-of-everything ==
+      // overall mix; printing both would put one number on two lines.
+      if (gTxt !== allTxt) stats.push(['Share of all ' + unitOf(m), allTxt]);
+      var dd = Math.round((share - ghost) * 1000) / 10;
+      stats.push(['Overall mix', gTxt]);
+      stats.push(['Difference',
+        Math.abs(dd) < 0.05 ? 'in line' : (dd > 0 ? '+' : '') + dd.toFixed(1) + ' pts',
+        Math.abs(dd) < 0.05 ? '' : (dd > 0 ? 'up' : 'dn')]);
+    } else {
+      stats.push(['Share of all ' + unitOf(m), allTxt]);
+    }
+    return {
+      k: parent.name + ' | ' + m.lv.l2, n: isGap ? gapLabel(m) : k.name,
+      c: isGap ? null : colorFor(m, k.name), v: fmt(k.value), u: unitOf(m),
+      b: { p: share * 100, c: isGap ? '#8FA9C4' : colorFor(m, k.name),
+           g: ghost != null ? ghost * 100 : null },
+      s: stats,
+      note: isGap ? 'These have no ' + m.lv.l2.toLowerCase() + ' recorded, so none could be derived.'
+                  : (ghost != null ? 'Dotted marker on the bar is the overall mix.' : '')
+    };
+  }
+
+  /* Hands a container back from ECharts (or another layout) so a DOM
+     render never draws underneath a live canvas. */
+  function claim(id) {
+    var el = document.getElementById(id);
+    if (!el) return null;
+    el.classList.remove('is-loading');
+    el.classList.add('is-dom');
+    Tip.hide();
+    return el;
+  }
+  function empty(el, lv) {
+    el.innerHTML = '<div class="dc-empty-panel">No breakdown available for the current filters.</div>';
+  }
+
+  var sel = {};   // per container id, so a data refresh keeps the selection
+  function focus(id, root, lv) {
+    var el = claim(id);
+    if (!el) return;
+    var m = model(root, lv);
+    if (!m) return empty(el, lv);
+    if (!(sel[id] >= 0) || sel[id] >= m.rows.length) sel[id] = 0;
+    paint(el, id, m);
+  }
+
+  function paint(el, id, m) {
+    var i = sel[id], r = m.rows[i];
+    var rail = '<div class="dc-rail" role="listbox" aria-label="' + esc(m.lv.l1) + '">' +
+      '<div class="dc-rail-head">' + esc(m.lv.l1) + ' · ' + m.rows.length + '</div>';
+    m.rows.forEach(function (row, j) {
+      // No data-dctip here on purpose: the rail is a picker, not a chart. A
+      // card popping up over every row on the way down the list covered the
+      // panel the user was reading and repeated what clicking the row shows
+      // anyway. Hover detail belongs to the bars.
+      rail += '<button type="button" class="dc-item" role="option" data-i="' + j + '"' +
+        ' aria-selected="' + (j === i) + '">' +
+        '<span class="dc-item-top"><span class="dc-item-name">' + esc(row.name) + '</span>' +
+        '<span class="dc-item-val">' + fmt(row.value) + '</span></span>' +
+        '<span class="dc-item-bar"><i style="width:' +
+          Math.max(1.5, row.value / m.max * 100) + '%"></i></span></button>';
+    });
+    rail += '</div>';
+
+    var body = '<div class="dc-panel"><div class="dc-panel-head"><div>' +
+      '<div class="dc-panel-name">' + esc(r.name) + '</div>' +
+      '<div class="dc-panel-sub">' + esc(m.lv.l2) + ' breakdown · ' +
+        pctTxt(r.value, m.total) + ' of all ' + esc(unitOf(m)) + '</div></div>' +
+      '<div class="dc-panel-val">' + fmt(r.value) + '</div></div>';
+
+    if (!r.kids.length) {
+      body += '<div class="dc-empty-panel">No ' + esc(m.lv.l2.toLowerCase()) +
+              ' breakdown is recorded for ' + esc(r.name) + '.</div></div>';
+    } else {
+      var kmax = r.kids.reduce(function (a, k) { return Math.max(a, k.value); }, r.gap || 0) || 1;
+      body += '<div class="dc-bars">';
+      r.kids.forEach(function (k) {
+        var ghost = m.overall[k.name] || 0;
+        var dd = Math.round((k.value / r.value - ghost) * 1000) / 10;
+        var cls = Math.abs(dd) < 0.5 ? '' : (dd > 0 ? 'up' : 'dn');
+        body += '<div class="dc-bar-row"' + tipAttr(childTip(m, r, k, false)) + '>' +
+          '<div class="dc-bar-name">' + esc(k.name) + '</div>' +
+          '<div class="dc-bar-track">' +
+            '<div class="dc-bar-fill" style="width:' + (k.value / kmax * 100) +
+              '%;background:' + colorFor(m, k.name) + '"></div>' +
+            '<div class="dc-bar-ghost" style="width:' + (ghost * r.value / kmax * 100) + '%"></div>' +
+          '</div>' +
+          '<div class="dc-bar-val">' + fmt(k.value) + '</div>' +
+          '<div class="dc-bar-delta ' + cls + '">' +
+            (Math.abs(dd) < 0.5 ? '—' : (dd > 0 ? '+' : '') + dd + ' pts') + '</div></div>';
+      });
+      if (r.gap) {
+        body += '<div class="dc-bar-row is-gap"' +
+          tipAttr(childTip(m, r, { name: '', value: r.gap }, true)) + '>' +
+          '<div class="dc-bar-name">' + esc(gapLabel(m)) + '</div>' +
+          '<div class="dc-bar-track"><div class="dc-bar-fill" style="width:' +
+            (r.gap / kmax * 100) + '%"></div></div>' +
+          '<div class="dc-bar-val">' + fmt(r.gap) + '</div>' +
+          '<div class="dc-bar-delta">—</div></div>';
+      }
+      body += '</div><div class="dc-foot">Dotted marker is this ' +
+        esc(m.lv.l2.toLowerCase()) + '’s share of the overall mix — the points column is the gap.</div></div>';
+    }
+
+    el.innerHTML = '<div class="dc-focus">' + rail + body + '</div>';
+
+    Array.prototype.forEach.call(el.querySelectorAll('.dc-item'), function (b) {
+      b.addEventListener('click', function () {
+        sel[id] = +b.getAttribute('data-i');
+        Tip.hide(); paint(el, id, m);
+      });
+      b.addEventListener('keydown', function (e) {
+        var n = e.key === 'ArrowDown' ? sel[id] + 1 : e.key === 'ArrowUp' ? sel[id] - 1 : null;
+        if (n == null) return;
+        e.preventDefault();
+        sel[id] = (n + m.rows.length) % m.rows.length;
+        Tip.hide(); paint(el, id, m);
+        el.querySelector('.dc-item[data-i="' + sel[id] + '"]').focus();
+      });
+    });
+  }
+
+  return { focus: focus, hideTip: Tip.hide };
+})();
+</script>

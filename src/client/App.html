@@ -57,6 +57,9 @@
     // Service page (ServiceWRK). Fetches its own payload rather than sharing the
     // Zoho dashboard one — different table, different filter coverage.
     overviewFlowLoaded: false, overviewFlowFilters: null, overviewFlowData: null,
+    // Which of the three Overview metrics the shared breakdown panel is
+    // showing. Persisted as sip.overviewMetric; see selectOverviewMetric_.
+    overviewMetric: 'customers',
     serviceLoaded: false, serviceFilters: null,
     service: { sortBy: 'created_on', sortDir: 'desc', page: 0, pageSize: 15 },
     serviceRows: [], serviceTotal: 0,
@@ -1651,70 +1654,99 @@
   }
 
   /**
-   * Each card's header carries the metric's total; the breakdown renders
-   * lazily the first time that card is expanded, not eagerly for all three on
-   * load. An expanded card takes the full page width (see
-   * .flow-card:has(details[open]) in Styles.html) — more room for the
-   * level-1/level-2 bands to lay their blocks out side by side before
-   * folding — and the card is tall (.chart-flow in Styles.html) so the flow
-   * has room to run top to bottom: a level-1 band, a ribbon gutter, a
-   * level-2 band. The total lives here and only here: Charts.decompFlow draws the
-   * payload root's children, never the root itself, so the number isn't
-   * printed twice on the same card.
+   * One entry per tab in the Overview strip. All three totals are drawn on
+   * every payload; only the SELECTED metric's breakdown is rendered, into the
+   * single shared #ovBreakdown container. The total lives in the strip and
+   * only there — Decomp draws the payload root's children, never the root
+   * itself, so the number isn't printed twice.
    *
    * `levels` names the two ranks for each card. It is not decoration —
-   * decompFlow prints them as the two column captions (which is what tells a
-   * reader which way the diagram flows), uses the singular AND the plural in
-   * its aggregate labels and tooltips (a device type really can have exactly
-   * "1 age band"), and needs `ordinal2` to know that device age bands are an
-   * ORDERED scale. That flag does two things: it keeps the breakdown in
-   * server order (the other two cards' level-2 children are re-sorted by
-   * count, so their fold folds the genuinely smallest members — ServiceWRK's
-   * outcomes arrive unsorted from BigQuery), and it makes a partial fold a
-   * contiguous range ("2-3y → 5y+") rather than a "+2 more" bag that would
-   * stand for two non-adjacent bands. A band too short to split at all is
-   * labelled by COUNT either way ("5 age bands"), never by its full range,
-   * which would read as one band. Plurals are spelled out because "Country"
-   * does not pluralise by suffix.
+   * Decomp prints l1/l2 as the rail and panel captions (which is what tells a
+   * reader which way the breakdown runs), uses l2s in the hover card's
+   * segment count, and needs `ordinal2` to know that device age bands are an
+   * ORDERED scale. That flag keeps the breakdown in server order so the bands
+   * read <1y → 5y+; the other two cards' level-2 children are re-sorted by
+   * count instead, which matters because ServiceWRK's outcomes arrive
+   * unsorted from BigQuery. `unit` names what is being counted in the hover
+   * card ("11,548 customers"), and `gapLabel` names the shortfall where the
+   * children sum below their parent — buildDevicesTree_ drops devices whose
+   * age is null, so a device type's bands can total below the type itself.
    */
   var OVERVIEW_FLOW_CARDS = [
-    { details: 'flowDetailsCustomers', chart: 'flowCustomers', total: 'flowTotalCustomers', key: 'customers',
-      levels: { l1: 'Country', l1s: 'countries', l2: 'Segment', l2s: 'segments', ordinal2: false } },
-    { details: 'flowDetailsDevices', chart: 'flowDevices', total: 'flowTotalDevices', key: 'devices',
-      levels: { l1: 'Device type', l1s: 'device types', l2: 'Age band', l2s: 'age bands', ordinal2: true } },
-    { details: 'flowDetailsTickets', chart: 'flowTickets', total: 'flowTotalTickets', key: 'tickets',
-      levels: { l1: 'Source system', l1s: 'source systems', l2: 'Outcome', l2s: 'outcomes', ordinal2: false } }
+    { tab: 'ovTabCustomers', total: 'flowTotalCustomers', key: 'customers',
+      levels: { l1: 'Country', l1s: 'countries', l2: 'Segment', l2s: 'segments', ordinal2: false,
+                unit: 'customers', gapLabel: 'No segment recorded' } },
+    { tab: 'ovTabDevices', total: 'flowTotalDevices', key: 'devices',
+      levels: { l1: 'Device type', l1s: 'device types', l2: 'Age band', l2s: 'age bands', ordinal2: true,
+                unit: 'devices', gapLabel: 'No age recorded' } },
+    { tab: 'ovTabTickets', total: 'flowTotalTickets', key: 'tickets',
+      levels: { l1: 'Source system', l1s: 'source systems', l2: 'Outcome', l2s: 'outcomes', ordinal2: false,
+                unit: 'tickets', gapLabel: 'No outcome recorded' } }
   ];
 
-  function renderOverviewFlowCard_(card) {
-    var payload = state.overviewFlowData;
-    if (!payload) return;
-    Charts.decompFlow(card.chart, payload[card.key],
-      { levels: card.levels });
+  /** The metric currently shown in the shared panel. */
+  function overviewCard_() {
+    for (var i = 0; i < OVERVIEW_FLOW_CARDS.length; i++) {
+      if (OVERVIEW_FLOW_CARDS[i].key === state.overviewMetric) return OVERVIEW_FLOW_CARDS[i];
+    }
+    return OVERVIEW_FLOW_CARDS[0];
   }
 
-  // Wired once: an open card's flow re-renders whenever fresh data arrives
-  // (see renderOverviewFlow); a closed card renders the first time a user
-  // opens it, always against state.overviewFlowData at that moment (never
-  // stale, since renderOverviewFlow above always updates it first).
-  var overviewFlowTogglesWired_ = false;
-  function setupOverviewFlowToggles_() {
-    if (overviewFlowTogglesWired_) return;
-    overviewFlowTogglesWired_ = true;
+  /** Draws the selected metric into the one shared container. */
+  function renderOverviewBreakdown_() {
+    var payload = state.overviewFlowData;
+    if (!payload) return;
+    var card = overviewCard_();
+    Decomp.focus('ovBreakdown', payload[card.key], card.levels);
+    $('ovPanel').setAttribute('aria-labelledby', card.tab);
+  }
+
+  /**
+   * Selects a metric. The three totals do not move and are not redrawn — only
+   * the shared panel's contents change, and its height is fixed, so nothing
+   * on the page shifts. `persist` is false for the restore on load so a
+   * remembered choice is not written straight back.
+   */
+  function selectOverviewMetric_(key, persist) {
+    state.overviewMetric = key;
     OVERVIEW_FLOW_CARDS.forEach(function (card) {
-      $(card.details).addEventListener('toggle', function () {
-        if (this.open) renderOverviewFlowCard_(card);
+      var on = card.key === key;
+      var b = $(card.tab);
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-selected', String(on));
+      // Roving tabindex: the strip is one tab stop, arrows move within it.
+      b.tabIndex = on ? 0 : -1;
+    });
+    if (persist) localStorage.setItem('sip.overviewMetric', key);
+    if (Decomp && Decomp.hideTip) Decomp.hideTip();
+    renderOverviewBreakdown_();
+  }
+
+  var overviewSwitchWired_ = false;
+  function setupOverviewSwitch_() {
+    if (overviewSwitchWired_) return;
+    overviewSwitchWired_ = true;
+    OVERVIEW_FLOW_CARDS.forEach(function (card, i) {
+      var b = $(card.tab);
+      b.addEventListener('click', function () { selectOverviewMetric_(card.key, true); });
+      b.addEventListener('keydown', function (e) {
+        var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+        if (!d) return;
+        e.preventDefault();
+        var next = OVERVIEW_FLOW_CARDS[(i + d + OVERVIEW_FLOW_CARDS.length) % OVERVIEW_FLOW_CARDS.length];
+        selectOverviewMetric_(next.key, true);
+        $(next.tab).focus();
       });
     });
   }
 
   function renderOverviewFlow(payload) {
-    setupOverviewFlowToggles_();
+    setupOverviewSwitch_();
     OVERVIEW_FLOW_CARDS.forEach(function (card) {
       var node = payload[card.key];
       countUp($(card.total), node ? node.value : 0);
-      if ($(card.details).open) renderOverviewFlowCard_(card);
     });
+    renderOverviewBreakdown_();
   }
 
   /* ── Service page (ServiceWRK) ─────────────────────────────────
@@ -4047,6 +4079,15 @@
     $('sidebarCollapseBtn').addEventListener('click', function () {
       applySidebarPinned(!document.body.classList.contains('sidebar-pinned'), true);
     });
+
+    // Overview metric switcher (persisted) — wire the strip and restore the
+    // last-viewed metric before any data arrives, so the tab UI is correct
+    // the instant loadOverviewFlow()'s payload lands (renderOverviewFlow
+    // itself only redraws the totals + the already-selected panel).
+    var savedMetric = localStorage.getItem('sip.overviewMetric');
+    if (savedMetric === 'devices' || savedMetric === 'tickets') state.overviewMetric = savedMetric;
+    setupOverviewSwitch_();
+    selectOverviewMetric_(state.overviewMetric, false);
 
     // Auto-refresh now runs unconditionally in the background.
     state.autoRefresh = true;

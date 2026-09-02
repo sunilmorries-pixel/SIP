@@ -134,14 +134,20 @@
 <main class="page" role="main">
 
   <!-- ══════════════ VIEW 0 · OVERVIEW (landing) ══════════════
-       Three KPI cards — each header carries the metric's total; expanding a
-       card lazily renders its decomposition FLOW DIAGRAM (Charts.decompFlow,
-       which draws the payload root's CHILDREN, so the total appears once per
-       card and only in the header). An expanded card grows to the full page
-       width (.flow-card:has(details[open]) in Styles.html); the flow spends
-       that width on two labelled rank columns and the ribbon span between
-       them. Overview still has its own endpoint, apiGetOverviewFlowCD, not
-       shared with Asset/Customers/Support/Service.
+       A permanent strip of three metric totals over ONE shared breakdown
+       panel. Nothing here expands or collapses: selecting a metric swaps the
+       panel's contents, and the panel's height is fixed (.dc-focus in
+       Styles.html), so the region is a constant height whichever metric is
+       selected and the map below it never moves. Decomp.focus draws the
+       payload root's CHILDREN, so the total appears once per metric and only
+       in the strip. Overview still has its own endpoint, apiGetOverviewFlowCD,
+       not shared with Asset/Customers/Support/Service.
+
+       Replaces three independently expanding flow-cards (each running
+       Charts.decompFlow, an ECharts ribbon diagram): opening one grew it to
+       the full page width and pushed the other two + the map down the page,
+       and the ribbon encoding could not survive Devices' 474:1 level-1 share
+       spread. See Decomp.html for the rail+panel breakdown that replaced it.
 
        "All tickets" is named apart from the Numbers page's "Tickets" card on
        purpose: this one sums three separate systems, that one is Zoho only.
@@ -149,52 +155,53 @@
        TITLE_METRIC keys on title text), so the popover cites the right
        tables for each. -->
   <section id="panel-overview" class="panel is-active" role="tabpanel" aria-labelledby="tab-overview">
-    <div class="card-grid">
-      <article class="card span-4 flow-card">
-        <details id="flowDetailsCustomers" open>
-          <summary class="flow-summary">
-            <span class="flow-summary-text">
-              <span class="card-title">Customers</span>
-              <span class="card-sub">Country → segment breakdown</span>
-            </span>
-            <span class="flow-number" id="flowTotalCustomers">0</span>
-          </summary>
-          <div id="flowCustomers" class="chart chart-flow" role="img"
-               aria-label="Flow diagram of customers: a column of country blocks on the left, ordered largest first, a column of segment blocks on the right, and a ribbon from each country to each of its segments. Every block is labelled with its name and its exact count and share of the total. Taller blocks are larger, but heights are compressed so small categories stay readable, and they are only comparable within one column; countries with no room to draw are folded into one labelled block whose tooltip names each member."></div>
-        </details>
-      </article>
 
-      <article class="card span-4 flow-card">
-        <details id="flowDetailsDevices" open>
-          <summary class="flow-summary">
-            <span class="flow-summary-text">
-              <span class="card-title">Devices</span>
-              <span class="card-sub">Type → age band breakdown</span>
-            </span>
-            <span class="flow-number" id="flowTotalDevices">0</span>
-          </summary>
-          <div id="flowDevices" class="chart chart-flow" role="img"
-               aria-label="Flow diagram of devices: a column of device-type blocks on the left, ordered largest first, a column of age-band blocks on the right in age order, and a ribbon from each device type to each of its age bands. Every block is labelled with its name and its exact count and share of the total. Taller blocks are larger, but heights are compressed so small categories stay readable, and they are only comparable within one column; a type with no room to split is drawn as one block labelled with how many age bands it stands for, and its tooltip lists them."></div>
-        </details>
-      </article>
+    <!-- Metric switcher. The three totals are a PERMANENT strip: they never
+         move and never collapse, because they are what the landing page is
+         for. Selecting one swaps the single shared panel below it, which has
+         a fixed height of its own — so nothing on this page is ever pushed
+         down by something the user opened.
 
-      <article class="card span-4 flow-card">
-        <details id="flowDetailsTickets" open>
-          <summary class="flow-summary">
-            <span class="flow-summary-text">
-              <span class="card-title">All tickets</span>
-              <!-- Names the three systems being summed, in the same
-                   "sources → second level" shape as the two cards above. Kept
-                   this short on purpose: a longer sub-line wraps to five lines
-                   in the collapsed 3-column state and unbalances the row. -->
-              <span class="card-sub">Zoho · ServiceWRK · TOM → outcome</span>
-            </span>
-            <span class="flow-number" id="flowTotalTickets">0</span>
-          </summary>
-          <div id="flowTickets" class="chart chart-flow" role="img"
-               aria-label="Flow diagram of tickets: a column of source-system blocks on the left, ordered largest first, a column of outcome blocks on the right, and a ribbon from each source to each of its outcomes. Every block is labelled with its name and its exact count and share of the total. Taller blocks are larger, but heights are compressed so small categories stay readable, and they are only comparable within one column; the outcomes with no room to draw are folded into one labelled block whose tooltip names each of them with its count."></div>
-        </details>
-      </article>
+         The .card-title spans carry the titles verbatim because
+         setupMetricInfo() keys its info dots on title TEXT via TITLE_METRIC —
+         "Customers" / "Devices" / "All tickets" must stay exactly as written
+         or the dots stop being injected. -->
+    <div class="ov-switch" role="tablist" aria-label="Overview metric">
+      <button type="button" class="ov-tab is-active" id="ovTabCustomers" role="tab"
+              data-metric-key="customers" aria-selected="true" aria-controls="ovPanel">
+        <span class="ov-tab-text">
+          <span class="card-title">Customers</span>
+          <span class="card-sub">Country → segment breakdown</span>
+        </span>
+        <span class="ov-tab-num" id="flowTotalCustomers">0</span>
+      </button>
+
+      <button type="button" class="ov-tab" id="ovTabDevices" role="tab"
+              data-metric-key="devices" aria-selected="false" tabindex="-1" aria-controls="ovPanel">
+        <span class="ov-tab-text">
+          <span class="card-title">Devices</span>
+          <span class="card-sub">Type → age band breakdown</span>
+        </span>
+        <span class="ov-tab-num" id="flowTotalDevices">0</span>
+      </button>
+
+      <button type="button" class="ov-tab" id="ovTabTickets" role="tab"
+              data-metric-key="tickets" aria-selected="false" tabindex="-1" aria-controls="ovPanel">
+        <span class="ov-tab-text">
+          <span class="card-title">All tickets</span>
+          <!-- Names the three systems being summed. Kept short on purpose: a
+               longer sub-line wraps and unbalances the strip. -->
+          <span class="card-sub">Zoho · ServiceWRK · TOM → outcome</span>
+        </span>
+        <span class="ov-tab-num" id="flowTotalTickets">0</span>
+      </button>
+    </div>
+
+    <!-- One container for all three metrics. Decomp.focus() renders whichever
+         is selected into it; the id never changes, so there is exactly one
+         breakdown in the DOM at a time. -->
+    <div class="card ov-panel" id="ovPanel" role="tabpanel" aria-labelledby="ovTabCustomers">
+      <div id="ovBreakdown" class="chart ov-breakdown"></div>
     </div>
 
     <!-- Center map — moved here from its own tab (2026-08-21, per user): only
@@ -1262,4 +1269,5 @@
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" integrity="sha384-eXVCORTRlv4FUUgS/xmOyr66XBVraen8ATNLMESp92FKXLAMiKkerixTiBvXriZr" crossorigin="anonymous"></script>
 <?!= include('MapView') ?>
 <?!= include('Charts') ?>
+<?!= include('Decomp') ?>
 <?!= include('App') ?>

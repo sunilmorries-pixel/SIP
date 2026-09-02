@@ -13,12 +13,14 @@ $out  = Join-Path $dist 'preview.html'
 $index  = Get-Content (Join-Path $src 'Index.html')   -Raw -Encoding UTF8
 $styles = Get-Content (Join-Path $src 'Styles.html')  -Raw -Encoding UTF8
 $charts = Get-Content (Join-Path $src 'Charts.html')  -Raw -Encoding UTF8
+$decomp = Get-Content (Join-Path $src 'Decomp.html')  -Raw -Encoding UTF8
 $app    = Get-Content (Join-Path $src 'App.html')     -Raw -Encoding UTF8
 $mapv   = Get-Content (Join-Path $src 'MapView.html') -Raw -Encoding UTF8
 
 $html = $index.
   Replace("<?!= include('Styles') ?>", $styles).
   Replace("<?!= include('Charts') ?>", $charts).
+  Replace("<?!= include('Decomp') ?>", $decomp).
   Replace("<?!= include('MapView') ?>", $mapv).
   Replace("<?!= include('App') ?>", $app).
   Replace('<?= appName ?>', 'SIP').

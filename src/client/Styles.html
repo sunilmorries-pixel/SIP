@@ -558,74 +558,224 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 .card-title { font-family: var(--font-head); font-size: 16px; font-weight: 600; letter-spacing: 0.01em; }
 .card-sub { font-size: 13px; color: var(--text-3); margin-top: 2px; }
 
-/* ── Overview flow cards — a KPI total that expands into a decomposition
-   flow diagram. Closed, each card sits in its normal 3-column span-4 slot;
-   open, it grows to the full page width (:has() reacts live to the
-   <details>'s own [open] attribute, no JS needed for the layout change).
-   The full width is still what the renderer needs, but for a different
-   reason than the old tree's Reingold-Tilford spread: Charts.decompFlow
-   lays out two rank columns clamped to 26% of the canvas each, with the
-   rest of the width given to the ribbon span between them. Under about
-   600px the columns hit their floor and long names (e.g. "United Republic
-   of Tanzania") start ellipsising, so one grid column is not enough.
-   NOTE the collapsed state renders nothing at all: the chart div lives
-   inside the <details>, so while it is closed it is 0x0 and Charts.render()
-   only stages the option — the flow never lays out at one-third width, and
-   the toggle handler re-renders on open. ── */
-.flow-card { padding: 0; }
-.flow-card:has(details[open]) { grid-column: 1 / -1; }
-.flow-summary {
-  list-style: none; cursor: pointer; display: flex; align-items: center;
-  justify-content: space-between; gap: 12px; padding: var(--pad);
+/* ── Overview metric switcher ──────────────────────────────────────
+   Three totals in a permanent strip, one shared breakdown panel below.
+   Nothing here collapses or expands, so nothing can displace anything
+   else: the strip is a fixed 3-column grid and the panel is a fixed
+   height (see .ov-breakdown and .dc-focus). That is the whole point —
+   the region this occupies is the same height no matter which metric is
+   selected or which row inside it the user has picked. ── */
+.ov-switch {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap);
+  margin-bottom: var(--gap);
 }
-.flow-summary::-webkit-details-marker { display: none; }
-.flow-summary-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.flow-summary-text .card-title,
-.flow-summary-text .card-sub { display: block; }
-.flow-summary-text .card-sub { margin-top: 0; }
-/* Keeps setupMetricInfo()'s injected info dot on the same line as the title it
-   belongs to. Only bites in the collapsed 3-column state, where a two-word
-   title ("All tickets") plus the dot exceeds the column and orphans the dot
-   onto a line of its own. Safe to pin here — these three titles are the only
-   .card-title inside a .flow-summary and all are short. */
-.flow-summary-text .card-title { white-space: nowrap; }
-.flow-summary::after {
-  content: ''; flex: none; width: 9px; height: 9px; margin-left: 4px;
-  border-right: 2px solid var(--text-3); border-bottom: 2px solid var(--text-3);
-  transform: rotate(45deg); transition: transform var(--dur-fast);
+.ov-tab {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px var(--pad); text-align: left; cursor: pointer;
+  font-family: var(--font-body); color: var(--text-1);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); backdrop-filter: blur(var(--blur-glass));
+  /* The selected state is carried by a bottom rule rather than a fill, so
+     the two unselected tabs keep the same weight as the selected one —
+     all three totals stay equally readable, which is the reason the strip
+     is permanent in the first place. */
+  border-bottom: 3px solid transparent;
+  transition: border-color var(--dur) var(--ease-out),
+              background var(--dur) var(--ease-out),
+              transform var(--dur) var(--ease-out);
 }
-.flow-card details[open] .flow-summary::after { transform: rotate(225deg); }
-.flow-number {
-  font-family: var(--font-head); font-size: 32px; font-weight: 700;
-  color: var(--secondary); font-variant-numeric: tabular-nums; flex: none;
+.ov-tab:hover { background: var(--surface-2); transform: translateY(-2px); }
+.ov-tab:focus-visible { outline: 2px solid var(--secondary); outline-offset: 2px; }
+.ov-tab.is-active { border-bottom-color: var(--primary); background: var(--surface-2); }
+.ov-tab-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ov-tab-text .card-title { white-space: nowrap; }
+.ov-tab-text .card-sub { margin-top: 0; }
+.ov-tab-num {
+  flex: none; font-family: var(--font-head); font-size: 30px; font-weight: 700;
+  color: var(--secondary); font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+  line-height: 1;
 }
-/* One fixed height for every breakdown, set here rather than computed in JS.
-   The tree renderer had to size its container from the leaf count (72px a
-   leaf) because its layout grew with the data — three cards ran 432/720/504px
-   of canvas and the landing page came to 2,436px. Charts.decompFlow inverts
-   that dependency: the height is fixed and the DATA is folded to fit it, so
-   the height is a design decision again.
+.ov-panel { padding: 0; overflow: hidden; }
+/* No min-height and no growth: .dc-focus inside sets the height, and both of
+   its columns scroll internally. A max-height here would only stop the panel
+   growing — a SHORT metric (3 sources, 2 bars) would still collapse it and
+   the region would breathe as the user switched tabs. */
+.ov-breakdown {
+  height: auto; padding: 0;
+  animation: rise 320ms var(--ease-out) both;
+}
 
-   THIS NUMBER IS THE FLOW'S CAPACITY LEVER FOR ITS CANVAS HEIGHT — how many
-   level-1 blocks fold now comes from the canvas WIDTH instead, since the
-   flow runs top-to-bottom (per user, 2026-08-25): a level-1 band sits at the
-   top, a level-2 band at the bottom, and the ribbon gutter between them is
-   what most of this height buys. Raised from 340 to 480 for that gutter —
-   the two bands themselves are small fixed strips (BAND1_H/BAND2_H in
-   Charts.html, just tall enough for one line of text), so a short card would
-   leave the flow's own "read it top to bottom" cue with nowhere to breathe.
-   decompFlow reads the real canvas at runtime via api.getWidth()/getHeight()
-   and derives everything from it; nothing in Charts.html mirrors the 480.
+/* ═══════════════════════════════════════════════════════════════════
+   DECOMP — the Overview breakdown cards (rail + panel), drawn as DOM by
+   Decomp.html. Replaced the ECharts flow diagram (Charts.decompFlow):
+   its ribbon encoding could not survive Devices' 474:1 level-1 share
+   spread, so ten of thirteen types landed under 40px in a single linear
+   band and their labels truncated to noise, while the ribbon gutter
+   that cost most of the canvas carried no crossings to justify itself.
 
-   min-height, not height: `.chart` sets height: 280px further down this file
-   at equal specificity, so a `height` here would lose on source order. */
-.chart-flow { min-height: 480px; padding: 0 var(--pad) var(--pad); animation: rise 320ms var(--ease-out) both; }
-/* The flow is read-only (2026-08-25), but zrender defaults every custom-series
-   mark to cursor:pointer and ignores a `cursor` element option, so the canvas
-   advertised a click that no longer happens. It can only be corrected from
-   outside zrender, here. Hover still works — the tooltip is the whole
-   interaction now. */
-.chart-flow canvas { cursor: default; }
+   An expanded card takes the full grid width: the rail needs ~280px
+   before the panel gets any, and the panel's level-2 bars have to hold
+   ServiceWRK's 43-character closure types without truncating.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Neutralises .chart (height:280px) on a container filled with DOM. */
+.chart.is-dom { height: auto; min-height: 0; padding: 0 var(--pad) var(--pad); }
+
+/* ── Focus ───────────────────────────────────────────────── */
+.dc-focus {
+  display: grid; grid-template-columns: 280px 1fr;
+  /* ONE fixed height for every metric, not a max. Capping with max-height
+     stops the panel growing but not shrinking, so a short metric (3 sources,
+     2 outcome bars) collapsed the region and it breathed as the user
+     switched tabs — the displacement fault, reintroduced one level down.
+     Both columns scroll inside this height instead. */
+  height: 380px;
+}
+.dc-rail {
+  border-right: 1px solid var(--border); padding: 10px 0;
+  height: 100%; overflow-y: auto;
+}
+.dc-rail-head {
+  padding: 0 16px 8px; font-size: 10px; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text-3);
+}
+.dc-item {
+  display: block; width: 100%; text-align: left; background: none; border: 0;
+  border-left: 3px solid transparent; padding: 7px 16px; cursor: pointer;
+  font-family: var(--font-body); transition: background var(--dur-fast);
+}
+.dc-item:hover { background: rgba(255,255,255,.035); }
+body[data-theme="light"] .dc-item:hover { background: rgba(1,41,78,.035); }
+.dc-item:focus-visible { outline: 2px solid var(--secondary); outline-offset: -2px; }
+.dc-item[aria-selected="true"] {
+  background: rgba(255,255,255,.05); border-left-color: var(--primary);
+}
+body[data-theme="light"] .dc-item[aria-selected="true"] { background: rgba(1,41,78,.045); }
+.dc-item-top { display: flex; align-items: baseline; gap: 10px; margin-bottom: 5px; }
+.dc-item-name {
+  flex: 1; min-width: 0; font-size: 12.5px; font-weight: 700; color: var(--text-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dc-item-val {
+  flex: none; font-size: 12px; font-weight: 700; color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.dc-item-bar {
+  display: block; height: 4px; border-radius: 2px; overflow: hidden;
+  background: rgba(255,255,255,.07);
+}
+body[data-theme="light"] .dc-item-bar { background: rgba(1,41,78,.08); }
+.dc-item-bar i { display: block; height: 100%; border-radius: 2px; background: var(--secondary); }
+.dc-item[aria-selected="true"] .dc-item-bar i { background: var(--primary); }
+
+.dc-panel { padding: 16px 20px 18px; min-width: 0; height: 100%; overflow-y: auto; }
+.dc-panel-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.dc-panel-name { font-size: 18px; font-weight: 700; color: var(--text-1); }
+.dc-panel-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.dc-panel-val {
+  font-size: 21px; font-weight: 700; color: var(--secondary);
+  font-variant-numeric: tabular-nums;
+}
+.dc-bars { display: grid; gap: 8px; }
+.dc-bar-row {
+  display: grid; grid-template-columns: minmax(90px, 200px) 1fr 64px 74px;
+  align-items: center; gap: 12px; min-height: 22px;
+}
+.dc-bar-name { font-size: 12px; color: var(--text-2); line-height: 1.3; overflow-wrap: anywhere; }
+.dc-bar-row.is-gap .dc-bar-name { font-style: italic; }
+.dc-bar-track { position: relative; height: 19px; }
+.dc-bar-fill {
+  position: absolute; left: 0; top: 3px; height: 13px; border-radius: 3px;
+  background: var(--secondary);
+}
+.dc-bar-row.is-gap .dc-bar-fill { background: none; border: 1px dashed var(--border-strong); }
+.dc-bar-ghost {
+  position: absolute; left: 0; top: 0; height: 19px;
+  border-right: 2px dotted var(--border-strong);
+}
+.dc-bar-val {
+  text-align: right; font-size: 12px; font-weight: 700; color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+.dc-bar-delta {
+  text-align: right; font-size: 11px; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.dc-bar-delta.up { color: var(--ok); }
+.dc-bar-delta.dn { color: var(--warn); }
+.dc-foot {
+  margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-3);
+}
+.dc-empty-panel { font-size: 12.5px; color: var(--text-3); font-style: italic; padding: 20px 0; }
+
+/* ── shared hover card ───────────────────────────────────── */
+.dc-tip {
+  position: fixed; top: 0; left: 0; z-index: 3000; pointer-events: none;
+  width: max-content; min-width: 214px; max-width: 300px;
+  background: var(--surface-solid); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-card);
+  color: var(--text-1); font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
+  opacity: 0; transform: translateY(3px);
+  transition: opacity var(--dur-fast), transform var(--dur-fast);
+}
+.dc-tip.is-on { opacity: 1; }
+.dc-tip-head { padding: 10px 12px 0; }
+.dc-tip-kicker {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--text-3); margin-bottom: 3px;
+}
+.dc-tip-name {
+  display: flex; align-items: flex-start; gap: 7px;
+  font-size: 13.5px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere;
+}
+.dc-tip-name .sw { width: 10px; height: 10px; border-radius: 2px; flex: none; margin-top: 3px; }
+.dc-tip-name .sw.gap { background: none; border: 1px dashed currentColor; opacity: .6; }
+.dc-tip-val { padding: 6px 12px 0; display: flex; align-items: baseline; gap: 6px; }
+.dc-tip-val b {
+  font-size: 21px; font-weight: 700; color: var(--secondary);
+  font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.dc-tip-val span { font-size: 11px; color: var(--text-3); }
+.dc-tip-bar {
+  position: relative; margin: 8px 12px 0; height: 6px; border-radius: 3px;
+  background: rgba(255,255,255,.09);
+}
+body[data-theme="light"] .dc-tip-bar { background: rgba(1,41,78,.09); }
+.dc-tip-bar i { display: block; height: 100%; border-radius: 3px; background: var(--secondary); }
+.dc-tip-bar u {
+  position: absolute; top: -2px; height: 10px; width: 0;
+  border-right: 2px dotted var(--text-2);
+}
+.dc-tip-stats, .dc-tip-rows {
+  margin: 10px 0 0; padding: 8px 12px 0; display: grid; gap: 4px;
+  border-top: 1px solid var(--border);
+}
+.dc-tip-stats div { display: flex; justify-content: space-between; gap: 16px; }
+.dc-tip-stats dt { color: var(--text-2); }
+.dc-tip-stats dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dc-tip-stats dd.up { color: var(--ok); }
+.dc-tip-stats dd.dn { color: var(--warn); }
+.dc-tip-rows div { display: flex; align-items: center; gap: 8px; }
+.dc-tip-rows .sw { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.dc-tip-rows .sw.gap { background: none; border: 1px dashed currentColor; opacity: .6; }
+.dc-tip-rows .nm {
+  flex: 1; min-width: 0; color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dc-tip-rows .vl { font-weight: 700; font-variant-numeric: tabular-nums; }
+.dc-tip-rows .pc { width: 42px; text-align: right; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.dc-tip-more { color: var(--text-3); font-style: italic; }
+.dc-tip-note {
+  margin-top: 9px; padding: 8px 12px; font-size: 11px; color: var(--text-3);
+  background: rgba(255,255,255,.04); border-top: 1px solid var(--border);
+}
+body[data-theme="light"] .dc-tip-note { background: rgba(1,41,78,.035); }
+.dc-tip-pad { height: 11px; }
+.dc-tipped { outline: 1px solid var(--border-strong); }
 
 /* NOTE: mobile/tablet view intentionally removed for now — desktop only.
    When we add the mobile view, reintroduce breakpoint overrides here. */

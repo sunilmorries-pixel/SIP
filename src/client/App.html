@@ -1971,10 +1971,10 @@
     { key: 'downtime_days', label: 'Downtime', sortable: true, num: true },
     { key: 'uptime_pct', label: 'Uptime', sortable: true, num: true },
     { key: 'tickets_total', label: 'Tickets', sortable: true, num: true },
-    { key: 'open_tickets', label: 'Open tickets', sortable: true, num: true },
     { key: 'swapped', label: 'Swapped', sortable: true, num: true },
+    { key: 'failures', label: 'Technical Tickets', sortable: true, num: true },
     { key: 'mtbf_hrs', label: 'MTBF (days)', sortable: true, num: true },
-    { key: 'failures', label: 'Failures', sortable: true, num: true }
+    { key: 'open_tickets', label: 'Open tickets', sortable: true, num: true }
   ];
 
   function buildCenterHeader() {
@@ -2041,10 +2041,10 @@
           '<td class="num">' + (r.downtime_days != null ? r.downtime_days + 'd' : '—') + '</td>' +
           '<td class="num"><span class="badge badge-' + upBadge + '">' + (r.uptime_pct != null ? r.uptime_pct + '%' : '—') + '</span></td>' +
           '<td class="num">' + FMT.format(r.tickets_total || 0) + '</td>' +
-          '<td class="num"><span class="badge badge-' + ticketBadge + '">' + FMT.format(r.open_tickets || 0) + '</span></td>' +
           '<td class="num">' + FMT.format(r.swapped || 0) + '</td>' +
-          '<td class="num">' + (r.mtbf_hrs == null ? '—' : FMT.format(Math.round(r.mtbf_hrs / 24)) + 'd') + '</td>' +
           '<td class="num">' + FMT.format(r.failures || 0) + '</td>' +
+          '<td class="num">' + (r.mtbf_hrs == null ? '—' : FMT.format(Math.round(r.mtbf_hrs / 24)) + 'd') + '</td>' +
+          '<td class="num"><span class="badge badge-' + ticketBadge + '">' + FMT.format(r.open_tickets || 0) + '</span></td>' +
           '</tr>';
       }).join('');
       Array.prototype.forEach.call($('centerTable').querySelectorAll('tr.is-clickable'), function (tr) {
@@ -3835,7 +3835,7 @@
     hubs: { name: 'Hubs', formula: 'COUNT(DISTINCT HubID) from center_details.', source: 'center_details.' },
     geo: { name: 'Geographic spread', formula: 'Centers / devices grouped by state (or city).', source: 'center_details.state / city.' },
     deployStatus: { name: 'Deployment / lifecycle status', formula: 'Centers (or assets) grouped by status — active vs ended / lifecycle stage.', source: 'center_details.Status / jira_data.status_name.' },
-    center360: { name: 'Customer 360', formula: 'One row per customer (center): devices (cloud_devices + jira_data), lifecycle (today − deploymentdate), downtime (merged technical-ticket hours), uptime %, MTBF (uptime hours ÷ failures, days), failure count, tickets (total + open) — joined in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data ⋈ jira_data asset index (hash-joined).' },
+    center360: { name: 'Customer 360', formula: 'One row per customer (center): devices (cloud_devices + jira_data), lifecycle (today − deploymentdate), downtime (merged technical-ticket hours), uptime %, MTBF (uptime hours ÷ failures, days), technical ticket count, tickets (total + open) — joined in Apps Script.', source: 'center_details ⋈ cloud_devices ⋈ zoho_data ⋈ jira_data asset index (hash-joined).' },
     // Customers-page wordings. customersCount sits ALONGSIDE centersCount (not a
     // rename) so the Overview / Map / Top-Customers tiles that still say
     // "Centers" keep their own text; openTicketCustomers replaced the old

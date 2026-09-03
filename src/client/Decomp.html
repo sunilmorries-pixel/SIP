@@ -13,9 +13,7 @@
    scale to break.
 
    A rail ranks every level-1 item at full label length, and a panel
-   draws the selected one at full width. Each level-2 bar carries a
-   dotted marker at that member's share of the OVERALL mix, so "this
-   parent runs heavy on X" is readable without a second chart.
+   draws the selected one at full width.
 
    Colour is by ROLE and by CATEGORY KIND, never by magnitude. An
    ordinal level 2 (age bands) gets a sequential ramp that brightens
@@ -79,12 +77,7 @@ var Decomp = (function () {
       order = Object.keys(seen).sort(function (a, b) { return seen[b] - seen[a]; });
     }
 
-    var aggTotal = Object.keys(seen).reduce(function (t2, n) { return t2 + seen[n]; }, 0);
-    var overall = {};
-    Object.keys(seen).forEach(function (n) { overall[n] = aggTotal ? seen[n] / aggTotal : 0; });
-
-    return { rows: rows, total: total, order: order, overall: overall,
-             max: rows[0].value, lv: lv };
+    return { rows: rows, total: total, order: order, max: rows[0].value, lv: lv };
   }
 
   function colorFor(m, name) {
@@ -216,34 +209,19 @@ var Decomp = (function () {
 
   function tipAttr(d) { return ' data-dctip="' + esc(JSON.stringify(d)) + '"'; }
 
-  /** A level-2 member, read against its parent, the card, and the
-      overall level-2 mix all at once. */
+  /** A level-2 member, read against its parent and the card as a whole. */
   function childTip(m, parent, k, isGap) {
     var share = k.value / parent.value;
-    var ghost = isGap ? null : (m.overall[k.name] || 0);
-    var stats = [['Share of ' + parent.name, pctTxt(k.value, parent.value)]];
-    var allTxt = pctTxt(k.value, m.total);
-    if (ghost != null) {
-      var gTxt = (Math.round(ghost * 1000) / 10).toFixed(1) + '%';
-      // A member living under a single parent has share-of-everything ==
-      // overall mix; printing both would put one number on two lines.
-      if (gTxt !== allTxt) stats.push(['Share of all ' + unitOf(m), allTxt]);
-      var dd = Math.round((share - ghost) * 1000) / 10;
-      stats.push(['Overall mix', gTxt]);
-      stats.push(['Difference',
-        Math.abs(dd) < 0.05 ? 'in line' : (dd > 0 ? '+' : '') + dd.toFixed(1) + ' pts',
-        Math.abs(dd) < 0.05 ? '' : (dd > 0 ? 'up' : 'dn')]);
-    } else {
-      stats.push(['Share of all ' + unitOf(m), allTxt]);
-    }
+    var stats = [
+      ['Share of ' + parent.name, pctTxt(k.value, parent.value)],
+      ['Share of all ' + unitOf(m), pctTxt(k.value, m.total)]
+    ];
     return {
       k: parent.name + ' | ' + m.lv.l2, n: isGap ? gapLabel(m) : k.name,
       c: isGap ? null : colorFor(m, k.name), v: fmt(k.value), u: unitOf(m),
-      b: { p: share * 100, c: isGap ? '#8FA9C4' : colorFor(m, k.name),
-           g: ghost != null ? ghost * 100 : null },
+      b: { p: share * 100, c: isGap ? '#8FA9C4' : colorFor(m, k.name) },
       s: stats,
-      note: isGap ? 'These have no ' + m.lv.l2.toLowerCase() + ' recorded, so none could be derived.'
-                  : (ghost != null ? 'Dotted marker on the bar is the overall mix.' : '')
+      note: isGap ? 'These have no ' + m.lv.l2.toLowerCase() + ' recorded, so none could be derived.' : ''
     };
   }
 
@@ -302,19 +280,13 @@ var Decomp = (function () {
       var kmax = r.kids.reduce(function (a, k) { return Math.max(a, k.value); }, r.gap || 0) || 1;
       body += '<div class="dc-bars">';
       r.kids.forEach(function (k) {
-        var ghost = m.overall[k.name] || 0;
-        var dd = Math.round((k.value / r.value - ghost) * 1000) / 10;
-        var cls = Math.abs(dd) < 0.5 ? '' : (dd > 0 ? 'up' : 'dn');
         body += '<div class="dc-bar-row"' + tipAttr(childTip(m, r, k, false)) + '>' +
           '<div class="dc-bar-name">' + esc(k.name) + '</div>' +
           '<div class="dc-bar-track">' +
             '<div class="dc-bar-fill" style="width:' + (k.value / kmax * 100) +
               '%;background:' + colorFor(m, k.name) + '"></div>' +
-            '<div class="dc-bar-ghost" style="width:' + (ghost * r.value / kmax * 100) + '%"></div>' +
           '</div>' +
-          '<div class="dc-bar-val">' + fmt(k.value) + '</div>' +
-          '<div class="dc-bar-delta ' + cls + '">' +
-            (Math.abs(dd) < 0.5 ? '—' : (dd > 0 ? '+' : '') + dd + ' pts') + '</div></div>';
+          '<div class="dc-bar-val">' + fmt(k.value) + '</div></div>';
       });
       if (r.gap) {
         body += '<div class="dc-bar-row is-gap"' +
@@ -322,11 +294,9 @@ var Decomp = (function () {
           '<div class="dc-bar-name">' + esc(gapLabel(m)) + '</div>' +
           '<div class="dc-bar-track"><div class="dc-bar-fill" style="width:' +
             (r.gap / kmax * 100) + '%"></div></div>' +
-          '<div class="dc-bar-val">' + fmt(r.gap) + '</div>' +
-          '<div class="dc-bar-delta">—</div></div>';
+          '<div class="dc-bar-val">' + fmt(r.gap) + '</div></div>';
       }
-      body += '</div><div class="dc-foot">Dotted marker is this ' +
-        esc(m.lv.l2.toLowerCase()) + '’s share of the overall mix — the points column is the gap.</div></div>';
+      body += '</div></div>';
     }
 
     el.innerHTML = '<div class="dc-focus">' + rail + body + '</div>';

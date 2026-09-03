@@ -526,6 +526,77 @@
     <div id="supportKpiGrid" class="kpi-grid kpi-grid-4"></div>
 
     <div class="card-grid">
+      <!-- Top slot: the headline monthly efficiency read (same-cohort
+           completion, not the mixed-cohort created/closed counts below) gets
+           first billing, right after the KPIs. SLA cards moved to the bottom
+           of this page (per user, 2026-09-03) — they're now the deep-dive
+           tail rather than the opening story. -->
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Same-month resolution</h2>
+          <p class="card-sub">Tickets opened vs. also closed within that same month · completion % · last 12 months</p>
+        </header>
+        <div id="chartZohoMonthlyCompletion" class="chart chart-tall" role="img"
+             aria-label="Combo chart of tickets opened versus closed in the same month, with completion percentage"></div>
+      </article>
+
+      <!-- Trend takes the full row rather than sharing span-8/span-4 with Top
+           issue categories: a 12-month created-vs-closed line reads better
+           wide, and categories reads better grouped with its two
+           backlog-composition peers below than squeezed beside the trend. -->
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Ticket flow</h2>
+          <p class="card-sub">Zoho tickets created vs closed, last 12 months</p>
+        </header>
+        <div id="chartZohoTrend" class="chart chart-tall" role="img"
+             aria-label="Line chart of tickets created versus closed per month"></div>
+      </article>
+
+      <!-- Three peer cuts of the current open backlog — what it's about,
+           where it sits, how long it's been waiting — as one even span-4 row
+           (was an uneven 4/6/6 split) matching the peer-row convention used
+           on Asset/CDM. -->
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Top issue categories</h2>
+          <p class="card-sub">Last 90 days</p>
+        </header>
+        <div id="chartZohoCategories" class="chart chart-tall" role="img"
+             aria-label="Horizontal bar chart of most frequent issue categories"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Active backlog</h2>
+          <p class="card-sub">Current open backlog by status · all-time</p>
+        </header>
+        <div id="chartZohoStatus" class="chart chart-tall" role="img"
+             aria-label="Bar chart of open tickets by status"></div>
+      </article>
+
+      <article class="card span-4">
+        <header class="card-head">
+          <h2 class="card-title">Open ticket age</h2>
+          <p class="card-sub">How long currently-open tickets have been waiting</p>
+        </header>
+        <div id="chartZohoOpenAge" class="chart chart-tall" role="img"
+             aria-label="Bar chart of open tickets by age band"></div>
+      </article>
+
+      <article class="card span-12">
+        <header class="card-head">
+          <h2 class="card-title">Tickets by customer segment</h2>
+          <p class="card-sub">Hub master segment · last 90 days</p>
+        </header>
+        <div id="chartZohoSegment" class="chart" role="img"
+             aria-label="Horizontal bar chart of tickets by customer segment"></div>
+      </article>
+
+      <!-- SLA deep-dive tail (per user, 2026-09-03): compliance/breach/risk
+           moved down here from the top of the page — the monthly volume and
+           completion story above now leads, this is where you come to chase
+           specific breaches. -->
       <article class="card span-5">
         <header class="card-head">
           <h2 class="card-title">SLA compliance</h2>
@@ -604,51 +675,6 @@
             </button>
           </div>
         </div>
-      </article>
-
-      <article class="card span-8">
-        <header class="card-head">
-          <h2 class="card-title">Ticket flow</h2>
-          <p class="card-sub">Zoho tickets created vs closed, last 12 months</p>
-        </header>
-        <div id="chartZohoTrend" class="chart chart-tall" role="img"
-             aria-label="Line chart of tickets created versus closed per month"></div>
-      </article>
-
-      <article class="card span-4">
-        <header class="card-head">
-          <h2 class="card-title">Top issue categories</h2>
-          <p class="card-sub">Last 90 days</p>
-        </header>
-        <div id="chartZohoCategories" class="chart" role="img"
-             aria-label="Horizontal bar chart of most frequent issue categories"></div>
-      </article>
-
-      <article class="card span-6">
-        <header class="card-head">
-          <h2 class="card-title">Active backlog</h2>
-          <p class="card-sub">Current open backlog by status · all-time</p>
-        </header>
-        <div id="chartZohoStatus" class="chart chart-tall" role="img"
-             aria-label="Bar chart of open tickets by status"></div>
-      </article>
-
-      <article class="card span-6">
-        <header class="card-head">
-          <h2 class="card-title">Open ticket age</h2>
-          <p class="card-sub">How long currently-open tickets have been waiting</p>
-        </header>
-        <div id="chartZohoOpenAge" class="chart chart-tall" role="img"
-             aria-label="Bar chart of open tickets by age band"></div>
-      </article>
-
-      <article class="card span-12">
-        <header class="card-head">
-          <h2 class="card-title">Tickets by customer segment</h2>
-          <p class="card-sub">Hub master segment · last 90 days</p>
-        </header>
-        <div id="chartZohoSegment" class="chart" role="img"
-             aria-label="Horizontal bar chart of tickets by customer segment"></div>
       </article>
 
     </div>

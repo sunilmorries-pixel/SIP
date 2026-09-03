@@ -711,7 +711,9 @@ function apiGetDashboardCD(options) {
     // specs (device-status donut, firmware chart, device explorer all removed;
     // cloud_devices data is CDM/Numbers/Raw-Data only now).
     // v18: billable/machineTypes/deviceIds/macSerialIds filters added.
-    var cacheKey = 'dashcd_v19_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub); // v19: unmapped Jira assets no longer excluded by a center-attribute filter
+    // v19: unmapped Jira assets no longer excluded by a center-attribute filter.
+    // v20: Support page — added zohoMonthlyCompletion (same-month resolution rate).
+    var cacheKey = 'dashcd_v20_' + getCacheEpoch_() + '_' + filterHash_(filters) + '_' + shortHash(hub);
     if (options.bypassCache !== true) {
       var cached = cacheGetLarge(cacheKey);
       if (cached) return cached;

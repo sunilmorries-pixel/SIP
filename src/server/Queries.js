@@ -560,6 +560,24 @@ function buildDashboardQuerySpecs(hub, filters) {
         ") GROUP BY month ORDER BY month"
     },
     {
+      // Same-MONTH resolution: of the tickets OPENED in a given month, what
+      // share were ALSO closed within that same month. A same-cohort
+      // completion rate — different question from zohoTrend above, whose
+      // created/closed counts mix cohorts (a ticket counted as "closed" in
+      // March may have opened in January). completion_pct divides by opened,
+      // NULLIF-guarded against a zero-ticket month.
+      key: 'zohoMonthlyCompletion',
+      params: p,
+      sql:
+        "WITH t AS (SELECT " + zohoParsedDates_() + " FROM " + zohoDedupSql_() + " WHERE " + HUB_FILTER_SQL + centerCond + supportDateCond +
+        " AND CreatedAt >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 12 MONTH)) " +
+        "SELECT FORMAT_DATETIME('%Y-%m', created) AS month, " +
+        " COUNT(*) AS opened, " +
+        " COUNTIF(closed IS NOT NULL AND FORMAT_DATETIME('%Y-%m', closed) = FORMAT_DATETIME('%Y-%m', created)) AS closed_same_month, " +
+        " ROUND(COUNTIF(closed IS NOT NULL AND FORMAT_DATETIME('%Y-%m', closed) = FORMAT_DATETIME('%Y-%m', created)) / NULLIF(COUNT(*), 0) * 100, 1) AS completion_pct " +
+        "FROM t GROUP BY month ORDER BY month"
+    },
+    {
       key: 'zohoOpenByStatus',
       params: p,
       sql:

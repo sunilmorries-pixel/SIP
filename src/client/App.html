@@ -852,6 +852,12 @@
         { category: 'Scheduled Servicing Request', sla_days: 5, is_tech: false, tickets: 713, resolved_n: 693, breach_pct: 71.9, avg_res_days: 72.3 }
       ],
       zohoTrend: months.map(function (mo) { return { month: mo, created: rnd(800, 2400), closed: rnd(800, 2400) }; }),
+      zohoMonthlyCompletion: months.map(function (mo) {
+        var opened = rnd(800, 2400);
+        var closedSameMonth = rnd(Math.round(opened * 0.35), Math.round(opened * 0.75));
+        return { month: mo, opened: opened, closed_same_month: closedSameMonth,
+          completion_pct: Math.round((closedSameMonth / opened) * 1000) / 10 };
+      }),
       zohoOpenByStatus: ['Open', 'Pending on Logistics Team', 'Pending on Customer Success Team', 'In Progress', 'On Hold'].map(function (s) { return { status: s, cnt: rnd(10, 210) }; }),
       zohoCategories: ['Prepaid Recharge Request', 'Billing Query', 'Report Related Query', 'Network Issue', 'Lead Cable Issue'].map(function (c) { return { category: c, cnt: rnd(60, 800) }; }),
       zohoOpenAge: [{ band: 'Same day', cnt: 38 }, { band: '1-2d', cnt: 52 }, { band: '3-7d', cnt: 61 }, { band: '8-30d', cnt: 40 }, { band: '30d+', cnt: 20 }],
@@ -1094,7 +1100,7 @@
   /* ── dashboard load ──────────────────────────────────────────── */
   var CHART_IDS = ['chartDeviceAges',
     'chartAssetStatus', 'chartAssetTypes', 'chartGeo', 'chartDeploymentAge', 'chartActiveEnded',
-    'chartZohoTrend', 'chartZohoStatus', 'chartZohoCategories',
+    'chartZohoMonthlyCompletion', 'chartZohoTrend', 'chartZohoStatus', 'chartZohoCategories',
     'chartZohoOpenAge', 'chartZohoSegment', 'chartCohort'];
 
   var dashboardRequestId = 0;
@@ -1228,6 +1234,7 @@
     Charts.activeVsEnded(data.activeVsEnded);
 
     /* Support charts (all Zoho tickets) */
+    Charts.zohoMonthlyCompletion(data.zohoMonthlyCompletion);
     Charts.zohoTrend(data.zohoTrend);
     Charts.zohoStatus(data.zohoOpenByStatus);
     Charts.zohoCategories(data.zohoCategories);

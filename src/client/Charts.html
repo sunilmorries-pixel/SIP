@@ -507,6 +507,56 @@ var Charts = (function () {
     }));
   }
 
+  /**
+   * Same-month resolution: for each month, tickets OPENED vs the subset of
+   * those ALSO closed within that same month, plus the completion % that
+   * subset implies (right axis). A same-cohort read — different from
+   * zohoTrend above, whose created/closed lines mix cohorts across months.
+   */
+  function zohoMonthlyCompletion(rows) {
+    if (!rows || !rows.length) return showEmpty('chartZohoMonthlyCompletion');
+    var byMonth = {};
+    rows.forEach(function (r) { byMonth[r.month] = r; });
+    render('chartZohoMonthlyCompletion', base({
+      tooltip: {
+        trigger: 'axis', axisPointer: { type: 'shadow' },
+        formatter: function (ps) {
+          if (!ps || !ps.length) return '';
+          var r = byMonth[ps[0].axisValue] || {};
+          return '<strong>' + ps[0].axisValue + '</strong>' +
+            '<br>Opened: <strong>' + FMT.format(r.opened || 0) + '</strong>' +
+            '<br>Closed same month: <strong>' + FMT.format(r.closed_same_month || 0) + '</strong>' +
+            '<br>Completion: <strong>' + (r.completion_pct == null ? '—' : r.completion_pct + '%') + '</strong>';
+        }
+      },
+      legend: { top: 0, textStyle: { color: C.text, fontSize: 12 }, icon: 'circle', itemWidth: 9, itemHeight: 9 },
+      grid: { left: 8, right: 8, top: 36, bottom: 8, containLabel: true },
+      xAxis: catAxis({ data: rows.map(function (r) { return r.month; }) }),
+      yAxis: [
+        valAxis({ name: 'tickets' }),
+        valAxis({ name: 'completion %', min: 0, max: 100, splitLine: { show: false },
+          axisLabel: { color: C.textDim, fontSize: 11, formatter: '{value}%' } })
+      ],
+      series: [
+        {
+          name: 'Opened', type: 'bar', barMaxWidth: 20,
+          itemStyle: { borderRadius: [4, 4, 0, 0], color: C.primary },
+          data: rows.map(function (r) { return r.opened; })
+        },
+        {
+          name: 'Closed same month', type: 'bar', barMaxWidth: 20,
+          itemStyle: { borderRadius: [4, 4, 0, 0], color: C.ok },
+          data: rows.map(function (r) { return r.closed_same_month; })
+        },
+        {
+          name: 'Completion %', type: 'line', yAxisIndex: 1, smooth: true, symbolSize: 6,
+          lineStyle: { width: 2.5, color: C.teal }, itemStyle: { color: C.teal },
+          data: rows.map(function (r) { return r.completion_pct; })
+        }
+      ]
+    }));
+  }
+
   function zohoStatus(rows) {
     if (!rows || !rows.length) return showEmpty('chartZohoStatus');
     render('chartZohoStatus', base({
@@ -1976,6 +2026,7 @@ var Charts = (function () {
     assetStatus: assetStatus,
     assetTypes: assetTypes,
     zohoTrend: zohoTrend,
+    zohoMonthlyCompletion: zohoMonthlyCompletion,
     zohoStatus: zohoStatus,
     zohoCategories: zohoCategories,
     zohoOpenAge: zohoOpenAge,

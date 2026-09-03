@@ -1998,7 +1998,6 @@
     { key: 'hub_id', label: 'Hub ID', sortable: false, num: true },
     { key: 'city', label: 'City', sortable: false },
     { key: 'state', label: 'State', sortable: true },
-    { key: 'jira_devices', label: 'Jira devices', sortable: true, num: true },
     { key: 'lifecycle_years', label: 'Lifecycle', sortable: true, num: true },
     { key: 'downtime_days', label: 'Downtime', sortable: true, num: true },
     { key: 'uptime_pct', label: 'Uptime', sortable: true, num: true },
@@ -2068,7 +2067,6 @@
           '<td class="num">' + escapeHtml(r.hub_id != null ? r.hub_id : '—') + '</td>' +
           '<td>' + escapeHtml(r.city || '—') + '</td>' +
           '<td>' + escapeHtml(r.state || '—') + '</td>' +
-          '<td class="num">' + FMT.format(r.jira_devices || 0) + '</td>' +
           '<td class="num">' + (r.lifecycle_years != null ? r.lifecycle_years + 'y' : '—') + '</td>' +
           '<td class="num">' + (r.downtime_days != null ? r.downtime_days + 'd' : '—') + '</td>' +
           '<td class="num"><span class="badge badge-' + upBadge + '">' + (r.uptime_pct != null ? r.uptime_pct + '%' : '—') + '</span></td>' +

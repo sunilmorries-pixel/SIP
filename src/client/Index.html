@@ -527,23 +527,12 @@
 
   <!-- ══════════════ VIEW 3 · SUPPORT ══════════════ -->
   <section id="panel-support" class="panel" role="tabpanel" aria-labelledby="tab-support" hidden>
-    <div id="supportKpiGrid" class="kpi-grid kpi-grid-4"></div>
+    <!-- 5th tile (2026-09-04): same-month resolution collapsed from a
+         12-month trend chart into a single current-month KPI, per user —
+         "give me only the resolution percentage ... as a KPI". -->
+    <div id="supportKpiGrid" class="kpi-grid kpi-grid-5"></div>
 
     <div class="card-grid">
-      <!-- Top slot: the headline monthly efficiency read (same-cohort
-           completion, not the mixed-cohort created/closed counts below) gets
-           first billing, right after the KPIs. SLA cards moved to the bottom
-           of this page (per user, 2026-09-03) — they're now the deep-dive
-           tail rather than the opening story. -->
-      <article class="card span-12">
-        <header class="card-head">
-          <h2 class="card-title">Same-month resolution</h2>
-          <p class="card-sub">Tickets opened vs. also closed within that same month · completion % · last 12 months</p>
-        </header>
-        <div id="chartZohoMonthlyCompletion" class="chart chart-tall" role="img"
-             aria-label="Combo chart of tickets opened versus closed in the same month, with completion percentage"></div>
-      </article>
-
       <!-- Trend takes the full row rather than sharing span-8/span-4 with Top
            issue categories: a 12-month created-vs-closed line reads better
            wide, and categories reads better grouped with its two

@@ -857,12 +857,12 @@
         { category: 'Scheduled Servicing Request', sla_days: 5, is_tech: false, tickets: 713, resolved_n: 693, breach_pct: 71.9, avg_res_days: 72.3 }
       ],
       zohoTrend: months.map(function (mo) { return { month: mo, created: rnd(800, 2400), closed: rnd(800, 2400) }; }),
-      zohoMonthlyCompletion: months.map(function (mo) {
+      zohoMonthlyCompletion: (function () {
         var opened = rnd(800, 2400);
         var closedSameMonth = rnd(Math.round(opened * 0.35), Math.round(opened * 0.75));
-        return { month: mo, opened: opened, closed_same_month: closedSameMonth,
-          completion_pct: Math.round((closedSameMonth / opened) * 1000) / 10 };
-      }),
+        return [{ opened: opened, closed_same_month: closedSameMonth,
+          completion_pct: Math.round((closedSameMonth / opened) * 1000) / 10 }];
+      })(),
       zohoOpenByStatus: ['Open', 'Pending on Logistics Team', 'Pending on Customer Success Team', 'In Progress', 'On Hold'].map(function (s) { return { status: s, cnt: rnd(10, 210) }; }),
       zohoCategories: ['Prepaid Recharge Request', 'Billing Query', 'Report Related Query', 'Network Issue', 'Lead Cable Issue'].map(function (c) { return { category: c, cnt: rnd(60, 800) }; }),
       zohoOpenAge: [{ band: 'Same day', cnt: 38 }, { band: '1-2d', cnt: 52 }, { band: '3-7d', cnt: 61 }, { band: '8-30d', cnt: 40 }, { band: '30d+', cnt: 20 }],
@@ -996,7 +996,8 @@
       kpiTile('kpiZOpen', 'inbox', 'var(--accent)', 'Open tickets', 'active backlog') +
       kpiTile('kpiZIn', 'ticket', 'var(--info)', 'Created · 7d', 'new this week') +
       kpiTile('kpiZOut', 'online', 'var(--ok)', 'Closed · 7d', 'resolved this week') +
-      kpiTile('kpiZAge', 'clock', 'var(--violet)', 'Avg open age', 'days per open ticket');
+      kpiTile('kpiZAge', 'clock', 'var(--violet)', 'Avg open age', 'days per open ticket') +
+      kpiTile('kpiZResolution', 'health', 'var(--ok)', 'Same-month resolution', 'opened & closed this month');
     $('serviceKpiGrid').innerHTML =
       kpiTile('kpiSvcOpen', 'inbox', 'var(--accent)', 'Open tickets', 'active field backlog') +
       kpiTile('kpiSvcTat', 'clock', 'var(--info)', 'Median TAT', 'days to close') +
@@ -1111,7 +1112,7 @@
   /* ── dashboard load ──────────────────────────────────────────── */
   var CHART_IDS = ['chartDeviceAges',
     'chartAssetStatus', 'chartAssetTypes', 'chartGeo', 'chartDeploymentAge', 'chartActiveEnded',
-    'chartZohoMonthlyCompletion', 'chartZohoTrend', 'chartZohoStatus', 'chartZohoCategories',
+    'chartZohoTrend', 'chartZohoStatus', 'chartZohoCategories',
     'chartZohoOpenAge', 'chartZohoSegment', 'chartCohort'];
 
   var dashboardRequestId = 0;
@@ -1241,6 +1242,14 @@
     setKpi('kpiZOut', zoho.closed_7d, null,
       deltaChip(zoho.closed_7d, zoho.closed_7d_prev));
     setKpi('kpiZAge', zoho.avg_open_age_days, 'days per open ticket');
+    // Same-month resolution: of tickets OPENED this calendar month, what
+    // share were ALSO closed this month — a same-cohort completion rate
+    // (was a 12-month trend chart; per user, 2026-09-04, now a single
+    // current-month KPI, see zohoMonthlyCompletion's SQL in Queries.js).
+    var monthly = (data.zohoMonthlyCompletion && data.zohoMonthlyCompletion[0]) || {};
+    setKpiText('kpiZResolution',
+      monthly.completion_pct != null ? monthly.completion_pct + '%' : '—',
+      monthly.opened != null ? FMT.format(monthly.closed_same_month || 0) + ' of ' + FMT.format(monthly.opened) + ' opened' : 'opened & closed this month');
 
     // Service KPIs: awaiting its own data source (2026-08-12), no longer
     // wired to Zoho like Support — setKpiText's null→'—' fallback clears the
@@ -1265,7 +1274,6 @@
     Charts.activeVsEnded(data.activeVsEnded);
 
     /* Support charts (all Zoho tickets) */
-    Charts.zohoMonthlyCompletion(data.zohoMonthlyCompletion);
     Charts.zohoTrend(data.zohoTrend);
     Charts.zohoStatus(data.zohoOpenByStatus);
     Charts.zohoCategories(data.zohoCategories);
@@ -3865,6 +3873,7 @@
     closed7d: { name: 'Closed · 7d', formula: 'Tickets closed in the last 7 days.', source: 'zoho_data.ClosedAt.' },
     openAge: { name: 'Avg open age', formula: 'Average age in days of currently-open tickets — now − CreatedAt, computed in SQL.', source: 'zoho_data (now − CreatedAt).' },
     openTickets: { name: 'Open tickets', formula: 'Tickets not in a terminal status (Closed / Duplicate / Junk).', source: 'zoho_data.' },
+    sameMonthResolution: { name: 'Same-month resolution', formula: 'Of the tickets opened so far THIS calendar month, the share also closed within this same month (closed_same_month ÷ opened). A same-cohort completion rate, not the mixed-cohort created/closed counts in Ticket flow.', source: 'zoho_data (CreatedAt/ClosedAt, current month only).' },
     ticketsCount: { name: 'Ticket count', formula: 'All tickets ever recorded (COUNT).', source: 'zoho_data.' },
     // The Overview card's own entry. Kept separate from ticketsCount above
     // (which is Zoho-only and correct for the Numbers page's "Tickets" card):
@@ -3983,6 +3992,7 @@
     kpiDevMtbf: 'deviceMtbf', kpiDevMttr: 'deviceMttr',
     kpiStates: 'openTicketCustomers', kpiMtbf: 'mtbf',
     kpiZIn: 'created7d', kpiZOut: 'closed7d', kpiZAge: 'openAge',
+    kpiZResolution: 'sameMonthResolution',
     kpiSvcIn: 'created7d', kpiSvcOut: 'closed7d', kpiSvcAge: 'openAge'
   };
 

@@ -838,8 +838,8 @@ function buildCenterSourceSpecs() {
         // pattern as every other age_days in this file) of the OLDEST
         // currently-open ticket at this center; NULL when there are none —
         // added for the Top Customers leaderboard's "oldest open ticket"
-        // column (per user, 2026-08-25), bucketed client-side into the same
-        // Same day/1-2d/3-7d/8-30d/30d+ bands as zohoOpenAgeBandSql_.
+        // column (per user, 2026-08-25), shown client-side as an exact day
+        // count (Math.floor), not a band (was bucketed until 2026-09-04).
         "SELECT CenterID AS center_id, COUNT(*) AS tickets_total, " +
         " COUNTIF(status NOT IN " + CONFIG.ZOHO_TERMINAL_STATUSES + ") AS open_tickets, " +
         " COUNTIF(LOWER(IFNULL(IssueCategory, '')) LIKE '%swap%') AS swapped, " +

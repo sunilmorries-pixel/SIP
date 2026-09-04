@@ -1363,23 +1363,6 @@ function apiGetCdmDataCD(options) {
 }
 
 /**
- * Buckets a max-open-ticket-age (days, -1 sentinel for "no open ticket") into
- * the same Same day/1-2d/3-7d/8-30d/30d+ bands as zohoOpenAgeBandSql_, so the
- * Top Customers leaderboard and the Support page describe ticket age with the
- * same vocabulary. Null for the -1 sentinel (nothing to bucket).
- * @param {number} days
- * @return {?string}
- */
-function openAgeBucket_(days) {
-  if (days == null || days < 0) return null;
-  if (days < 1) return 'Same day';
-  if (days < 3) return '1-2d';
-  if (days < 8) return '3-7d';
-  if (days <= 30) return '8-30d';
-  return '30d+';
-}
-
-/**
  * Resolves which curated TOP_CUSTOMERS group (if any) a center row belongs
  * to. A center-level claim (centerToGroup) always wins over a hub-level one
  * (hubToGroup) — added 2026-09-04 for Matcare, whose 4 spoke centers sit
@@ -1456,7 +1439,6 @@ function computeTopCustomersCD_(filters) {
 
   var customers = Object.keys(agg).map(function (k) { return agg[k]; })
     .sort(function (x, y) { return y.centers - x.centers; });
-  customers.forEach(function (c) { c.openAgeBucket = openAgeBucket_(c.maxOpenAgeDays); });
 
   var totals = { customers: customers.length, centers: 0,
     open_tickets: 0, withData: 0 };

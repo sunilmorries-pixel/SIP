@@ -717,11 +717,9 @@
       names.forEach(function (nm, i) {
         var centers = rnd(10, 160), open_t = rnd(0, 6), swapped = rnd(0, 20);
         var maxAge = open_t > 0 ? rnd(0, 45) : -1;
-        var bucket = maxAge < 0 ? null : maxAge < 1 ? 'Same day' : maxAge < 3 ? '1-2d' :
-          maxAge < 8 ? '3-7d' : maxAge <= 30 ? '8-30d' : '30d+';
         custs.push({ hub_ids: [1000 + i], hub: nm, tier: 'Top LE', centers: centers,
           open_tickets: open_t, located: rnd(1, centers), swapped: swapped,
-          maxOpenAgeDays: maxAge, openAgeBucket: bucket });
+          maxOpenAgeDays: maxAge });
         totals.centers += centers;
         totals.open_tickets += open_t;
         // mapCenters index 5 (online) is always 0 — cloud_devices data was
@@ -3421,11 +3419,9 @@
     // Same '%swap%' IssueCategory match as the Centers page's own Swapped
     // column (Queries.js centerTickets) — per user, 2026-08-25.
     { key: 'swapped', label: 'Swapped', sortable: true, num: true },
-    // Displays c.openAgeBucket (a band label) but SORTS on c.maxOpenAgeDays
-    // (the underlying day count) — sorting the band string alphabetically
-    // would not be chronological ("1-2d" < "30d+" < "3-7d"). Per user,
-    // 2026-08-25: bucket of the customer's OLDEST currently-open ticket,
-    // same 5 bands as the Support page's Open ticket age chart.
+    // Age (days) of the customer's OLDEST currently-open ticket. Was a
+    // band label (Same day/1-2d/3-7d/8-30d/30d+, per user 2026-08-25);
+    // per user 2026-09-04, shows the exact day count instead.
     { key: 'maxOpenAgeDays', label: 'Oldest open ticket', sortable: true }
   ];
   var tcSort = { key: 'centers', dir: 'desc' };
@@ -3475,7 +3471,7 @@
         '<td class="num">' + FMT.format(c.centers) + '</td>' +
         '<td class="num"><span class="badge badge-' + tb + '">' + FMT.format(c.open_tickets) + '</span></td>' +
         '<td class="num">' + FMT.format(c.swapped || 0) + '</td>' +
-        '<td>' + escapeHtml(c.openAgeBucket || '—') + '</td>' +
+        '<td>' + (c.maxOpenAgeDays != null && c.maxOpenAgeDays >= 0 ? Math.floor(c.maxOpenAgeDays) + 'd' : '—') + '</td>' +
         '</tr>';
     }).join('');
     Array.prototype.forEach.call($('tcTable').querySelectorAll('tr.is-clickable'), function (tr) {

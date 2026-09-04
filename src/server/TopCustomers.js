@@ -18,9 +18,22 @@
  * were NOT carried over: the export gave no HubIDs for them, and this page's
  * whole aggregation pipeline joins on HubID — there is nothing to attribute
  * their centers/devices/tickets to without one. Add them once HubIDs are
- * available. 'Indira IVF' is the one exception where the new export also had
- * no HubID: kept its previously-known hub_id (36772) rather than dropping a
- * ranked, named account for an incomplete paste.
+ * available.
+ *
+ * A group can ALSO claim individual `center_ids` (added 2026-09-04) for a
+ * center that has no hub of its own — every entry below still uses hub_ids
+ * except Matcare (see its own comment). computeTopCustomersCD_ resolves a
+ * center-level claim over a hub-level one, so listing a center_id here always
+ * wins even if that center's real HubID also belongs to another group's list.
+ *
+ * 'Indira IVF' (2026-09-04): the team's export again had no HubID for this
+ * account, same gap as 2026-08-17. Rather than keep the old single
+ * previously-known hub_id (36772, Udaipur), queried center_details for every
+ * self-referencing hub (HubID = CenterID) named "Indira IVF" — 61 ACTIVE hubs,
+ * one per city, essentially nationwide (confirmed against the sandbox copy —
+ * this machine has no production BigQuery credential, so re-verify against
+ * tricogde-dwh if the count ever looks off). Includes 42923 ("Eves Hospital &
+ * Indira IVF", a co-branded facility) per user's explicit choice to include it.
  */
 
 var TOP_CUSTOMERS = [
@@ -29,7 +42,13 @@ var TOP_CUSTOMERS = [
   { group: 'Aarthi Scans', tier: 'Top LE', hub_ids: [1684, 10502, 17328, 40304] },
   { group: 'HEALTHIANS LABS', tier: 'Top LE', hub_ids: [50131] },
   { group: 'Chandan', tier: 'Top LE', hub_ids: [2848, 40947, 48772] },
-  { group: 'Indira IVF', tier: 'Top LE', hub_ids: [36772] },
+  { group: 'Indira IVF', tier: 'Top LE', hub_ids: [
+    36772, 36778, 41164, 41351, 41352, 41358, 41368, 41370, 41371, 41373, 41375, 41377,
+    41759, 41767, 41779, 41805, 41806, 41811, 41826, 41988, 41989, 41990, 42006, 42007,
+    42031, 42046, 42053, 42109, 42230, 42235, 42249, 42263, 42272, 42294, 42304, 42346,
+    42362, 42365, 42420, 42457, 42459, 42532, 42535, 42556, 42700, 42778, 42923, 43172,
+    43242, 47449, 49195, 50531, 50540, 50618, 50620, 51328, 52268, 52273, 52280, 52438, 52581
+  ] },
   { group: 'Manipal', tier: 'Top LE', hub_ids: [3027, 3499, 42717, 47153, 48199, 51265, 51643, 54533, 55775] },
   { group: 'Fortis', tier: 'Top LE', hub_ids: [1282, 2710, 14949, 41195, 41880] },
   { group: 'Apollo', tier: 'Top LE', hub_ids: [2667, 3102, 3253, 3959, 4008, 4192, 31154, 42251, 52230, 52705] },
@@ -44,7 +63,14 @@ var TOP_CUSTOMERS = [
   { group: 'Sri Chandra Sekara Hospital, Hosur', tier: 'Top LE', hub_ids: [995] },
   { group: 'Anderson Diagnostics', tier: 'Top LE', hub_ids: [41419] },
   { group: 'Suburban Diagnostics Pvt Ltd', tier: 'Top LE', hub_ids: [9572] },
-  { group: 'Matcare', tier: 'Top LE', hub_ids: [50590, 50722, 52270, 54300] },
+  // Matcare (2026-09-04): the export's 4 "hub" IDs are actually the 4 spoke
+  // CenterIDs of this account — confirmed every "Matcare"-named row in
+  // center_details is one of these 4, and all 4 have their real HubID set to
+  // 36772 (Indira IVF's hub). There is no independent Matcare hub to list, so
+  // these are claimed as center_ids instead — without this, these 4 centers
+  // silently counted toward Indira IVF (matching on hub_id=36772) and
+  // Matcare's own row always showed 0 centers (nothing has hub_id=50590 etc.).
+  { group: 'Matcare', tier: 'Top LE', hub_ids: [], center_ids: [50590, 50722, 52270, 54300] },
   { group: 'Jaslok', tier: 'Top LE', hub_ids: [48763] }
 ];
 

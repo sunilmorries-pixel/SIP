@@ -3185,7 +3185,13 @@
       focusTrap_.activate();
       $(ids.title).textContent = cust.hub;
       var hubIds = cust.hub_ids || [];
-      var hubLabel = hubIds.length === 1 ? 'Hub #' + hubIds[0] : hubIds.length + ' hubs';
+      var centerIds = cust.center_ids || [];
+      // A group with no hub_ids of its own (e.g. Matcare — claims specific
+      // spoke centers inside another group's hub) reads as a center count
+      // instead of "0 hubs", which would misleadingly read as empty.
+      var hubLabel = hubIds.length ?
+        (hubIds.length === 1 ? 'Hub #' + hubIds[0] : hubIds.length + ' hubs') :
+        (centerIds.length + ' center' + (centerIds.length === 1 ? '' : 's'));
       $(ids.sub).textContent = hubLabel + ' · ' + (cust.tier || 'customer');
       $(ids.body).scrollTop = 0;
       var html =
@@ -3336,7 +3342,8 @@
     if (!q) return all;
     return all.filter(function (c) {
       return String(c.hub || '').toLowerCase().indexOf(q) !== -1 ||
-        (c.hub_ids || []).some(function (id) { return String(id).indexOf(q) !== -1; });
+        (c.hub_ids || []).some(function (id) { return String(id).indexOf(q) !== -1; }) ||
+        (c.center_ids || []).some(function (id) { return String(id).indexOf(q) !== -1; });
     });
   }
 
@@ -3403,9 +3410,12 @@
     $('tcTable').querySelector('tbody').innerHTML = rows.map(function (c, i) {
       var tb = c.open_tickets > 3 ? 'danger' : (c.open_tickets > 0 ? 'warn' : 'ok');
       var hubIds = c.hub_ids || [];
+      // A group with no hubs of its own (Matcare) would otherwise hover as an
+      // empty tooltip — show its claimed center_ids instead.
+      var hubTitle = hubIds.length ? hubIds : (c.center_ids || []);
       return '<tr class="is-clickable" data-idx="' + i + '" tabindex="0" role="button" aria-label="Open ' + escapeHtml(c.hub) + '">' +
         '<td><strong>' + escapeHtml(c.hub) + '</strong> <span class="badge badge-info">' + escapeHtml(c.tier) + '</span></td>' +
-        '<td class="num" title="' + escapeHtml(hubIds.join(', ')) + '">' + FMT.format(hubIds.length) + '</td>' +
+        '<td class="num" title="' + escapeHtml(hubTitle.join(', ')) + '">' + FMT.format(hubIds.length) + '</td>' +
         '<td class="num">' + FMT.format(c.centers) + '</td>' +
         '<td class="num"><span class="badge badge-' + tb + '">' + FMT.format(c.open_tickets) + '</span></td>' +
         '<td class="num">' + FMT.format(c.swapped || 0) + '</td>' +
@@ -3416,8 +3426,9 @@
       var cust = rows[parseInt(tr.getAttribute('data-idx'), 10)];
       function go() {
         var hubIds = cust.hub_ids || [];
+        var centerIds = cust.center_ids || [];
         var centersOfHub = (state.topBundle && state.topBundle.mapCenters || [])
-          .filter(function (mc) { return hubIds.indexOf(mc[CI.hubId]) !== -1; });
+          .filter(function (mc) { return hubIds.indexOf(mc[CI.hubId]) !== -1 || centerIds.indexOf(mc[TCI.id]) !== -1; });
         CenterDetail.openCustomer(cust, centersOfHub);
       }
       tr.addEventListener('click', go);

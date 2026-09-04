@@ -1255,6 +1255,22 @@ function openAgeBucket_(days) {
 }
 
 /**
+ * Resolves which curated TOP_CUSTOMERS group (if any) a center row belongs
+ * to. A center-level claim (centerToGroup) always wins over a hub-level one
+ * (hubToGroup) — added 2026-09-04 for Matcare, whose 4 spoke centers sit
+ * inside Indira IVF's hub with no hub of their own: without this priority,
+ * matching purely on row.hub_id would attribute them to whichever group
+ * claims that hub instead.
+ * @param {{hub_id:*, center_id:*}} row
+ * @param {Object} hubToGroup hub_id -> group
+ * @param {Object} centerToGroup center_id -> group
+ * @return {Object|undefined}
+ */
+function topCustomerGroupFor_(row, hubToGroup, centerToGroup) {
+  return centerToGroup[row.center_id] || hubToGroup[row.hub_id];
+}
+
+/**
  * Top-customers rollup over the center_details center universe.
  *
  * Devices and assets were dropped from this page's aggregation (per user,
@@ -1268,25 +1284,31 @@ function openAgeBucket_(days) {
  * bucket were added in its place, both per user, 2026-08-25.
  */
 function computeTopCustomersCD_(filters) {
-  // hub_id -> owning group (a group can list several hub_ids).
-  var hubToGroup = {};
+  // hub_id -> owning group (a group can list several hub_ids), plus
+  // center_id -> owning group for a group that claims individual spoke
+  // centers instead of a whole hub (e.g. Matcare — see TOP_CUSTOMERS' own
+  // comment). A center-level claim always wins: topCustomerGroupFor_ checks
+  // centerToGroup before hubToGroup, so a center explicitly claimed by one
+  // group isn't silently swept into another group that owns its hub.
+  var hubToGroup = {}, centerToGroup = {};
   TOP_CUSTOMERS.forEach(function (c) {
     c.hub_ids.forEach(function (hid) { hubToGroup[hid] = c; });
+    (c.center_ids || []).forEach(function (cid) { centerToGroup[cid] = c; });
   });
 
   var centers = getCenter360RowsCD_().filter(function (row) { return centerPassesFilters_(row, filters || {}); });
   var geoStore = loadGeoStore();
 
-  // Aggregate by GROUP (summed across every hub_id it lists).
+  // Aggregate by GROUP (summed across every hub_id/center_id it lists).
   var agg = {};
   TOP_CUSTOMERS.forEach(function (c) {
-    agg[c.group] = { hub: c.group, hub_ids: c.hub_ids.slice(), tier: c.tier, centers: 0,
-      open_tickets: 0, located: 0, swapped: 0, maxOpenAgeDays: -1 };
+    agg[c.group] = { hub: c.group, hub_ids: c.hub_ids.slice(), center_ids: (c.center_ids || []).slice(),
+      tier: c.tier, centers: 0, open_tickets: 0, located: 0, swapped: 0, maxOpenAgeDays: -1 };
   });
 
   var mapCenters = [];
   centers.forEach(function (row) {
-    var grp = hubToGroup[row.hub_id];
+    var grp = topCustomerGroupFor_(row, hubToGroup, centerToGroup);
     if (!grp) return;
     var a = agg[grp.group];
     a.centers += 1;

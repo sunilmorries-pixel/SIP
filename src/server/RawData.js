@@ -19,6 +19,13 @@
  *     to a center requires the serial-parsing bridge in deviceCenterMap_
  *     (Numbers.js), which is JS-side over the whole table and not practical
  *     to fold into this page's simple per-source SQL WHERE.
+ *   - servicewrk (servicewrk_Tickets) / tom_tickets: reuse the Service/TOM
+ *     pages' OWN filter builders (swFilterCond_/tomFilterCond_ — see
+ *     ServiceWrk.js/TomTickets.js) rather than re-deriving equivalent SQL
+ *     here, so this page never silently disagrees with what those pages
+ *     already treat as each table's supported dimensions. Neither table
+ *     bridges to hub/status/deviceType — both files' own comments document
+ *     that join as unverified/partial, so it's deliberately not attempted.
  */
 
 var RAW_EXPORT_MAX_ROWS = 100000;
@@ -39,7 +46,9 @@ function rawSources_() {
     // unassigned tickets, not a cleaned-up view that would disagree with
     // Zoho's own export.
     zoho_data: { label: 'Zoho Tickets', kind: 'bq', table: 'zoho_data', orderBy: 'ticketNumber' },
-    jira_data: { label: 'Jira Devices', kind: 'bq', table: 'jira_data', orderBy: 'issue_key' }
+    jira_data: { label: 'Jira Devices', kind: 'bq', table: 'jira_data', orderBy: 'issue_key' },
+    servicewrk: { label: 'ServiceWRK', kind: 'bq', table: 'servicewrk_Tickets', orderBy: 'ticket_id' },
+    tom_tickets: { label: 'TOM', kind: 'bq', table: 'tom_tickets', orderBy: 'received_date' }
     // Removed as user-facing sources: device_metrics (no other app usage),
     // device_center_mapping (still read internally by Geo.js). No Sheet
     // sources remain — the CS tracker Sheet was removed 2026-07-29 and the
@@ -60,6 +69,9 @@ function rawFiltersFromOptions_(options) {
   return {
     segments: f.segments || [], statuses: f.statuses || [], states: f.states || [],
     hubs: f.hubs || [], cities: f.cities || [], countries: f.countries || [],
+    // centers: only consumed by tomFilterCond_ (TOM's own "Centre" dimension) —
+    // every other source here has no equivalent single-center filter.
+    centers: f.centers || [],
     deviceTypes: f.deviceTypes || [], deviceStatusExclude: f.deviceStatusExclude || [],
     dateFrom: String(f.dateFrom || ''), dateTo: String(f.dateTo || '')
   };
@@ -89,6 +101,12 @@ function rawSourceWhere_(key, filters) {
     return 'WHERE TRUE' + multiCond_('issuetype_name', filters.deviceTypes) +
       multiCondNot_('status_name', filters.deviceStatusExclude) +
       dateRangeCond_('ticket_created', filters.dateFrom, filters.dateTo);
+  }
+  if (key === 'servicewrk') {
+    return 'WHERE TRUE' + swFilterCond_(filters);
+  }
+  if (key === 'tom_tickets') {
+    return 'WHERE TRUE' + tomFilterCond_(filters);
   }
   return 'WHERE TRUE';
 }

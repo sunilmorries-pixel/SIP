@@ -897,11 +897,11 @@
     <div class="map-wrap card">
       <div id="tcMap" role="application"
            aria-label="Map of top-customer centers. Click a marker for details."></div>
-      <div class="map-legend" aria-hidden="true">
-        <span><span class="legend-dot" style="background:#34D399"></span>No open tickets</span>
-        <span><span class="legend-dot" style="background:#FBBF24"></span>1–3 days open</span>
-        <span><span class="legend-dot" style="background:#F87171"></span>4+ days open</span>
-        <span class="legend-note"><span class="legend-swatch" style="background:#2E9BD6"></span>Country has centers <span class="legend-swatch" style="background:#869AB2"></span>No centers · Bubble size = devices · color = oldest open ticket's age</span>
+      <div class="map-legend" id="tcTicketLegend" role="group" aria-label="Filter map by oldest open ticket's age">
+        <button class="legend-filter" type="button" data-bucket="none" aria-pressed="false"><span class="legend-dot" style="background:#34D399"></span>No open tickets</button>
+        <button class="legend-filter" type="button" data-bucket="low" aria-pressed="false"><span class="legend-dot" style="background:#FBBF24"></span>1–3 days open</button>
+        <button class="legend-filter" type="button" data-bucket="high" aria-pressed="false"><span class="legend-dot" style="background:#F87171"></span>4+ days open</button>
+        <span class="legend-note"><span class="legend-swatch" style="background:#2E9BD6"></span>Country has centers <span class="legend-swatch" style="background:#869AB2"></span>No centers · Bubble size = devices · color = oldest open ticket's age · click to filter</span>
       </div>
     </div>
 
@@ -978,49 +978,19 @@
       </article>
     </div>
 
+    <!-- Every raw source's total row count, unfiltered — replaces the old
+         paginated center_details raw table (2026-09-04): browsing raw rows
+         is the Raw Data page's job (it already covers center_details), so
+         keeping a second row-level UI for the same table here just meant two
+         places to look for one thing. This card answers a different
+         question — "how many rows does each source have" — for every
+         source at once, not just center_details. -->
     <article class="card span-12" style="margin-top:20px">
       <header class="card-head">
-        <h2 class="card-title">center_details · raw data</h2>
-        <p class="card-sub">Raw center rows (no baseline filter)</p>
+        <h2 class="card-title">All sources</h2>
+        <p class="card-sub">Total rows per source, unfiltered</p>
       </header>
-      <div class="table-scroll">
-        <table class="data-table" id="cdRawTable">
-          <caption class="sr-only">Raw center_details rows</caption>
-          <thead><tr>
-            <th scope="col" class="num">Center ID</th>
-            <th scope="col">Center name</th>
-            <th scope="col">Status</th>
-            <th scope="col">Type</th>
-            <th scope="col">Segment</th>
-            <th scope="col" class="num">Hub ID</th>
-            <th scope="col">Hub name</th>
-            <th scope="col">City</th>
-            <th scope="col">State</th>
-            <th scope="col">Pin</th>
-            <th scope="col">Deployed</th>
-            <th scope="col">Deactivated</th>
-            <th scope="col" class="num">Devices</th>
-            <th scope="col">Mapped</th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div class="table-footer">
-        <span id="cdRawInfo" class="table-info" aria-live="polite">Loading…</span>
-        <div class="pager">
-          <button id="cdRawPrev" class="btn btn-ghost btn-icon" type="button" aria-label="Previous page" disabled>
-            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-          <span id="cdRawPage" class="page-indicator">–</span>
-          <button id="cdRawNext" class="btn btn-ghost btn-icon" type="button" aria-label="Next page" disabled>
-            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-        </div>
-      </div>
+      <div id="numSourcesKpi" class="num-compare"></div>
     </article>
   </section>
 
@@ -1028,7 +998,8 @@
   <section id="panel-rawdata" class="panel" role="tabpanel" aria-labelledby="tab-rawdata" hidden>
     <p class="num-lead">Every column, straight from the source — <strong>respects the global Filters
       drawer</strong>, applied per-source where the schema supports it (Center Details: every
-      dimension; Cloud Devices/Zoho Tickets: via center; Jira Devices: Device Type/Status/date only).
+      dimension; Cloud Devices/Zoho Tickets: via center; Jira Devices: Device Type/Status/date only;
+      ServiceWRK: Segment/State/City/date, its own columns; TOM: Centre/date only).
       Zoho Tickets still shows every raw row (duplicates + unassigned included) for reconciliation.</p>
 
     <div class="raw-pills" id="rawSourcePills" role="tablist" aria-label="Raw data source">
@@ -1036,6 +1007,8 @@
       <button class="raw-pill" type="button" data-source="cloud_devices">Cloud Devices</button>
       <button class="raw-pill" type="button" data-source="zoho_data">Zoho Tickets</button>
       <button class="raw-pill" type="button" data-source="jira_data">Jira Devices</button>
+      <button class="raw-pill" type="button" data-source="servicewrk">ServiceWRK</button>
+      <button class="raw-pill" type="button" data-source="tom_tickets">TOM</button>
     </div>
 
     <article class="card span-12">

@@ -1,16 +1,30 @@
 /**
  * Numbers.js — the "Numbers" page: counts only (KPIs + small tables) for the
  * sole center source, center_details, plus device (Jira) and ticket (Zoho)
- * totals broken down by status / type.
+ * totals broken down by status / type, plus an unfiltered total-row-count
+ * summary across every raw source the app reads from (see `sources` in
+ * apiGetNumbers — reuses RawData.js's rawSources_() registry so this list
+ * can never drift out of sync with what the Raw Data page itself offers).
  *
- * device_center_mapping has been removed as a data source, so this page now
- * reports center_details only. No hardcoded BASELINE filter applies (removed
- * 2026-07-22 — see cdFilter_ in EditionCD.js). The page DOES respect the
- * global Filters drawer (per user, 2026-08-13 — previously exempt by design):
- * centers/hubs narrow via centerAttrCond_ + deploymentdate, tickets bridge to
- * center_details via CenterID + CreatedAt, devices via jiraDeviceStats_'s own
- * filters support. Status/segment come from center_details; Devices (Jira)
- * and Tickets (Zoho) are source-independent (different BigQuery tables).
+ * device_center_mapping has been removed as a data source, so the detailed
+ * cards report center_details only. No hardcoded BASELINE filter applies
+ * (removed 2026-07-22 — see cdFilter_ in EditionCD.js). The page DOES respect
+ * the global Filters drawer (per user, 2026-08-13 — previously exempt by
+ * design): centers/hubs narrow via centerAttrCond_ + deploymentdate, tickets
+ * bridge to center_details via CenterID + CreatedAt, devices via
+ * jiraDeviceStats_'s own filters support. Status/segment come from
+ * center_details; Devices (Jira) and Tickets (Zoho) are source-independent
+ * (different BigQuery tables). The `sources` summary is DELIBERATELY
+ * unfiltered — several of those tables (ServiceWRK, TOM) have no verified
+ * center-attribute bridge (see RawData.js), so an honest raw total beats a
+ * partially-filtered one; it exists to answer "how many rows does each
+ * source actually have", the same reconciliation question Raw Data answers
+ * per-row.
+ *
+ * The Numbers page used to ALSO carry a paginated raw center_details table
+ * (apiGetCenterDetailsRaw) — removed per user request (2026-09-04): browsing
+ * raw rows is the Raw Data page's job (it already covers center_details),
+ * and duplicating that here just gave two different UIs for the same table.
  */
 /**
  * Device serial → CenterID map, used to map a Jira device (by its Summary
@@ -245,7 +259,7 @@ function apiGetNumbers(options) {
     // Hubs use the center-attribute chain + deploymentdate (matches Centers/
     // Map); Tickets bridge to center_details via CenterID + CreatedAt (matches
     // Support); Devices already accepted the full filters object.
-    return withCache('numbers_v11_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v11: unmapped devices no longer excluded by a center-attribute filter (filteredJiraDevices_)
+    return withCache('numbers_v12_' + getCacheEpoch_() + '_' + filterHash_(filters), function () { // v12: added `sources` — unfiltered total-row-count per raw source (see file header)
       var CD = T('center_details');
       var ZOHO = zohoDedupSql_();
       var techBool = techBoolSql_("IFNULL(IssueCategory,'')");
@@ -289,6 +303,17 @@ function apiGetNumbers(options) {
           "FROM " + ZOHO + " WHERE TRUE" + ticketCond + ticketDateCond + " GROUP BY k ORDER BY n DESC LIMIT 15" }
       ];
 
+      // "Numbers for all sources": an unfiltered COUNT(*) per raw source, from
+      // the SAME registry the Raw Data page's pills come from (rawSources_,
+      // RawData.js) — one definition of "every source", never two lists that
+      // could silently drift apart. See the file header for why this one
+      // summary is deliberately NOT run through the global filters.
+      var sourceDefs = rawSources_();
+      var sourceKeys = Object.keys(sourceDefs);
+      sourceKeys.forEach(function (key) {
+        specs.push({ key: 'src_' + key, sql: 'SELECT COUNT(*) AS n FROM ' + T(sourceDefs[key].table) });
+      });
+
       var r = runQueriesParallel(specs);
       var centersTot = (r.centersTot && r.centersTot[0]) || {};
       var hubsTot = (r.hubsTot && r.hubsTot[0]) || {};
@@ -309,62 +334,12 @@ function apiGetNumbers(options) {
         tickets: {
           total: ticketsTot.total || 0, tech: ticketsTot.tech || 0, nontech: ticketsTot.nontech || 0,
           by_status: r.ticketsStatus || []
-        }
+        },
+        sources: sourceKeys.map(function (key) {
+          var rows = r['src_' + key];
+          return { key: key, label: sourceDefs[key].label, total: (rows && rows[0] && rows[0].n) || 0 };
+        })
       };
     }, options.bypassCache === true);
-  });
-}
-
-/**
- * Paginated RAW center_details rows for the Numbers page table (no hardcoded
- * baseline filter — but DOES respect the global Filters drawer, 2026-08-13).
- * @param {{page:number, pageSize:number, filters:Object=}=} options
- */
-function apiGetCenterDetailsRaw(options) {
-  options = options || {};
-  var page = Math.max(0, parseInt(options.page, 10) || 0);
-  var pageSize = Math.min(100, Math.max(5, parseInt(options.pageSize, 10) || 25));
-  var filters = {
-    segments: (options.filters && options.filters.segments) || [],
-    statuses: (options.filters && options.filters.statuses) || [],
-    states: (options.filters && options.filters.states) || [],
-    hubs: (options.filters && options.filters.hubs) || [],
-    cities: (options.filters && options.filters.cities) || [],
-    countries: (options.filters && options.filters.countries) || [],
-    // Same omission as apiGetNumbers above — the raw center table ignored the
-    // "Center: …" chip while displaying it as active.
-    centers: (options.filters && options.filters.centers) || [],
-    dateFrom: String((options.filters && options.filters.dateFrom) || ''),
-    dateTo: String((options.filters && options.filters.dateTo) || '')
-  };
-  return respond_(function () {
-    var centerCond = centerAttrCond_(filters);
-    var centerDateCond = dateRangeCond_('deploymentdate', filters.dateFrom, filters.dateTo);
-    var sql =
-      // DISTINCT CTE: the 2026-07-07 reload duplicated center rows verbatim —
-      // dedupe BEFORE the COUNT(*) OVER() so the pager total is centers, not rows.
-      "WITH c AS (SELECT DISTINCT CenterID, Centername, Status, Type, Spoke_Center_Segment, " +
-      " HubID, HubName, City, State, PinCode, deploymentdate, deactivationdate " +
-      " FROM " + T('center_details') + " WHERE " + cdFilter_() + centerCond + centerDateCond + ") " +
-      "SELECT c.CenterID AS center_id, c.Centername AS center, c.Status AS status, c.Type AS type, " +
-      " c.Spoke_Center_Segment AS segment, c.HubID AS hub_id, c.HubName AS hub, c.City AS city, " +
-      " c.State AS state, c.PinCode AS pin, CAST(c.deploymentdate AS STRING) AS deployed, " +
-      " CAST(c.deactivationdate AS STRING) AS deactivated, " +
-      " COUNT(*) OVER() AS total_rows " +
-      "FROM c ORDER BY c.CenterID LIMIT " + pageSize + " OFFSET " + (page * pageSize);
-    var rows = runQuery(sql);
-    var total = rows.length ? rows[0].total_rows : 0;
-    rows.forEach(function (r) { delete r.total_rows; });
-    // devices = Jira fleet count per center, not cloud_devices — per user,
-    // 2026-08-19: devices means Jira everywhere except the CDM page. Built in
-    // JS (not a SQL join, since jira_data has no CenterID — see
-    // deviceCenterMap_) from the cached asset index, so this only costs a
-    // cache read per page-turn, not a fresh BigQuery scan.
-    var jiraCountByCenter = {};
-    getAssetIndex_().forEach(function (a) {
-      if (a.center_id != null) jiraCountByCenter[a.center_id] = (jiraCountByCenter[a.center_id] || 0) + 1;
-    });
-    rows.forEach(function (r) { r.devices = jiraCountByCenter[r.center_id] || 0; });
-    return { rows: rows, totalRows: total, page: page, pageSize: pageSize };
   });
 }

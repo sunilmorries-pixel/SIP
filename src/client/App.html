@@ -44,6 +44,7 @@
     segmentOptions: [], stateOptions: [], cityOptions: [], countryOptions: [],
     deviceTypeOptions: [], deviceStatusOptions: [], machineTypeOptions: [],
     ticketBucket: '', // '' | none | low | high — clickable map legend
+    tcTicketBucket: '', // same idea, scoped to the Top Customers map (own legend, own state)
     // Off by default (per user, 2026-08-25): only the customer/center pins
     // show on first load; Engineers/Dealers are opt-in via their legend toggle.
     fseVisible: false,  // engineer pins on the map (layer toggle)
@@ -98,7 +99,6 @@
     execLoaded: false,
     execData: null,
     numbersLoaded: false,
-    cdRaw: { page: 0, pageSize: 25, total: 0 },
     rawData: { source: 'center_details', page: 0, pageSize: 25, total: 0 },
     theme: 'dark',
     lastDashboard: null
@@ -414,22 +414,6 @@
       var mockTickets = [149127, 149081, 148990, 148711, 148502];
       return Promise.resolve({ kind: 'ticket', centerId: sq, ticketNumber: mockTickets[sq % mockTickets.length] });
     }
-    if (fn === 'apiGetCenterDetailsRaw') {
-      var pg = (args && args.page) || 0, ps = (args && args.pageSize) || 25, tot = 18370;
-      var segs = ['', 'Hospital <100 beds', 'Diagnostic centre', 'GP clinic'];
-      var sts = ['ACTIVE', 'DEACTIVATED', ''];
-      var typs = ['Center', 'Spoke', 'Hub'];
-      var raws = [];
-      for (var ri = 0; ri < ps && (pg * ps + ri) < tot; ri++) {
-        var idn = 10000 + pg * ps + ri;
-        raws.push({ center_id: idn, center: 'Demo Center ' + idn, status: sts[ri % 3], type: typs[ri % 3],
-          segment: segs[ri % 4], hub_id: 40000 + (ri % 50), hub: 'Demo Hub ' + (ri % 50),
-          city: ['Bengaluru', 'Mumbai', 'Chennai', 'Delhi'][ri % 4], state: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Delhi'][ri % 4],
-          pin: String(560000 + (ri % 900)), deployed: '2023-0' + (1 + ri % 8) + '-15', deactivated: ri % 5 === 0 ? '2025-01-10' : '',
-          devices: ri % 3 === 0 ? 0 : rnd(1, 12) });
-      }
-      return Promise.resolve({ rows: raws, totalRows: tot, page: pg, pageSize: ps });
-    }
     if (fn === 'apiGetRawPage' || fn === 'apiGetRawExport') {
       var mockRaw = {
         center_details: { columns: ['CenterID', 'Centername', 'Status', 'Spoke_Center_Segment', 'City', 'State'],
@@ -439,7 +423,11 @@
         zoho_data: { columns: ['ticketNumber', 'CenterID', 'status', 'CreatedAt', 'ClosedAt', 'IssueCategory'],
           gen: function (i) { return [149000 + i, 10000 + i, 'Closed', '02-Jul-2026 04:59:16 PM', '03-Jul-2026 10:12:00 AM', 'Lead cable']; } },
         jira_data: { columns: ['issue_key', 'issuetype_name', 'summary', 'status_name', 'ticket_created', 'customerid'],
-          gen: function (i) { return ['TA-' + (45000 + i), 'ECG Machine', 'H4-DEMO' + i + ' swap request', 'Deployed', '2024-01-01 00:00:00+00', 10000 + i]; } }
+          gen: function (i) { return ['TA-' + (45000 + i), 'ECG Machine', 'H4-DEMO' + i + ' swap request', 'Deployed', '2024-01-01 00:00:00+00', 10000 + i]; } },
+        servicewrk: { columns: ['ticket_id', 'customer_id', 'created_on', 'closed_date', 'state', 'city', 'ticket_type'],
+          gen: function (i) { return ['SW-' + (90000 + i), String(10000 + i), '2026-0' + (1 + i % 8) + '-15', '2026-0' + (1 + i % 8) + '-18', 'Karnataka', 'Bengaluru', i % 4 === 0 ? 'BREAKDOWN' : 'INSTALLATION']; } },
+        tom_tickets: { columns: ['center_id', 'received_date', 'closed_date', 'device_type', 'issue_type', 'remarks'],
+          gen: function (i) { return [10000 + i, '2026-0' + (1 + i % 8) + '-10', '2026-0' + (1 + i % 8) + '-12', 'ECG Machine', 'Hardware', 'Issue Resolved']; } }
       };
       var srcKey = (args && args.source) || 'center_details';
       var srcDef = mockRaw[srcKey] || mockRaw.center_details;
@@ -471,7 +459,15 @@
         devices: { total: 43794, source: 'jira_data', center_source: 'cloud_devices+center_details',
           by_status: kv([['Deployed', 23165], ['Delivered', 6085], ['Hardware', 3997], ['Decommissioned', 3361], ['Store', 2873], ['Field', 2089], ['Exported', 1734]]) },
         tickets: { total: 84545, tech: 28100, nontech: 56445,
-          by_status: kv([['Closed', 77678], ['Duplicate', 6308], ['Open', 211], ['Pending on Logistics Team', 82], ['Pending on Customer Success Team', 70]]) }
+          by_status: kv([['Closed', 77678], ['Duplicate', 6308], ['Open', 211], ['Pending on Logistics Team', 82], ['Pending on Customer Success Team', 70]]) },
+        sources: [
+          { key: 'center_details', label: 'Center Details', total: 27410 },
+          { key: 'cloud_devices', label: 'Cloud Devices', total: 11330 },
+          { key: 'zoho_data', label: 'Zoho Tickets', total: 121951 },
+          { key: 'jira_data', label: 'Jira Devices', total: 44214 },
+          { key: 'servicewrk', label: 'ServiceWRK', total: 36403 },
+          { key: 'tom_tickets', label: 'TOM', total: 1325 }
+        ]
       });
     }
     if (fn === 'apiGetMapData') {
@@ -2743,7 +2739,7 @@
     // Side effect, deliberate: keeping lastDashboard truthy means loadDashboard
     // no longer blanks the charts on a filter change, it swaps them on arrival —
     // the same "silent refresh" the auto-refresh path already uses.
-    state.dashFilters = null; state.cdRaw.total = 0; state.cdRaw.page = 0;
+    state.dashFilters = null;
     if (state.activeTab === 'tab-centers') { state.centers.page = 0; loadCenters(); }
     var sharesPayload = ['tab-asset', 'tab-centers', 'tab-support', 'tab-service'].indexOf(state.activeTab) !== -1;
     if (sharesPayload) loadDashboard(false);
@@ -2753,7 +2749,7 @@
       loadCdmData(); loadCdmDevices();
     }
     if (state.activeTab === 'tab-overview') { loadOverviewFlow(); state.mapLoaded = false; loadMapData(); }
-    if (state.activeTab === 'tab-numbers') { loadNumbers(); loadCdRaw(); }
+    if (state.activeTab === 'tab-numbers') loadNumbers();
     if (state.activeTab === 'tab-rawdata') { state.rawData.page = 0; loadRawTable(); }
     // The SLA-risk worklist rides on the Support page but fetches its own rows,
     // so loadDashboard above only refreshes its chart half — the table needs
@@ -2818,6 +2814,26 @@
     });
     renderFseLayer_(fse);
     renderCpLayer_(state.mapBundle.cp || null);
+  }
+
+  /**
+   * Same ticket-bucket filter as applyMapFilters, scoped to the Top Customers
+   * map: own base array (state.tcMapCenters), own state (state.tcTicketBucket),
+   * no search/gap/FSE/CP filters — this map has none of those concepts.
+   */
+  function applyTcMapFilters() {
+    var centers = (state.tcMapCenters || []).filter(function (c) {
+      var age = c[TCI.maxOpenAgeDays];
+      var noOpen = age == null || age < 0;
+      if (state.tcTicketBucket === 'none' && !noOpen) return false;
+      if (state.tcTicketBucket === 'low' && (noOpen || age >= 4)) return false;
+      if (state.tcTicketBucket === 'high' && (noOpen || age < 4)) return false;
+      return true;
+    });
+    tcMap.setData(centers, CenterDetail.open, {
+      stateIdx: TCI.state, countryIdx: TCI.country,
+      colorFn: function (c) { return ticketColor(c[TCI.maxOpenAgeDays]); }
+    });
   }
 
   /**
@@ -3322,16 +3338,13 @@
 
   function renderTopCustomers(payload) {
     var t = payload.totals || {};
-    setKpi('tcCustomers', t.customers, (t.withData || 0) + ' with live data');
+    setKpi('tcCustomers', t.customers);
     setKpi('tcCenters', t.centers, 'across top accounts');
     setKpi('tcTicketCount', t.ticket_count, FMT.format(t.open_tickets || 0) + ' currently open');
     setKpi('tcSlaBreach', t.sla_breach, (t.sla_within_pct != null ? t.sla_within_pct + '% within SLA' : 'past target'));
 
-    tcMap.setData(payload.mapCenters || [], CenterDetail.open, {
-      stateIdx: TCI.state, countryIdx: TCI.country,
-      // Same switch as Overview's map, same reasoning — see mainMap.setData.
-      colorFn: function (c) { return ticketColor(c[TCI.maxOpenAgeDays]); }
-    });
+    state.tcMapCenters = payload.mapCenters || [];
+    applyTcMapFilters();
 
     // Charts use the top ~15 by the relevant metric.
     var withCenters = payload.customers.filter(function (c) { return c.centers > 0; });
@@ -3513,10 +3526,7 @@
       loadService();
     }
     var numbersStale = state.numbersFilters && !filtersEqual_(state.numbersFilters, state.globalFilters);
-    if (tabId === 'tab-numbers') {
-      if (!state.numbersLoaded || numbersStale) loadNumbers();
-      if (!state.cdRaw.total || numbersStale) loadCdRaw();
-    }
+    if (tabId === 'tab-numbers' && (!state.numbersLoaded || numbersStale)) loadNumbers();
     if (tabId === 'tab-rawdata' &&
         (!state.rawData.total || (state.rawDataFilters && !filtersEqual_(state.rawDataFilters, state.globalFilters)))) {
       loadRawTable();
@@ -3565,53 +3575,7 @@
       });
   }
 
-  function loadCdRaw() {
-    $('cdRawInfo').textContent = 'Loading…';
-    gsCall('apiGetCenterDetailsRaw', { page: state.cdRaw.page, pageSize: state.cdRaw.pageSize, filters: state.globalFilters })
-      .then(renderCdRaw)
-      .catch(function (err) {
-        $('cdRawInfo').textContent = 'Failed: ' + err.message;
-      });
-  }
-
-  function renderCdRaw(payload) {
-    var rows = payload.rows || [];
-    state.cdRaw.total = payload.totalRows || 0;
-    var body = $('cdRawTable').querySelector('tbody');
-    if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="14" class="chart-empty">No rows</td></tr>';
-    } else {
-      body.innerHTML = rows.map(function (r) {
-        return '<tr>' +
-          '<td class="num">' + escapeHtml(r.center_id) + '</td>' +
-          '<td><strong>' + escapeHtml(r.center || '—') + '</strong></td>' +
-          '<td>' + escapeHtml(r.status || '—') + '</td>' +
-          '<td>' + escapeHtml(r.type || '—') + '</td>' +
-          '<td>' + escapeHtml(r.segment || '—') + '</td>' +
-          '<td class="num">' + escapeHtml(r.hub_id == null ? '—' : r.hub_id) + '</td>' +
-          '<td>' + escapeHtml(r.hub || '—') + '</td>' +
-          '<td>' + escapeHtml(r.city || '—') + '</td>' +
-          '<td>' + escapeHtml(r.state || '—') + '</td>' +
-          '<td>' + escapeHtml(r.pin || '—') + '</td>' +
-          '<td>' + escapeHtml(r.deployed || '—') + '</td>' +
-          '<td>' + escapeHtml(r.deactivated || '—') + '</td>' +
-          '<td class="num">' + FMT.format(r.devices || 0) + '</td>' +
-          '<td><span class="badge badge-' + ((r.devices || 0) > 0 ? 'ok">Yes' : 'muted">No') + '</span></td>' +
-          '</tr>';
-      }).join('');
-    }
-    var start = state.cdRaw.page * state.cdRaw.pageSize;
-    var end = Math.min(start + state.cdRaw.pageSize, state.cdRaw.total);
-    $('cdRawInfo').textContent = state.cdRaw.total
-      ? (FMT.format(start + 1) + '–' + FMT.format(end) + ' of ' + FMT.format(state.cdRaw.total) + ' centers')
-      : '0 centers';
-    var maxPage = Math.max(0, Math.ceil(state.cdRaw.total / state.cdRaw.pageSize) - 1);
-    $('cdRawPage').textContent = (state.cdRaw.page + 1) + ' / ' + (maxPage + 1);
-    $('cdRawPrev').disabled = state.cdRaw.page <= 0;
-    $('cdRawNext').disabled = state.cdRaw.page >= maxPage;
-  }
-
-  /* ── Raw Data page (4 sources) ──────────────────────────────────
+  /* ── Raw Data page (6 sources) ─────────────────────────────────
      Each source applies whatever filter dimensions its own schema supports
      — see RawData.js's file header for exactly which per source. */
   function loadRawTable() {
@@ -3732,6 +3696,10 @@
       { label: 'Non-Tech', value: d.tickets.nontech }
     ]);
     $('numTicketsStatus').innerHTML = numTable('By status', d.tickets.by_status);
+
+    $('numSourcesKpi').innerHTML = numCompare((d.sources || []).map(function (s) {
+      return { label: s.label, value: s.total };
+    }));
   }
 
   function wireTabs() {
@@ -3774,10 +3742,7 @@
     if (state.tomLoaded) loadTom();
     if (state.topLoaded) loadTopCustomers();
     // Numbers page (incl. the Google-Sheet devices count) — only when it's in play.
-    if (state.numbersLoaded || state.activeTab === 'tab-numbers') {
-      loadNumbers(bypassCache);
-      loadCdRaw();
-    }
+    if (state.numbersLoaded || state.activeTab === 'tab-numbers') loadNumbers(bypassCache);
   }
 
   function tickCountdown() {
@@ -3900,7 +3865,7 @@
       formula: 'COUNT(DISTINCT CenterID) — every customer, any status (no baseline filter). A center IS an independent customer; hubs group them under the hub-and-spoke model.',
       source: 'center_details (sole customer source).' },
     openTicketCustomers: { name: 'Open ticket customers', formula: 'Distinct customers with at least one non-terminal Zoho ticket (status NOT IN Closed/Duplicate/Junk).', source: 'center_details ⋈ zoho_data (deduped).' },
-    centersRaw: { name: 'center_details · raw data', formula: 'Raw center_details rows (no baseline filter), paginated, with a per-center device count and mapped flag.', source: 'center_details + LEFT JOIN cloud_devices.' },
+    sourcesSummary: { name: 'All sources', formula: 'COUNT(*) per source table — every row, unfiltered. Not narrowed by the global Filters drawer: some sources (ServiceWRK, TOM) have no verified center-attribute bridge, so an honest raw total beats a partially-filtered one.', source: 'center_details, cloud_devices, zoho_data, jira_data, servicewrk_Tickets, tom_tickets.' },
 
     // ── TOM (tom_tickets) ──
     tomIssues: { name: 'Issues logged',
@@ -4004,7 +3969,7 @@
     // 'customers' was simply missing, which is why that card was the one
     // Overview header with no info dot while its two neighbours had one.
     'all tickets': 'allTickets', 'customers': 'ovCustomers',
-    'center_details · raw data': 'centersRaw'
+    'all sources': 'sourcesSummary'
   };
 
   function infoDotHtml(key) {
@@ -4249,6 +4214,17 @@
       });
     });
 
+    // Same idea, scoped to the Top Customers map's own legend/state — see
+    // applyTcMapFilters/syncTcLegendActive.
+    Array.prototype.forEach.call(document.querySelectorAll('#tcTicketLegend .legend-filter'), function (btn) {
+      btn.addEventListener('click', function () {
+        var b = btn.getAttribute('data-bucket');
+        state.tcTicketBucket = (state.tcTicketBucket === b) ? '' : b;
+        syncTcLegendActive();
+        applyTcMapFilters();
+      });
+    });
+
     // Engineer layer: show/hide the pins.
     $('fseToggle').addEventListener('click', function () {
       state.fseVisible = !state.fseVisible;
@@ -4293,15 +4269,6 @@
     });
 
     window.addEventListener('hashchange', applyHashRoute);
-
-    // center_details raw-data table pager.
-    $('cdRawPrev').addEventListener('click', function () {
-      if (state.cdRaw.page > 0) { state.cdRaw.page -= 1; loadCdRaw(); }
-    });
-    $('cdRawNext').addEventListener('click', function () {
-      var maxPage = Math.max(0, Math.ceil(state.cdRaw.total / state.cdRaw.pageSize) - 1);
-      if (state.cdRaw.page < maxPage) { state.cdRaw.page += 1; loadCdRaw(); }
-    });
 
     // Raw Data page: source pills, page size, pager, export.
     Array.prototype.forEach.call($('rawSourcePills').querySelectorAll('.raw-pill'), function (pill) {
@@ -4414,6 +4381,13 @@
     // toggles, silently un-pressing them whenever a bucket was clicked.
     Array.prototype.forEach.call(document.querySelectorAll('#ticketLegend .legend-filter'), function (btn) {
       btn.setAttribute('aria-pressed', String(btn.getAttribute('data-bucket') === state.ticketBucket));
+    });
+  }
+
+  /** Same idea as syncLegendActive, scoped to the Top Customers map's legend. */
+  function syncTcLegendActive() {
+    Array.prototype.forEach.call(document.querySelectorAll('#tcTicketLegend .legend-filter'), function (btn) {
+      btn.setAttribute('aria-pressed', String(btn.getAttribute('data-bucket') === state.tcTicketBucket));
     });
   }
 

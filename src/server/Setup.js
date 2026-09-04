@@ -94,15 +94,16 @@ function diagnostics() {
       flow.data.devices.value + ' devices, ' + flow.data.tickets.value + ' tracked records'
     : 'overview flow FAILED: ' + JSON.stringify(flow.error));
 
-  var raw = apiGetCenterDetailsRaw({ page: 0, pageSize: 5 });
-  Logger.log(raw.ok
-    ? 'center_details raw table: ' + raw.data.totalRows + ' rows (full universe, no baseline filter)'
-    : 'raw table FAILED: ' + JSON.stringify(raw.error));
   var nums = apiGetNumbers();
   Logger.log(nums.ok
     ? 'Numbers: centers ' + nums.data.centers.total + ', hubs ' + nums.data.hubs.total +
       ', devices ' + nums.data.devices.total + ' (' + nums.data.devices.source + ')'
     : 'Numbers FAILED: ' + JSON.stringify(nums.error));
+  if (nums.ok) {
+    nums.data.sources.forEach(function (s) {
+      Logger.log('Source [' + s.key + '] ' + s.label + ': ' + s.total + ' rows (unfiltered)');
+    });
+  }
 
   // Jira device-type filter (excludes task/epic/test housekeeping tickets).
   var jiraStats = jiraDeviceStats_();

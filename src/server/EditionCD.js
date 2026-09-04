@@ -251,11 +251,15 @@ function buildDashboardQuerySpecsCD(hub, filters) {
   // Deliberately separate from `geo` (unchanged, always by-state): that field
   // feeds Overview's "Where centers are" card, a different page whose title
   // shouldn't silently go stale from a filter change made on the Customers page.
+  // No LIMIT (unlike `geo` above): this card is the Customers page's own
+  // full breakdown, not a Top-N summary — every state/city with data should
+  // show. The chart card scrolls client-side (Charts.geo/Index.html) so an
+  // unbounded row count stays browsable instead of squishing.
   specs.push({
     key: 'geoCustomers',
     sql: "SELECT IFNULL(NULLIF(TRIM(" + ((ff.states && ff.states.length === 1) ? 'City' : 'State') + "), ''), 'Unknown') AS state, " +
       "COUNT(DISTINCT CenterID) AS devices " +
-      "FROM " + CD + " WHERE " + F + filterCond + dateCond + " GROUP BY state ORDER BY devices DESC LIMIT 12"
+      "FROM " + CD + " WHERE " + F + filterCond + dateCond + " GROUP BY state ORDER BY devices DESC"
   });
 
   // Distinct real segment/state values, for the global filter drawer's Segment

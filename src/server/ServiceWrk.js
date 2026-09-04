@@ -151,9 +151,12 @@ function buildServiceQuerySpecs(filters) {
         'FROM ' + SW + where + ' GROUP BY label ORDER BY cnt DESC LIMIT 16'
     },
     {
-      key: 'reps', maxRows: 12,
+      // No LIMIT (per user, 2026-09-04): the "FSE - Field Service Engineers"
+      // card now shows every engineer, scrolling rather than truncating to a
+      // top-N leaderboard — see Charts.rankBar's opts.scroll.
+      key: 'reps',
       sql: 'SELECT IFNULL(NULLIF(TRIM(representative), ""), "Unassigned") AS label, COUNT(*) AS cnt ' +
-        'FROM ' + SW + where + ' AND status = "Closed" GROUP BY label ORDER BY cnt DESC LIMIT 12'
+        'FROM ' + SW + where + ' AND status = "Closed" GROUP BY label ORDER BY cnt DESC'
     },
     {
       // Same '%swap%' service_type match as Queries.js's svcSwappedTickets
@@ -198,7 +201,9 @@ function apiGetServiceCD(options) {
     // v3: swapsByRegion re-keyed to group by center_details.State, not
     // ticket_territory — bump so stale v2 payloads (old territory labels)
     // aren't served from cache until their TTL happens to expire.
-    return withCache('svc_v3_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
+    // v4: reps spec's LIMIT 12 dropped — bump so a stale top-12-only payload
+    // isn't served to the now-scrollable "FSE - Field Service Engineers" card.
+    return withCache('svc_v4_' + getCacheEpoch_() + '_' + filterHash_(filters), function () {
       var r = runQueriesParallel(buildServiceQuerySpecs(filters));
       var k = (r.kpis && r.kpis[0]) || {};
       return {

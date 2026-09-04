@@ -763,6 +763,11 @@ body[data-theme="light"] .dc-tip-note { background: rgba(1,41,78,.035); }
 /* ── charts + skeletons ─────────────────────────────────────────── */
 .chart { width: 100%; height: 280px; }
 .chart-tall { height: 320px; }
+/* Fixed-height viewport for a chart taller than its card — the chart itself
+   (a .chart child) gets its real height set inline in JS from row count;
+   this wrapper clips it to chart-tall's 320px and scrolls the rest. */
+.chart-scroll { overflow-y: auto; overflow-x: hidden; }
+.chart-scroll .chart { height: 100%; }
 .chart.is-loading {
   border-radius: var(--radius-sm);
   background: linear-gradient(100deg,

@@ -498,7 +498,10 @@ function buildDashboardQuerySpecs(hub, filters) {
         " ROUND(COUNTIF(NOT is_tech AND resolved AND res_days <= sla_days) / NULLIF(COUNTIF(NOT is_tech AND resolved), 0) * 100, 1) AS within_nontech, " +
         " COUNTIF(is_open AND age_days > sla_days) AS breached_open, " +
         " COUNTIF(is_open AND age_days <= sla_days AND age_days > 0.75 * sla_days) AS atrisk_open, " +
-        " ROUND(AVG(IF(resolved, res_days, NULL)), 1) AS avg_res_days " +
+        // Median, not mean (per user, 2026-09-04) — less sensitive to a few
+        // extreme outliers than AVG. APPROX_QUANTILES(x,2) returns
+        // [min, median, max]; OFFSET(1) is the median.
+        " ROUND(APPROX_QUANTILES(IF(resolved, res_days, NULL), 2)[OFFSET(1)], 1) AS median_res_days " +
         "FROM s"
     },
     {

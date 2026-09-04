@@ -467,8 +467,10 @@
           <h2 class="card-title" id="chartGeoTitle">Customers by state</h2>
           <p class="card-sub" id="chartGeoSub">Distinct active customers per state</p>
         </header>
-        <div id="chartGeo" class="chart chart-tall" role="img"
-             aria-label="Bar chart of customers per state"></div>
+        <div class="chart-scroll chart-tall">
+          <div id="chartGeo" class="chart" role="img"
+               aria-label="Bar chart of customers per state"></div>
+        </div>
       </article>
 
       <article class="card span-4">
@@ -735,16 +737,18 @@
 
       <article class="card span-6">
         <header class="card-head">
-          <h2 class="card-title">Field force</h2>
-          <p class="card-sub">Top engineers by tickets closed</p>
+          <h2 class="card-title">FSE - Field Service Engineers</h2>
+          <p class="card-sub">All engineers by tickets closed</p>
         </header>
-        <div id="chartSvcReps" class="chart chart-tall" role="img"
-             aria-label="Horizontal bar chart of tickets closed per engineer"></div>
+        <div class="chart-scroll chart-tall">
+          <div id="chartSvcReps" class="chart" role="img"
+               aria-label="Horizontal bar chart of tickets closed per engineer"></div>
+        </div>
       </article>
 
       <article class="card span-6">
         <header class="card-head">
-          <h2 class="card-title">Replacements/swaps by region</h2>
+          <h2 class="card-title">Swapped by Region</h2>
           <p class="card-sub">Swap tickets by state</p>
         </header>
         <div id="chartSvcSwapsByRegion" class="chart chart-tall" role="img"
@@ -753,7 +757,7 @@
 
       <article class="card span-6">
         <header class="card-head">
-          <h2 class="card-title">Replacements/swaps by FSE</h2>
+          <h2 class="card-title">Swapped by FSE</h2>
           <p class="card-sub">Swap tickets by engineer</p>
         </header>
         <div id="chartSvcSwapsByRep" class="chart chart-tall" role="img"

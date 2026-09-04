@@ -237,6 +237,11 @@ var Charts = (function () {
     id = id || 'chartGeo';
     if (!rows || !rows.length) return showEmpty(id);
     var sorted = rows.slice().reverse();
+    // geoCustomers ships every state/city (no LIMIT) — grow the chart's own
+    // height with the row count so bars stay readable, and let the
+    // .chart-scroll wrapper (fixed at chart-tall's 320px) scroll the rest.
+    var el = document.getElementById(id);
+    if (el) el.style.height = Math.max(320, sorted.length * 28) + 'px';
     render(id, base({
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
       grid: { left: 8, right: 24, top: 12, bottom: 8, containLabel: true },
@@ -595,12 +600,21 @@ var Charts = (function () {
 
   /**
    * Ranked horizontal bar for leaderboards. rows: [{label,cnt}] (already
-   * ordered largest→smallest). opts: { color, pct, max, empty }.
+   * ordered largest→smallest). opts: { color, pct, max, empty, scroll }.
+   * opts.scroll: true grows the chart's own height with the row count (same
+   * technique as geo()) instead of squeezing every row into the card's fixed
+   * height — pair with a `.chart-scroll.chart-tall` wrapper div around the
+   * chart element so the wrapper scrolls the overflow. Opt-in per call site;
+   * every other rankBar() card keeps its short, fixed-height leaderboard.
    */
   function rankBar(id, rows, opts) {
     opts = opts || {};
     if (!rows || !rows.length) return showEmpty(id, opts.empty);
     var sorted = rows.slice().reverse(); // largest at top
+    if (opts.scroll) {
+      var el = document.getElementById(id);
+      if (el) el.style.height = Math.max(320, sorted.length * 28) + 'px';
+    }
     render(id, base({
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
       // bottom:0 — nothing is drawn down there any more, so the axis gutter

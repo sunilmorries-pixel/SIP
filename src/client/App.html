@@ -255,9 +255,17 @@
         models: [{ label: 'MAC 600', cnt: 17109 }, { label: 'VCARDIA', cnt: 16994 },
           { label: 'TR 100', cnt: 1312 }, { label: 'TR 200', cnt: 344 },
           { label: 'TR 110', cnt: 182 }, { label: 'ECHO', cnt: 131 }],
+        // Longer roster than the other rankBar lists (per user, 2026-09-04:
+        // this card now shows EVERY engineer, scrolling rather than
+        // truncating) so the preview actually exercises chart-scroll's
+        // grow-then-scroll behavior, not just a short static list.
         reps: ['Abhisekh Mohapatra', 'Dadapeer Z', 'Saidha Rao', 'Mustaq Ahmed', 'Ravi Kumar',
-          'Anil Sharma', 'Prakash N', 'Vinod S'].map(function (s) {
-          return { label: s, cnt: rnd(200, 900) };
+          'Anil Sharma', 'Prakash N', 'Vinod S', 'Suresh Babu', 'Manoj Tiwari', 'Rajesh Verma',
+          'Ganesh Pillai', 'Faisal Khan', 'Naveen Reddy', 'Deepak Joshi', 'Arun Kumar',
+          'Sunil Yadav', 'Ramesh Gowda', 'Vijay Singh', 'Kiran Patil', 'Amit Kulkarni',
+          'Sandeep Rao', 'Harish Chandra', 'Nagesh Iyer', 'Pradeep Nair', 'Santosh Malik',
+          'Ashok Menon', 'Vishal Thakur', 'Rakesh Chauhan', 'Gopal Krishnan'].map(function (s) {
+          return { label: s, cnt: rnd(20, 900) };
         }).sort(function (a, b) { return b.cnt - a.cnt; }),
         swapsByRegion: ['Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'West Bengal',
           'Delhi', 'Gujarat', 'Odisha'].map(function (s) {
@@ -840,7 +848,7 @@
       activeVsEnded: [{ status: 'SME', devices: 14316 }, { status: 'Government', devices: 4754 }, { status: 'LE', devices: 5107 }, { status: 'ECHO', devices: 788 }, { status: 'Project', devices: 65 }],
       zohoKpis: [{ open_tickets: 211, created_7d: 340, created_7d_prev: 304,
         closed_7d: 361, closed_7d_prev: 330, avg_open_age_days: 6.2, total_tickets: 84545 }],
-      slaKpis: [{ resolved_n: 77678, within_pct: 65.5, within_tech: 51.0, within_nontech: 74.6, breached_open: 484, atrisk_open: 25, avg_res_days: 16.7 }],
+      slaKpis: [{ resolved_n: 77678, within_pct: 65.5, within_tech: 51.0, within_nontech: 74.6, breached_open: 484, atrisk_open: 25, median_res_days: 16.7 }],
       slaByType: [
         { category: 'Mac 600 To V-Cardia(Swapping)', sla_days: 5, is_tech: true, tickets: 85, resolved_n: 76, breach_pct: 88.2, avg_res_days: 44.1 },
         { category: 'Plan Change Request', sla_days: 3, is_tech: false, tickets: 97, resolved_n: 93, breach_pct: 87.1, avg_res_days: 89.0 },
@@ -1346,8 +1354,8 @@
             '<div><dt>Open breached</dt><dd class="txt-danger">' + FMT.format(k.breached_open || 0) + '</dd></div>' +
             '<div><dt>At-risk</dt><dd class="txt-warn">' + FMT.format(k.atrisk_open || 0) + '</dd></div>' +
           '</dl>' +
-          '<div class="sla-foot">Avg resolution · <strong>' +
-            (k.avg_res_days == null ? '—' : k.avg_res_days + ' days') + '</strong></div>';
+          '<div class="sla-foot">Median resolution · <strong>' +
+            (k.median_res_days == null ? '—' : k.median_res_days + ' days') + '</strong></div>';
       }
     }
 
@@ -1810,7 +1818,7 @@
     // options, which is why every spec in ServiceWrk.js aliases to those names.
     Charts.rankBar('chartSvcTypes', d.serviceTypes || [], { color: '#2E9BD6', empty: 'No service data' });
     Charts.rankBar('chartSvcModels', d.models || [], { color: '#7C5CFF', empty: 'No model data' });
-    Charts.rankBar('chartSvcReps', d.reps || [], { color: '#2FD39B', empty: 'No engineer data' });
+    Charts.rankBar('chartSvcReps', d.reps || [], { color: '#2FD39B', empty: 'No engineer data', scroll: true });
     Charts.rankBar('chartSvcSwapsByRegion', d.swapsByRegion || [], { color: '#F5B301', empty: 'No swap data' });
     Charts.rankBar('chartSvcSwapsByRep', d.swapsByRep || [], { color: '#FB7185', empty: 'No swap data' });
   }

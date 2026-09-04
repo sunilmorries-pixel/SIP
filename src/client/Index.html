@@ -276,11 +276,13 @@
 
   <!-- ══════════════ VIEW 1 · ASSET ══════════════ -->
   <section id="panel-asset" class="panel" role="tabpanel" aria-labelledby="tab-asset" hidden>
-    <!-- 3 tiles, not 5: this page is jira_data only (per user, 2026-08-19), and
-         Poor signal / Unsynced ECGs were both cloud_devices telemetry. Those
-         two metrics still live on the CDM page, which is the communicator
-         (cloud_devices) view. -->
-    <div id="kpiGrid" class="kpi-grid kpi-grid-3"><!-- KPI tiles rendered by App.html --></div>
+    <!-- 3 fleet-count tiles, not 5: this page is jira_data only (per user,
+         2026-08-19), and Poor signal / Unsynced ECGs were both cloud_devices
+         telemetry. Those two metrics still live on the CDM page, which is the
+         communicator (cloud_devices) view. 4 more tiles added 2026-09-04
+         (device Uptime/Downtime/MTBF/MTTR from jira_data's status changelog,
+         deviceUptimeFromChangelog_ — EditionCD.js), 7 total. -->
+    <div id="kpiGrid" class="kpi-grid kpi-grid-7"><!-- KPI tiles rendered by App.html --></div>
 
     <div class="card-grid">
       <!-- Device status (donut) and Firmware spread were removed 2026-08-19:

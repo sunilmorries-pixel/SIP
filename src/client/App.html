@@ -818,6 +818,7 @@
       fleet: { total: 28444,
         avg_age_days: 1411, aged_devices: 28444, past_life: 8105,
         age_bands: [{ k: '<1y', n: 3566 }, { k: '1-2y', n: 3343 }, { k: '2-3y', n: 7072 }, { k: '3-5y', n: 6358 }, { k: '5y+', n: 8105 }] },
+      deviceUptime: { scored: 12480, avg_uptime_pct: 93.4, avg_downtime_days: 6.8, avg_mtbf_days: 214.6, avg_mttr_days: 5.2 },
       cohortReliability: [
         { batch_year: 2019, devices: 663, ftf_rate_pct: 8.0, median_ttff_days: 1288, early_fails: 0, avg_failures: 0.24, top_issue: 'Acquisition Delay -Network Issue' },
         { batch_year: 2020, devices: 465, ftf_rate_pct: 15.5, median_ttff_days: 1191, early_fails: 1, avg_failures: 0.40, top_issue: 'Tricog Device Network Issue' },
@@ -979,7 +980,13 @@
     $('kpiGrid').innerHTML =
       kpiTile('kpiTotal', 'fleet', 'var(--secondary)', 'Total devices', '') +
       kpiTile('kpiAvgAge', 'clock', 'var(--info)', 'Avg device age', 'today − Created') +
-      kpiTile('kpiPastLife', 'clock', 'var(--danger)', 'Past 5-yr life', 'devices 5y+');
+      kpiTile('kpiPastLife', 'clock', 'var(--danger)', 'Past 5-yr life', 'devices 5y+') +
+      // 4 device-grain tiles (2026-09-04), from jira_data's status changelog
+      // (deviceUptimeFromChangelog_, EditionCD.js) — fleet-wide, unfiltered v1.
+      kpiTile('kpiDevUptime', 'online', 'var(--ok)', 'Device uptime', 'status changelog') +
+      kpiTile('kpiDevDowntime', 'offline', 'var(--danger)', 'Device downtime', 'avg days per device') +
+      kpiTile('kpiDevMtbf', 'clock', 'var(--violet)', 'MTBF', 'avg days between failures') +
+      kpiTile('kpiDevMttr', 'wrench', 'var(--warn)', 'MTTR', 'completed repairs only');
     $('centersKpiGrid').innerHTML =
       kpiTile('kpiCenters', 'building', 'var(--secondary)', 'Customers', 'all customers') +
       kpiTile('kpiUptime', 'online', 'var(--ok)', 'Customer uptime', 'avg per-customer uptime') +
@@ -1192,6 +1199,26 @@
       'across ' + FMT.format(fleet.aged_devices || 0) + ' dated devices');
     setKpi('kpiPastLife', fleet.past_life,
       fleet.total ? Math.round((fleet.past_life || 0) / fleet.total * 100) + '% of devices' : 'devices 5y+');
+
+    /* Device uptime/downtime/MTBF/MTTR (2026-09-04) — data.deviceUptime,
+       i.e. deviceUptimeFromChangelog_ (EditionCD.js) over jira_data's status
+       changelog. Fleet-wide, unfiltered v1 (per user) — doesn't move with
+       the Filters drawer yet, unlike every other tile on this page. MTTR
+       is null whenever no device has a COMPLETED incident yet (only ongoing
+       ones) — shows '—', not a misleading 0. */
+    var devUp = data.deviceUptime || {};
+    setKpiText('kpiDevUptime',
+      devUp.avg_uptime_pct != null ? devUp.avg_uptime_pct.toFixed(1) + '%' : '—',
+      FMT.format(devUp.scored || 0) + ' devices scored');
+    setKpiText('kpiDevDowntime',
+      devUp.avg_downtime_days != null ? devUp.avg_downtime_days.toFixed(1) + 'd' : '—',
+      'avg days per device');
+    setKpiText('kpiDevMtbf',
+      devUp.avg_mtbf_days != null ? devUp.avg_mtbf_days.toFixed(1) + 'd' : '—',
+      'avg days between failures');
+    setKpiText('kpiDevMttr',
+      devUp.avg_mttr_days != null ? devUp.avg_mttr_days.toFixed(1) + 'd' : '—',
+      'completed repairs only');
 
     /* Customers KPIs (center grain — a center IS an independent customer) */
     var up = (data.uptimeFleet && data.uptimeFleet[0]) || null;
@@ -3796,6 +3823,22 @@
     assetAge: { name: 'Asset lifecycle age',
       formula: 'Device age = today − Created (per device), averaged; 5y+ devices are past the expected life.',
       source: 'jira_data.ticket_created (BigQuery).' },
+    // Device-grain reliability (2026-09-04) — a device's own status
+    // changelog, distinct from `uptime`/`mtbf` above (M-A1/M-A2, CENTER-grain
+    // via zoho_data). Confirmed against a real worked example (TA-14445)
+    // before shipping; v1 is fleet-wide only, not yet filtered.
+    deviceUptime: { name: 'Device uptime %',
+      formula: 'uptime% = 100 × uptime ÷ window, where window = a device’s latest known update − its first Deployed, and uptime = window − downtime. Averaged across every device that has ever reached Deployed. Fleet-wide only — not yet filtered by the Filters drawer.',
+      source: 'jira_data status changelog (field_changed=\'status\'), walked per device.' },
+    deviceDowntime: { name: 'Device downtime',
+      formula: 'Sum of downtime-incident durations per device, averaged across the fleet. An incident starts the next time a device re-enters Hardware status after ever reaching Deployed (any path back in), and ends when its status next changes; an incident still open is capped at that device’s own latest known update.',
+      source: 'jira_data status changelog, same walk as Device uptime %.' },
+    deviceMtbf: { name: 'Device MTBF',
+      formula: 'uptime ÷ incident count, per device, averaged — counts an incident still open (it did fail). Null for a device with zero incidents.',
+      source: 'jira_data status changelog, same walk as Device uptime %.' },
+    deviceMttr: { name: 'Device MTTR',
+      formula: 'Completed-incident downtime ÷ completed incident count, per device, averaged. An ongoing incident is excluded — it hasn’t been repaired yet, so it can’t say how long a repair takes.',
+      source: 'jira_data status changelog, same walk as Device uptime %.' },
 
     // ── Pillar 3 · Service ──
     sla: { code: 'SLA', name: 'SLA compliance',
@@ -3936,6 +3979,8 @@
     exTicketCount: 'ticketsCount', tcTicketCount: 'ticketsCount',
     exSlaBreach: 'slaBreach', tcSlaBreach: 'slaBreach',
     kpiAvgAge: 'assetAge', kpiPastLife: 'assetAge',
+    kpiDevUptime: 'deviceUptime', kpiDevDowntime: 'deviceDowntime',
+    kpiDevMtbf: 'deviceMtbf', kpiDevMttr: 'deviceMttr',
     kpiStates: 'openTicketCustomers', kpiMtbf: 'mtbf',
     kpiZIn: 'created7d', kpiZOut: 'closed7d', kpiZAge: 'openAge',
     kpiSvcIn: 'created7d', kpiSvcOut: 'closed7d', kpiSvcAge: 'openAge'

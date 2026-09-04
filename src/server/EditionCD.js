@@ -410,6 +410,126 @@ function cohortFromIndex_(assets, zohoFail) {
   }).sort(function (a, b) { return a.batch_year - b.batch_year; });
 }
 
+/**
+ * Device-grain uptime/downtime/MTBF/MTTR from the Jira status changelog —
+ * methodology confirmed against TA-14445 (worked example, 2026-09-02): once
+ * a device has ever reached Deployed, the next time it enters Hardware
+ * status (any path back in, however many hops) starts a downtime incident;
+ * it ends the moment the device's status next changes. An incident still
+ * open as of that device's own latest known update (ticket_updated) is
+ * capped there and marked ongoing rather than measured to today.
+ *
+ * Per device (only devices that ever reached Deployed are scored — before
+ * that a device is still being provisioned, not "up" or "down"):
+ *   window   = ticket_updated - first_deployed_at
+ *   downtime = sum of incident durations (an ongoing incident capped at
+ *              ticket_updated)
+ *   uptime   = window - downtime
+ *   MTBF     = uptime / incident count (every incident, closed + ongoing —
+ *              it did fail, MTBF answers "how long between failures")
+ *   MTTR     = completed-incident downtime / completed incident count
+ *              (ongoing incidents excluded — not yet repaired, so they
+ *              can't say how long a repair takes)
+ *
+ * Fleet aggregation is a plain AVG() across every scored device — v1 is
+ * deliberately unfiltered (fleet-wide only, per user 2026-09-04), same
+ * convention the Centers page's own uptimeFleet already uses (AVG(uptime_pct)
+ * / AVG(mtbf_hrs) / AVG(downtime_hrs) in centerUptimeSqlCD_).
+ * @param {Array<{issue_key:string, from_value:string, to_value:string,
+ *   last_field_updated:string, ticket_updated:string}>} rows
+ *   readJiraStatusChangelog_() output (Numbers.js), already ordered by
+ *   issue_key then last_field_updated.
+ * @return {{scored:number, avg_uptime_pct:(number|null), avg_downtime_days:(number|null),
+ *   avg_mtbf_days:(number|null), avg_mttr_days:(number|null)}}
+ */
+function deviceUptimeFromChangelog_(rows) {
+  // Group into per-issue transition arrays. Rows arrive pre-sorted by
+  // issue_key then last_field_updated (the SQL's own ORDER BY) — one pass,
+  // no re-sort needed.
+  var byIssue = {}, order = [];
+  rows.forEach(function (r) {
+    if (!byIssue[r.issue_key]) { byIssue[r.issue_key] = []; order.push(r.issue_key); }
+    byIssue[r.issue_key].push(r);
+  });
+
+  var scored = [];
+  order.forEach(function (issueKey) {
+    var tx = byIssue[issueKey];
+    var firstDeployedAt = null;
+    for (var i = 0; i < tx.length; i++) {
+      if (tx[i].to_value === 'Deployed') { firstDeployedAt = tx[i].last_field_updated; break; }
+    }
+    if (!firstDeployedAt) return; // never deployed -> no observation window
+
+    var snapshotAt = tx[0].ticket_updated; // identical on every row for this issue
+    var windowMs = new Date(snapshotAt).getTime() - new Date(firstDeployedAt).getTime();
+    if (!(windowMs > 0)) return; // guards a malformed/missing timestamp pair
+
+    var wasDeployed = false, incidents = [];
+    for (var j = 0; j < tx.length; j++) {
+      var t = tx[j];
+      if (t.to_value === 'Hardware' && wasDeployed) {
+        var next = tx[j + 1];
+        incidents.push({
+          start: t.last_field_updated,
+          end: next ? next.last_field_updated : snapshotAt,
+          ongoing: !next
+        });
+      }
+      if (t.to_value === 'Deployed') wasDeployed = true;
+    }
+
+    var durationMs = function (inc) {
+      return Math.max(0, new Date(inc.end).getTime() - new Date(inc.start).getTime());
+    };
+    var downtimeMs = incidents.reduce(function (sum, inc) { return sum + durationMs(inc); }, 0);
+    var uptimeMs = Math.max(0, windowMs - downtimeMs);
+    var completed = incidents.filter(function (inc) { return !inc.ongoing; });
+    var completedMs = completed.reduce(function (sum, inc) { return sum + durationMs(inc); }, 0);
+
+    scored.push({
+      uptime_pct: Math.min(100, Math.max(0, uptimeMs / windowMs * 100)),
+      downtime_days: downtimeMs / 86400000,
+      mtbf_days: incidents.length ? (uptimeMs / 86400000) / incidents.length : null,
+      mttr_days: completed.length ? (completedMs / 86400000) / completed.length : null
+    });
+  });
+
+  function avg(key) {
+    var withVal = scored.filter(function (s) { return s[key] != null; });
+    return withVal.length ?
+      withVal.reduce(function (sum, s) { return sum + s[key]; }, 0) / withVal.length : null;
+  }
+  function round1(v) { return v == null ? null : Math.round(v * 10) / 10; }
+
+  return {
+    scored: scored.length,
+    avg_uptime_pct: round1(avg('uptime_pct')),
+    avg_downtime_days: round1(avg('downtime_days')),
+    avg_mtbf_days: round1(avg('mtbf_days')),
+    avg_mttr_days: round1(avg('mttr_days'))
+  };
+}
+
+/**
+ * Cached fleet-wide device uptime/downtime/MTBF/MTTR (Asset page KPI tiles).
+ * v1 is deliberately unfiltered — per user 2026-09-04, doesn't thread through
+ * the Filters drawer yet (would need a device->center bridge for every
+ * changelog row; can follow later if wanted). The aggregate result is tiny
+ * (5 numbers), so a plain withCache suffices — no need for the gzip-chunked
+ * cachePutLarge assets_v3 uses for its much bigger per-device array. Keyed by
+ * getCacheEpoch_() (not listed in Setup.js's clearDashboardCache — see that
+ * function's own comment on why folding the epoch into the key beats a
+ * hard-coded removal list that can silently drift out of sync).
+ * @return {{scored:number, avg_uptime_pct:(number|null), avg_downtime_days:(number|null),
+ *   avg_mtbf_days:(number|null), avg_mttr_days:(number|null)}}
+ */
+function getDeviceUptimeFleet_() {
+  return withCache('devuptime_v1_' + getCacheEpoch_(), function () {
+    return deviceUptimeFromChangelog_(readJiraStatusChangelog_());
+  });
+}
+
 /* ═══════════════ Center-360 rows from center_details ═════════════════════ */
 
 /**
@@ -783,6 +903,7 @@ function apiGetDashboardCD(options) {
     results.assets = assetsDonutFromIndex_(assetIdx);
     results.cohortReliability = cohortFromIndex_(assetIdx, results.zohoFailByCenter);
     delete results.zohoFailByCenter;
+    results.deviceUptime = getDeviceUptimeFleet_();
     results.appName = CONFIG.APP_NAME;
     results.appVersion = CONFIG.APP_VERSION;
     // jiraDeviceStats_ (Numbers.js) now accepts a `filters` object directly

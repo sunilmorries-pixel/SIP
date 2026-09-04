@@ -483,6 +483,7 @@ body[data-theme="light"] .topbar-logo-light { display: block; }
 .kpi-grid-3 { grid-template-columns: repeat(3, 1fr); }
 .kpi-grid-4 { grid-template-columns: repeat(4, 1fr); }
 .kpi-grid-5 { grid-template-columns: repeat(5, 1fr); }
+.kpi-grid-7 { grid-template-columns: repeat(7, 1fr); }
 
 /* Flex column so the value+sub block can bottom-anchor (see .kpi-value).
    Without it, a KPI's value sat wherever its label happened to end, and
@@ -1792,9 +1793,9 @@ tr.row-flagged > td { background: rgba(248, 113, 113, 0.06); }
 .watchlist-sort .select { padding: 6px 10px; font-size: 13px; }
 
 /* ── responsive: reflow to laptop / tablet / phone on browser resize ── */
-/* Laptops & small desktops: 6/5-up KPI rows → 3-up; wide cards → half. */
+/* Laptops & small desktops: 6/5/7-up KPI rows → 3-up; wide cards → half. */
 @media (max-width: 1180px) {
-  .kpi-grid, .kpi-grid-5 { grid-template-columns: repeat(3, 1fr); }
+  .kpi-grid, .kpi-grid-5, .kpi-grid-7 { grid-template-columns: repeat(3, 1fr); }
   .kpi-grid-4 { grid-template-columns: repeat(2, 1fr); }
   .span-4, .span-5, .span-7, .span-8 { grid-column: span 6; }
 
@@ -1807,7 +1808,7 @@ tr.row-flagged > td { background: rgba(248, 113, 113, 0.06); }
 }
 /* Tablets: 2-up KPIs; every dashboard card and hero stacks full width. */
 @media (max-width: 820px) {
-  .kpi-grid, .kpi-grid-3, .kpi-grid-4, .kpi-grid-5 { grid-template-columns: repeat(2, 1fr); }
+  .kpi-grid, .kpi-grid-3, .kpi-grid-4, .kpi-grid-5, .kpi-grid-7 { grid-template-columns: repeat(2, 1fr); }
   .card-grid > .card, [class*="span-"] { grid-column: 1 / -1; }
   .exec-hero { flex-direction: column; align-items: flex-start; }
   .exec-hero-ring { align-self: center; }
@@ -1821,7 +1822,7 @@ tr.row-flagged > td { background: rgba(248, 113, 113, 0.06); }
 }
 /* Phones: single-column everything; trim chrome. */
 @media (max-width: 560px) {
-  .kpi-grid, .kpi-grid-3, .kpi-grid-4, .kpi-grid-5 { grid-template-columns: 1fr; }
+  .kpi-grid, .kpi-grid-3, .kpi-grid-4, .kpi-grid-5, .kpi-grid-7 { grid-template-columns: 1fr; }
   .num-compare { grid-template-columns: 1fr 1fr; }
   .batch-signal-meta, .sla-meta, .detail-grid { grid-template-columns: 1fr; }
   .page { padding-left: 14px; padding-right: 14px; }

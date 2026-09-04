@@ -101,6 +101,38 @@ function readJiraData_() {
 }
 
 /**
+ * Reads every STATUS changelog row from jira_data — the raw per-transition
+ * history readJiraData_() collapses away with its GROUP BY. Powers device
+ * uptime/downtime/MTBF/MTTR (deviceUptimeFromChangelog_, EditionCD.js): a
+ * device's status history (Store -> Ready to ship -> ... -> Deployed, and
+ * back again on a return) can only be walked from these individual rows, not
+ * from the one-row-per-issue shape readJiraData_() returns.
+ *
+ * Only field_changed = 'status' rows are read (jira_data also carries
+ * Customer Name/Customer ID changelog rows, irrelevant here). Ordered by
+ * issue_key then last_field_updated so deviceUptimeFromChangelog_ can walk
+ * each device's transitions in chronological order without re-sorting.
+ *
+ * ticket_updated is carried on every row too — like summary/status_name/
+ * issuetype_name/ticket_created/customerid, it's an issue-level field from
+ * the LEFT JOIN's issue side (sql/jira_data.lineage.sql), so it's identical
+ * across every changelog row for a given issue_key. It's the snapshot
+ * cutoff an ongoing (still-in-Hardware) incident is capped at — the
+ * methodology confirmed against TA-14445 (2026-09-02) measures "as of the
+ * data's latest known update for this device", not "as of today".
+ * @return {Array<{issue_key:string, from_value:string, to_value:string, last_field_updated:string, ticket_updated:string}>}
+ */
+function readJiraStatusChangelog_() {
+  return runQuery(
+    "SELECT issue_key, TRIM(from_value) AS from_value, TRIM(to_value) AS to_value, " +
+    "CAST(last_field_updated AS STRING) AS last_field_updated, " +
+    "CAST(ticket_updated AS STRING) AS ticket_updated " +
+    "FROM " + T('jira_data') + " WHERE field_changed = 'status' AND issue_key IS NOT NULL " +
+    "AND last_field_updated IS NOT NULL ORDER BY issue_key, last_field_updated",
+    null, { maxRows: 200000 });
+}
+
+/**
  * Tracked, deduped, filter-passing Jira devices — the shared core of
  * jiraDeviceStats_ (status/age breakdown) and the Overview Devices tree
  * (type/age breakdown). Extracted so there is exactly ONE implementation of
